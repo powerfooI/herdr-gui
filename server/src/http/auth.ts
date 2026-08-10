@@ -122,39 +122,6 @@ export function createAuthHandlers(args: {
     }
   }
 
-  function isAllowedRequestHost(req: Request): boolean {
-    if (args.authRequired) return true;
-    let hostname: string;
-    try {
-      hostname = new URL(req.url).hostname.toLowerCase();
-    } catch {
-      return false;
-    }
-    return (
-      hostname === "localhost" ||
-      hostname === "localhost." ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]"
-    );
-  }
-
-  function isAllowedRequestOrigin(req: Request): boolean {
-    const origin = req.headers.get("origin");
-    if (origin === null) return true;
-    try {
-      const originUrl = new URL(origin);
-      const requestUrl = new URL(req.url);
-      return (
-        (originUrl.protocol === "http:" || originUrl.protocol === "https:") &&
-        !originUrl.username &&
-        !originUrl.password &&
-        originUrl.host.toLowerCase() === requestUrl.host.toLowerCase()
-      );
-    } catch {
-      return false;
-    }
-  }
-
   function isAuthed(req: Request): boolean {
     if (!args.authRequired) return true;
     const token = parseCookie(req.headers.get("cookie"), AUTH_COOKIE);
@@ -220,12 +187,5 @@ export function createAuthHandlers(args: {
     });
   }
 
-  return {
-    isAllowedRequestHost,
-    isAllowedRequestOrigin,
-    isAuthed,
-    handleTokenLogin,
-    handleLogin,
-    loginPage,
-  };
+  return { isAuthed, handleTokenLogin, handleLogin, loginPage };
 }

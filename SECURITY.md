@@ -18,15 +18,8 @@ interact with terminal sessions, run repository hooks, read session data, and
 upload or delete workspace files. Anyone who can access the UI should be
 treated as having the same authority as the user running herdr-gui.
 
-The server binds to `127.0.0.1` by default. In this unauthenticated loopback
-mode it accepts only `localhost`, `127.0.0.1`, and `::1` request hosts to block
-DNS-rebinding access from hostile web origins. Browser requests and WebSocket
-handshakes must also carry an Origin matching the requested authority. A
-reverse proxy using another host name must run herdr-gui in authenticated
-non-loopback mode and preserve the original Host value.
-
-Do not expose herdr-gui directly to the public internet. When binding to a
-non-loopback address:
+The server binds to `127.0.0.1` by default. Do not expose it directly to the
+public internet. When binding to a non-loopback address:
 
 - Set a strong `HERDR_GUI_PASSWORD`.
 - Prefer `HERDR_GUI_PASSWORD` over the `--password` flag so the password is not

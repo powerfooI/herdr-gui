@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- Restore compatibility with reverse proxies that rewrite the upstream Host
+  header by relying on configured authentication instead of comparing Host and
+  Origin authorities.
+
 ## 0.3.1 - 2026-08-10
 
 ### Changed

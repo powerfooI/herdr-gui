@@ -11,88 +11,27 @@ function cookieHeader(response: Response): string {
   return cookie.split(";", 1)[0];
 }
 
-describe("request host validation", () => {
-  test("allows only loopback origins when authentication is disabled", () => {
-    const handlers = createAuthHandlers({
-      authRequired: false,
-      password: "",
-    });
-
-    for (const url of [
-      "http://localhost:8787/",
-      "http://localhost.:8787/",
-      "http://127.0.0.1:8787/",
-      "http://[::1]:8787/",
-    ]) {
-      expect(handlers.isAllowedRequestHost(new Request(url))).toBe(true);
-    }
-    expect(
-      handlers.isAllowedRequestHost(
-        new Request("http://attacker.example:8787/"),
-      ),
-    ).toBe(false);
-    expect(
-      handlers.isAllowedRequestHost(new Request("http://127.0.0.2:8787/")),
-    ).toBe(false);
-  });
-
-  test("rejects browser origins from another authority", () => {
-    const handlers = createAuthHandlers({
-      authRequired: false,
-      password: "",
-    });
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://localhost:8787/ws", {
-          headers: { origin: "http://localhost:8787" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://localhost:5173/ws", {
-          headers: { origin: "http://localhost:5173" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://dashboard.example.com/ws", {
-          headers: { origin: "https://dashboard.example.com" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://127.0.0.1:8787/ws", {
-          headers: { origin: "https://attacker.example" },
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://127.0.0.1:8787/ws", {
-          headers: { origin: "null" },
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      handlers.isAllowedRequestOrigin(
-        new Request("http://127.0.0.1:8787/healthz"),
-      ),
-    ).toBe(true);
-  });
-
-  test("relies on signed authentication for non-loopback deployments", () => {
+describe("request authentication boundaries", () => {
+  test("does not derive authorization from reverse-proxy authorities", async () => {
     const handlers = createAuthHandlers({
       authRequired: true,
       password: "fixed-password",
     });
-    expect(
-      handlers.isAllowedRequestHost(
-        new Request("https://dashboard.example.com/"),
-      ),
-    ).toBe(true);
+    const login = await handlers.handleLogin(
+      new Request("http://upstream.example/api/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "fixed-password" }),
+      }),
+    );
+    const proxiedRequest = new Request("http://upstream.example/ws", {
+      headers: {
+        cookie: cookieHeader(login),
+        origin: "https://dashboard.example.com",
+      },
+    });
+
+    expect(handlers.isAuthed(proxiedRequest)).toBe(true);
   });
 });
 
