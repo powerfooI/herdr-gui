@@ -8,6 +8,34 @@ basic pane control (send text, read output, split/close/zoom).
 中文使用说明见 [USAGE.md](./USAGE.md)。长期运行可直接使用
 [`herdr-gui service`](#run-as-a-user-service) 安装 systemd/launchd 用户服务。
 
+## Screenshots
+
+### Desktop
+
+[![Desktop workspace with a live terminal and session inspector][desktop-session]][desktop-session]
+
+Workspace terminal with live agent and session inspection.
+
+| File explorer | Diff viewer | Command palette |
+| :---: | :---: | :---: |
+| [![Desktop file explorer][desktop-finder]][desktop-finder] | [![Desktop diff viewer][desktop-diff]][desktop-diff] | [![Desktop terminal with the command palette open][desktop-terminal]][desktop-terminal] |
+
+### Mobile
+
+| Workspaces and agents | Full terminal control | File explorer |
+| :---: | :---: | :---: |
+| [![Mobile workspace and agent list][mobile-workspaces]][mobile-workspaces] | [![Mobile terminal][mobile-terminal]][mobile-terminal] | [![Mobile file explorer][mobile-finder]][mobile-finder] |
+
+Click any screenshot to open the full-resolution image.
+
+[desktop-session]: ./docs/images/herdr-gui-desktop-session-inspect.png
+[desktop-finder]: ./docs/images/herdr-gui-desktop-finder.png
+[desktop-diff]: ./docs/images/herdr-gui-desktop-diff-viewer.png
+[desktop-terminal]: ./docs/images/herdr-gui-desktop-terminal.png
+[mobile-workspaces]: ./docs/images/herdr-gui-mobile-workspaces.png
+[mobile-terminal]: ./docs/images/herdr-gui-mobile-terminal.png
+[mobile-finder]: ./docs/images/herdr-gui-mobile-finder.png
+
 ## Install
 
 Herdr must be installed and running before starting herdr-gui. The installer
@@ -37,12 +65,31 @@ herdr-gui service install
 See [USAGE.md](./USAGE.md#安装和更新) for fixed-version installation,
 authentication, remote Herdr connections, and service configuration.
 
+## Recommended: install as a PWA
+
+For day-to-day use, we recommend installing herdr-gui as a standalone web app
+instead of keeping it in a normal browser tab. This gives it a dedicated app
+window and icon while removing browser chrome from the terminal UI.
+
+First start herdr-gui and authenticate with the URL printed by the process, then
+install it from your browser:
+
+- **iPhone or iPad (Safari):** tap **Share** → **Add to Home Screen**, keep
+  **Open as Web App** enabled, then tap **Add**.
+- **macOS (Safari 17+):** choose **File** → **Add to Dock**.
+- **Chrome or Edge:** choose **Install app** from the browser menu. If only
+  **Create shortcut** is available, enable **Open as window**.
+
+Launch herdr-gui afterward from the Home Screen, Dock, or Applications folder.
+The installed app still requires the herdr-gui server to be running and
+reachable; PWA mode does not provide offline access.
+
 ## Architecture
 
 Browsers can't open Unix domain sockets, so a tiny local **bridge** sits between
 the browser and Herdr:
 
-```
+```text
 Browser (React + Vite)
    │  WebSocket (JSON: RPC + pushed events)
    ▼
