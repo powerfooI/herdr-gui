@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- Customize the mobile terminal shortcut panel through a direct 2-by-8 slot editor:
+  select any compact, bordered grid position to add or edit its label and key
+  action with a searchable, theme-aware picker. Empty positions are preserved
+  in the editor but compacted out of the runtime shortcut panel, and Page Up and
+  Page Down are included by default instead of separate fixed scroll buttons.
+  Up to four optional right-side buttons can also be configured for the original
+  Up/Down position.
+
+### Changed
+
+- Route configurable Page Up/Down actions through terminal scrollback (one page,
+  or half a page with Alt) instead of sending escape sequences that shells can
+  interpret as input-history navigation.
+- Hide the application overlay scrollbar inside dialogs, popovers, menus, and
+  the mobile shortcut panel while retaining touch, wheel, and trackpad scrolling.
+
 ## 0.3.2 - 2026-08-10
 
 ### Changed

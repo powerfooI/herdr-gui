@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   calculateOverlayThumb,
+  overlayScrollbarExcludedElement,
   type OverlayThumbGeometry,
 } from "./overlayScrollbar";
 
@@ -52,6 +53,7 @@ function hasScrollableOverflow(element: HTMLElement) {
 
 function findScrollableElement(target: EventTarget | null) {
   let element = target instanceof HTMLElement ? target : null;
+  if (element && overlayScrollbarExcludedElement(element)) return null;
   while (element && element !== document.documentElement) {
     if (hasScrollableOverflow(element)) return element;
     const xterm = element.closest(".xterm");
@@ -184,9 +186,16 @@ export function OverlayScrollbarLayer() {
 
     const onScroll = (event: Event) => {
       const target = event.target;
-      if (target instanceof HTMLElement && hasScrollableOverflow(target)) {
-        refresh(target);
+      if (!(target instanceof HTMLElement)) return;
+      if (overlayScrollbarExcludedElement(target)) {
+        if (targetRef.current && overlayScrollbarExcludedElement(targetRef.current)) {
+          targetRef.current = null;
+          setVisible(false);
+          setLayout(null);
+        }
+        return;
       }
+      if (hasScrollableOverflow(target)) refresh(target);
     };
     const onPointerMove = (event: PointerEvent) => {
       if (dragRef.current) return;

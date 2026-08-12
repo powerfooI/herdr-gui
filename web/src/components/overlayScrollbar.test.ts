@@ -1,5 +1,37 @@
 import { describe, expect, test } from "bun:test";
-import { calculateOverlayThumb } from "./overlayScrollbar";
+import {
+  calculateOverlayThumb,
+  overlayScrollbarExcludedElement,
+} from "./overlayScrollbar";
+
+describe("overlay scrollbar exclusions", () => {
+  test("excludes dialogs, popovers, menus, and mobile shortcut panels", () => {
+    for (const match of [
+      ".modal-backdrop",
+      ".popover-content",
+      ".config-dropdown",
+      ".context-menu",
+      ".pane-jump-popover",
+      ".agent-session-export-menu",
+      ".terminal-mobile-keys-panel",
+      "[role=dialog]",
+      "[role=menu]",
+      "[role=listbox]",
+    ]) {
+      expect(
+        overlayScrollbarExcludedElement({
+          closest: () => ({ match }) as unknown as Element,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  test("keeps ordinary application scroll regions eligible", () => {
+    expect(
+      overlayScrollbarExcludedElement({ closest: () => null }),
+    ).toBe(false);
+  });
+});
 
 describe("overlay scrollbar geometry", () => {
   test("does not render when content fits", () => {

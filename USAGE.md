@@ -358,15 +358,26 @@ launchctl bootout "gui/$(id -u)/dev.herdr.herdr-gui"
 
 ## Terminal
 
-terminal 区域支持鼠标滚轮和触摸滑动。移动端会显示快捷键栏：
+terminal 区域支持鼠标滚轮和触摸滑动。移动端默认显示两行对齐的快捷键，包含
+`Ctrl+C`、`Ctrl+D`、`Ctrl+R`、`Esc`、`Tab`、`Enter`、`Alt+Up`、
+`Page Up` 和 `Page Down`。
 
-- `Ctrl+C`
-- `Ctrl+D`
-- `Esc`
-- `Tab`
-- `Enter`
+打开顶部 `Menu`，选择 `Mobile terminal shortcuts` 可以自定义快捷键阵列：
 
-如果移动端没有系统 Nerd Font，herdr-gui 会加载内置的 glyph-only Nerd Font 子集，用来显示常见图标字符。
+- 固定显示 `2×8` 个可配置槽位；点击已有按钮可以修改，点击空的 `+`
+  槽位可以直接在该位置添加按钮。
+- 可以修改按钮文字和动作；`Page Up` / `Page Down` 浏览一整页终端历史，
+  `Alt+Page Up` / `Alt+Page Down` 浏览半页终端历史，其他按键会发送给
+  shell 或 TUI。
+- 清空槽位不会挤压编辑器里的其他按钮，所选位置会原样保存；终端快捷键
+  悬浮框会自动忽略空槽位并紧凑显示非空按钮。
+- 两行使用相同宽度的网格列；内容较多时可以横向滚动。
+- 还可以配置最多四个纵向侧边按钮，显示在原 `Up` / `Dn` 所在的终端
+  右侧位置；默认均为空，空槽位不会显示。
+- 两组配置都保存在当前浏览器中，不会修改 Herdr server 配置。
+
+如果移动端没有系统 Nerd Font，herdr-gui 会加载内置的 glyph-only Nerd Font
+子集，用来显示常见图标字符。
 
 ## Worktree Hooks
 

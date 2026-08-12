@@ -24,9 +24,15 @@ import {
   type AccentColor,
 } from "../appearance";
 import { store, useStore } from "../store";
+import {
+  mobileTerminalShortcutCount,
+  type MobileTerminalShortcutRows,
+  type MobileTerminalSideShortcuts,
+} from "../mobileTerminalShortcuts";
 import { AutoSyncRepositoriesDialog } from "./AutoSyncRepositoriesDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
 import { ShortcutLookupDialog } from "./ShortcutLookupDialog";
+import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 
 const APP_VERSION = packageJson.version;
 export const CONFIG_MENU_ID = "herdr-config-menu";
@@ -43,15 +49,27 @@ type HerdrInfo = {
 type ConfigMenuProps = {
   theme: Theme;
   accentColor: AccentColor;
+  mobileTerminalShortcuts: MobileTerminalShortcutRows;
+  mobileTerminalSideShortcuts: MobileTerminalSideShortcuts;
   onThemeChange: (theme: Theme) => void;
   onAccentColorChange: (accentColor: AccentColor) => void;
+  onMobileTerminalShortcutsChange: (
+    rows: MobileTerminalShortcutRows,
+  ) => void;
+  onMobileTerminalSideShortcutsChange: (
+    shortcuts: MobileTerminalSideShortcuts,
+  ) => void;
 };
 
 export function ConfigMenu({
   theme,
   accentColor,
+  mobileTerminalShortcuts,
+  mobileTerminalSideShortcuts,
   onThemeChange,
   onAccentColorChange,
+  onMobileTerminalShortcutsChange,
+  onMobileTerminalSideShortcutsChange,
 }: ConfigMenuProps) {
   const s = useStore();
   const updateAvailable = !!s.updateInfo?.update_available;
@@ -70,6 +88,7 @@ export function ConfigMenu({
   const [open, setOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mobileShortcutsOpen, setMobileShortcutsOpen] = useState(false);
   const [autoSyncOpen, setAutoSyncOpen] = useState(false);
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -279,6 +298,17 @@ export function ConfigMenu({
                 </button>
               </div>
               <ConfigMenuItem
+                icon={<Keyboard size={15} />}
+                label="Mobile terminal shortcuts"
+                description={`${mobileTerminalShortcutCount(
+                  mobileTerminalShortcuts,
+                )} panel · ${mobileTerminalSideShortcuts.filter(Boolean).length} side`}
+                onClick={() => {
+                  setOpen(false);
+                  setMobileShortcutsOpen(true);
+                }}
+              />
+              <ConfigMenuItem
                 icon={<GitBranch size={15} />}
                 label="Automatic branch updates"
                 description="Configure repository sync"
@@ -418,6 +448,14 @@ export function ConfigMenu({
       <ShortcutLookupDialog
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+      <MobileTerminalShortcutsDialog
+        open={mobileShortcutsOpen}
+        rows={mobileTerminalShortcuts}
+        sideShortcuts={mobileTerminalSideShortcuts}
+        onChange={onMobileTerminalShortcutsChange}
+        onSideChange={onMobileTerminalSideShortcutsChange}
+        onClose={() => setMobileShortcutsOpen(false)}
       />
       <AutoSyncRepositoriesDialog
         open={autoSyncOpen}

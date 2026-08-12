@@ -66,6 +66,17 @@ import {
   normalizeAccentColor,
   type AccentColor,
 } from "./appearance";
+import {
+  LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+  MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+  MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY,
+  parseMobileTerminalShortcutRows,
+  parseMobileTerminalSideShortcuts,
+  serializeMobileTerminalShortcutRows,
+  serializeMobileTerminalSideShortcuts,
+  type MobileTerminalShortcutRows,
+  type MobileTerminalSideShortcuts,
+} from "./mobileTerminalShortcuts";
 import { agentClass } from "./utils";
 import packageJson from "../package.json";
 
@@ -88,6 +99,8 @@ const LazyTerminalView = lazy(() =>
 type TerminalViewProps = {
   paneId?: string;
   showMobileKeys?: boolean;
+  mobileShortcuts?: MobileTerminalShortcutRows;
+  mobileSideShortcuts?: MobileTerminalSideShortcuts;
   agentHistoryOpen?: boolean;
   onAgentHistoryOpenChange?: (open: boolean) => void;
 };
@@ -194,6 +207,30 @@ function loadTheme(): Theme {
 
 function loadAccentColor(): AccentColor {
   return normalizeAccentColor(localStorage.getItem(ACCENT_COLOR_KEY));
+}
+
+function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
+  const current = localStorage.getItem(
+    MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+  );
+  if (current !== null) return parseMobileTerminalShortcutRows(current);
+  const legacy = localStorage.getItem(
+    LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+  );
+  const migrated = parseMobileTerminalShortcutRows(legacy);
+  if (legacy !== null) {
+    localStorage.setItem(
+      MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+      serializeMobileTerminalShortcutRows(migrated),
+    );
+  }
+  return migrated;
+}
+
+function loadMobileTerminalSideShortcuts(): MobileTerminalSideShortcuts {
+  return parseMobileTerminalSideShortcuts(
+    localStorage.getItem(MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY),
+  );
 }
 
 function loadSidebarActivity(): SidebarActivity {
@@ -538,9 +575,13 @@ function resizeTargetForSplit(
 // Render the active tab's Herdr pane layout; single-pane and zoomed tabs keep
 // the old full terminal view.
 function TerminalPaneLayout({
+  mobileShortcuts,
+  mobileSideShortcuts,
   agentHistoryOpen,
   onAgentHistoryOpenChange,
 }: {
+  mobileShortcuts: MobileTerminalShortcutRows;
+  mobileSideShortcuts: MobileTerminalSideShortcuts;
   agentHistoryOpen: boolean;
   onAgentHistoryOpenChange: (open: boolean) => void;
 }) {
@@ -561,6 +602,8 @@ function TerminalPaneLayout({
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
     return (
       <TerminalView
+        mobileShortcuts={mobileShortcuts}
+        mobileSideShortcuts={mobileSideShortcuts}
         agentHistoryOpen={agentHistoryOpen}
         onAgentHistoryOpenChange={onAgentHistoryOpenChange}
       />
@@ -613,6 +656,8 @@ function TerminalPaneLayout({
         </div>
         <TerminalView
           paneId={activePaneId}
+          mobileShortcuts={mobileShortcuts}
+          mobileSideShortcuts={mobileSideShortcuts}
           agentHistoryOpen={agentHistoryOpen}
           onAgentHistoryOpenChange={onAgentHistoryOpenChange}
         />
@@ -694,6 +739,8 @@ function TerminalPaneLayout({
             <TerminalView
               paneId={layoutPane.pane_id}
               showMobileKeys={isActive}
+              mobileShortcuts={mobileShortcuts}
+              mobileSideShortcuts={mobileSideShortcuts}
               agentHistoryOpen={isActive ? agentHistoryOpen : false}
               onAgentHistoryOpenChange={onAgentHistoryOpenChange}
             />
@@ -745,6 +792,10 @@ export default function App() {
   const [accentColor, setAccentColor] = useState<AccentColor>(() =>
     loadAccentColor(),
   );
+  const [mobileTerminalShortcuts, setMobileTerminalShortcuts] =
+    useState<MobileTerminalShortcutRows>(loadMobileTerminalShortcuts);
+  const [mobileTerminalSideShortcuts, setMobileTerminalSideShortcuts] =
+    useState<MobileTerminalSideShortcuts>(loadMobileTerminalSideShortcuts);
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
   const [agentHistoryOpen, setAgentHistoryOpen] = useState(false);
@@ -1345,6 +1396,33 @@ export default function App() {
     localStorage.setItem(ACCENT_COLOR_KEY, accentColor);
   }, [accentColor, theme]);
   useEffect(() => {
+    localStorage.setItem(
+      MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+      serializeMobileTerminalShortcutRows(mobileTerminalShortcuts),
+    );
+  }, [mobileTerminalShortcuts]);
+  useEffect(() => {
+    localStorage.setItem(
+      MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY,
+      serializeMobileTerminalSideShortcuts(mobileTerminalSideShortcuts),
+    );
+  }, [mobileTerminalSideShortcuts]);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY) {
+        setMobileTerminalShortcuts(
+          parseMobileTerminalShortcutRows(event.newValue),
+        );
+      } else if (event.key === MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY) {
+        setMobileTerminalSideShortcuts(
+          parseMobileTerminalSideShortcuts(event.newValue),
+        );
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  useEffect(() => {
     localStorage.setItem(SIDEBAR_ACTIVITY_KEY, sidebarActivity);
   }, [sidebarActivity]);
   useEffect(() => {
@@ -1464,8 +1542,14 @@ export default function App() {
             <ConfigMenu
               theme={theme}
               accentColor={accentColor}
+              mobileTerminalShortcuts={mobileTerminalShortcuts}
+              mobileTerminalSideShortcuts={mobileTerminalSideShortcuts}
               onThemeChange={setTheme}
               onAccentColorChange={setAccentColor}
+              onMobileTerminalShortcutsChange={setMobileTerminalShortcuts}
+              onMobileTerminalSideShortcutsChange={
+                setMobileTerminalSideShortcuts
+              }
             />
           </div>
         </div>
@@ -1700,6 +1784,8 @@ export default function App() {
           >
             <TabBar mobile={mobile} />
             <TerminalPaneLayout
+              mobileShortcuts={mobileTerminalShortcuts}
+              mobileSideShortcuts={mobileTerminalSideShortcuts}
               agentHistoryOpen={agentHistoryOpen}
               onAgentHistoryOpenChange={setAgentHistoryOpen}
             />

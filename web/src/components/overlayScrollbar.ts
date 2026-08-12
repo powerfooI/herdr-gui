@@ -1,3 +1,22 @@
+export const OVERLAY_SCROLLBAR_EXCLUDED_SELECTOR = [
+  ".modal-backdrop",
+  ".popover-content",
+  ".config-dropdown",
+  ".context-menu",
+  ".pane-jump-popover",
+  ".agent-session-export-menu",
+  ".terminal-mobile-keys-panel",
+  "[role=dialog]",
+  "[role=menu]",
+  "[role=listbox]",
+].join(", ");
+
+export function overlayScrollbarExcludedElement(
+  element: Pick<Element, "closest">,
+): boolean {
+  return Boolean(element.closest(OVERLAY_SCROLLBAR_EXCLUDED_SELECTOR));
+}
+
 export type OverlayThumbGeometry = {
   start: number;
   size: number;

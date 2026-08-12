@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import { Terminal } from "@xterm/xterm";
 import type { IBufferLine, ILink } from "@xterm/xterm";
@@ -61,6 +62,15 @@ import {
   terminalAttachWatchdogMs,
   terminalRelayViewportSize,
 } from "../terminalResize";
+import {
+  defaultMobileTerminalShortcutRows,
+  defaultMobileTerminalSideShortcuts,
+  mobileTerminalShortcutOption,
+  type MobileTerminalShortcut,
+  type MobileTerminalShortcutRows,
+  type MobileTerminalSideShortcuts,
+} from "../mobileTerminalShortcuts";
+import { mobileTerminalShortcutExecution } from "../mobileTerminalShortcutAction";
 
 const SYSTEM_CLIPBOARD = "c" as ClipboardSelectionType;
 
@@ -380,11 +390,15 @@ function withTimeout<T>(
 export function TerminalView({
   paneId,
   showMobileKeys = true,
+  mobileShortcuts = defaultMobileTerminalShortcutRows(),
+  mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
   agentHistoryOpen: controlledAgentHistoryOpen,
   onAgentHistoryOpenChange,
 }: {
   paneId?: string;
   showMobileKeys?: boolean;
+  mobileShortcuts?: MobileTerminalShortcutRows;
+  mobileSideShortcuts?: MobileTerminalSideShortcuts;
   agentHistoryOpen?: boolean;
   onAgentHistoryOpenChange?: (open: boolean) => void;
 }) {
@@ -1341,6 +1355,26 @@ export function TerminalView({
     return () => cancelAnimationFrame(frame);
   }, [agentHistoryOpen, fitVisibleTerminal]);
 
+  const runMobileShortcut = (shortcut: MobileTerminalShortcut) => {
+    const execution = mobileTerminalShortcutExecution(shortcut.action);
+    if (!execution) return;
+    if (execution.type === "scroll") {
+      scrollPage(execution.direction, execution.amount);
+    } else {
+      sendControl(execution.bytes);
+    }
+  };
+  const visibleMobileShortcutRows = mobileShortcuts.map((row) =>
+    row.filter((shortcut) => shortcut !== null),
+  );
+  const visibleMobileSideShortcuts = mobileSideShortcuts.filter(
+    (shortcut) => shortcut !== null,
+  );
+  const visibleMobileShortcutColumns = Math.max(
+    1,
+    ...visibleMobileShortcutRows.map((row) => row.length),
+  );
+
   if (!pane) {
     return (
       <>
@@ -1393,7 +1427,8 @@ export function TerminalView({
             />
           </>
         ) : null}
-        {showMobileKeys ? (
+        {showMobileKeys &&
+        visibleMobileShortcutRows.some((row) => row.length > 0) ? (
           <div
             className={`terminal-mobile-keys ${
               mobileKeysOpen ? "is-open" : ""
@@ -1415,90 +1450,60 @@ export function TerminalView({
               <Keyboard size={17} />
             </button>
             <div className="terminal-mobile-keys-panel">
-              <button
-                type="button"
-                title="Ctrl+C"
-                aria-label="Send Ctrl+C"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x03])}
+              <div
+                className="terminal-mobile-keys-grid"
+                style={{
+                  "--mobile-shortcut-columns": visibleMobileShortcutColumns,
+                } as CSSProperties}
               >
-                C-c
-              </button>
-              <button
-                type="button"
-                title="Ctrl+D"
-                aria-label="Send Ctrl+D"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x04])}
-              >
-                C-d
-              </button>
-              <button
-                type="button"
-                title="Ctrl+R"
-                aria-label="Send Ctrl+R"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x12])}
-              >
-                C-R
-              </button>
-              <button
-                type="button"
-                title="Esc"
-                aria-label="Send Escape"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x1b])}
-              >
-                Esc
-              </button>
-              <button
-                type="button"
-                title="Tab"
-                aria-label="Send Tab"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x09])}
-              >
-                Tab
-              </button>
-              <button
-                type="button"
-                title="Enter"
-                aria-label="Send Enter"
-                onPointerDown={preventShortcutFocus}
-                onClick={() => sendControl([0x0d])}
-              >
-                Enter
-              </button>
-              <button
-                type="button"
-                title="Alt+Up"
-                aria-label="Send Alt+Up"
-                onPointerDown={preventShortcutFocus}
-                onClick={() =>
-                  sendControl([0x1b, 0x5b, 0x31, 0x3b, 0x33, 0x41])
-                }
-              >
-                A-Up
-              </button>
+                {visibleMobileShortcutRows.map((row, rowIndex) => (
+                  <div
+                    className="terminal-mobile-keys-row"
+                    key={`mobile-shortcut-row-${rowIndex}`}
+                  >
+                    {row.map((shortcut) => {
+                      const option = mobileTerminalShortcutOption(
+                        shortcut.action,
+                      );
+                      return (
+                        <button
+                          type="button"
+                          title={option?.label ?? shortcut.label}
+                          aria-label={`Send ${option?.label ?? shortcut.label}`}
+                          onPointerDown={preventShortcutFocus}
+                          onClick={() => runMobileShortcut(shortcut)}
+                          key={shortcut.id}
+                        >
+                          {shortcut.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : null}
-        {showMobileKeys ? (
-          <div className="terminal-page-scroll" aria-label="Terminal page scroll">
-            <button
-              type="button"
-              onPointerDown={preventShortcutFocus}
-              onClick={() => scrollPage("up")}
-            >
-              Up
-            </button>
-            <button
-              type="button"
-              onPointerDown={preventShortcutFocus}
-              onClick={() => scrollPage("down")}
-            >
-              Dn
-            </button>
+        {showMobileKeys && visibleMobileSideShortcuts.length > 0 ? (
+          <div
+            className="terminal-mobile-side-shortcuts"
+            aria-label="Terminal side shortcuts"
+          >
+            {visibleMobileSideShortcuts.map((shortcut) => {
+              const option = mobileTerminalShortcutOption(shortcut.action);
+              return (
+                <button
+                  type="button"
+                  title={option?.label ?? shortcut.label}
+                  aria-label={`Run ${option?.label ?? shortcut.label}`}
+                  onPointerDown={preventShortcutFocus}
+                  onClick={() => runMobileShortcut(shortcut)}
+                  key={shortcut.id}
+                >
+                  {shortcut.label}
+                </button>
+              );
+            })}
           </div>
         ) : null}
         <div className="terminal-pane-toolbar" aria-label="Pane actions">

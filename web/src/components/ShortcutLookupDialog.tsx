@@ -58,10 +58,11 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Mobile Terminal",
     shortcuts: [
-      { keys: "PgUp / PgDn", description: "Scroll terminal history using the shortcut bar" },
-      { keys: "Ctrl+C", description: "Interrupt the active terminal process" },
-      { keys: "Ctrl+D", description: "Send EOF to the active terminal process" },
-      { keys: "Esc", description: "Send Escape to the active terminal process" },
+      { keys: "Shortcut panel", description: "Send configured terminal keys from up to two aligned rows" },
+      { keys: "PgUp / PgDn", description: "Scroll terminal history by one page" },
+      { keys: "A-PgUp / A-PgDn", description: "Scroll terminal history by half a page" },
+      { keys: "Side buttons", description: "Run up to four configured actions at the terminal edge" },
+      { keys: "Menu", description: "Customize the 2-by-8 panel and four side buttons" },
     ],
   },
 ];
