@@ -1,8 +1,10 @@
 import type { WorktreeList, Workspace } from "./types";
+import { isWorkspacePinned } from "./workspacePins";
+
+const EMPTY_WORKSPACE_PINS = new Set<string>();
 
 export type WorktreeOpenSource =
-  | { workspaceId: string; cwd?: never }
-  | { workspaceId?: never; cwd: string };
+  { workspaceId: string; cwd?: never } | { workspaceId?: never; cwd: string };
 
 // worktree.list accepts a linked checkout and resolves its repository parent,
 // while worktree.open rejects that same linked workspace as a source. Use the
@@ -43,7 +45,9 @@ export function worktreeCreationSource(
 
   const explicitParentId = workspace.worktree.parent_workspace_id;
   const explicitParent = explicitParentId
-    ? workspaces.find((candidate) => candidate.workspace_id === explicitParentId)
+    ? workspaces.find(
+        (candidate) => candidate.workspace_id === explicitParentId,
+      )
     : undefined;
   if (
     explicitParent &&
@@ -71,11 +75,14 @@ export type WorkspaceHierarchy = {
 // bridge's explicit association and only use repo_key when it is unambiguous.
 export function buildWorkspaceHierarchy(
   workspaces: Workspace[],
+  pinnedWorkspaceKeys: ReadonlySet<string> = EMPTY_WORKSPACE_PINS,
 ): WorkspaceHierarchy {
   const childrenByParent = new Map<string, Workspace[]>();
   const topLevel: Workspace[] = [];
+  const pinned = (workspace: Workspace) =>
+    isWorkspacePinned(pinnedWorkspaceKeys, workspace);
   for (const workspace of workspaces) {
-    if (!workspace.worktree?.is_linked_worktree) {
+    if (!workspace.worktree?.is_linked_worktree || pinned(workspace)) {
       topLevel.push(workspace);
       continue;
     }
@@ -91,7 +98,9 @@ export function buildWorkspaceHierarchy(
     childrenByParent.set(parent.workspace_id, children);
   }
 
-  topLevel.sort((a, b) => a.number - b.number);
+  topLevel.sort(
+    (a, b) => Number(pinned(b)) - Number(pinned(a)) || a.number - b.number,
+  );
   childrenByParent.forEach((children) =>
     children.sort((a, b) => a.number - b.number),
   );

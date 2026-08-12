@@ -11,6 +11,14 @@
   Page Down are included by default instead of separate fixed scroll buttons.
   Up to four optional right-side buttons can also be configured for the original
   Up/Down position.
+- Pin individual workspaces or linked worktrees to the top of the Workspace
+  tree with browser persistence. Pinned linked worktrees are lifted out of their
+  repository group into the top-level pinned section.
+- Collapse and expand linked worktrees beneath their repository workspace, with
+  the collapsed groups saved in the current browser.
+- Mark linked-worktree workspace items with a compact branch icon, expanded to
+  a `WT` badge when pinned or otherwise top-level, and hide a redundant branch
+  badge when its branch matches the workspace name.
 
 ### Changed
 

@@ -344,6 +344,14 @@ launchctl bootout "gui/$(id -u)/dev.herdr.herdr-gui"
 
 在 workspace 上右键可以打开菜单：
 
+- `Pin workspace` / `Pin worktree`：把 workspace 或 linked worktree 置顶；
+  置顶的 linked worktree 会脱离原仓库分组，作为独立项目显示在列表顶部。再次打开
+  菜单取消置顶后，它会回到原 parent workspace 下。配置保存在当前浏览器中。
+- linked worktree 会显示紧凑的分支图标；置顶并脱离原分组后会展开为 `WT`
+  标记。如果 workspace 名称与 Git branch 完全相同，则不再重复显示 branch
+  标签。
+- 有 linked worktree 的主 workspace 左侧会显示箭头；点击可以折叠或展开同组
+  worktree，折叠状态也保存在当前浏览器中。
 - `New worktree...`：从主 checkout 创建新 worktree。
 - `Rename workspace...`：重命名 workspace。
 - `Remove worktree`：移除 linked worktree。

@@ -1420,6 +1420,28 @@ textarea:focus {
   width: 10px;
   display: inline-block;
 }
+.workspace-group-toggle {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.workspace-group-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+}
+.workspace-group-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
 .ws-label {
   flex: 1;
   overflow: hidden;
@@ -1428,6 +1450,43 @@ textarea:focus {
 }
 .tree-row.is-child strong {
   font-weight: 500;
+}
+.workspace-worktree-marker {
+  height: 16px;
+  max-width: 34px;
+  flex: 0 1 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 3px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent-soft) 48%, transparent);
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+}
+.workspace-worktree-marker svg {
+  flex: 0 0 auto;
+}
+.workspace-worktree-marker.is-compact {
+  width: 14px;
+  max-width: 14px;
+  flex-basis: 14px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+.workspace-pin {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transform: rotate(-18deg);
+}
+.tree-row.is-pinned:not(.is-focused) {
+  background: color-mix(in srgb, var(--panel-2) 62%, transparent);
 }
 .row-spinner {
   width: 10px;
@@ -1452,6 +1511,7 @@ textarea:focus {
 }
 .git-status {
   min-width: 0;
+  max-width: min(45%, 142px);
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -5039,6 +5099,12 @@ textarea:focus {
   margin-top: 16px;
 }
 /* ===== badges ===== */
+.tree-row > .badge {
+  max-width: 60px;
+  overflow: hidden;
+  flex: 0 1 auto;
+  text-overflow: ellipsis;
+}
 .badge {
   font-size: 11px;
   padding: 1px 7px;

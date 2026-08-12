@@ -8,6 +8,7 @@ import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
 import { WorkspaceAutoSyncDialog } from "./WorkspaceAutoSyncDialog";
 import { worktreeCreationSource } from "../worktree";
 import { WorktreeLifecycleDialog } from "./WorktreeLifecycleDialog";
+import { isWorkspacePinned } from "../workspacePins";
 
 export interface ContextMenuState {
   x: number;
@@ -45,9 +46,13 @@ type DialogState =
 
 export function ContextMenu({
   state,
+  pinnedWorkspaceKeys,
+  onPinnedChange,
   onClose,
 }: {
   state: ContextMenuState | null;
+  pinnedWorkspaceKeys: ReadonlySet<string>;
+  onPinnedChange: (workspace: Workspace, pinned: boolean) => void;
   onClose: () => void;
 }) {
   const workspaces = useStore().workspaces;
@@ -199,11 +204,20 @@ export function ContextMenu({
       </>
     );
   }
-  const w = state.workspace;
+  const w =
+    workspaces.find(
+      (workspace) => workspace.workspace_id === state.workspace.workspace_id,
+    ) ?? state.workspace;
   const isLinked = !!w.worktree?.is_linked_worktree;
+  const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
   const creationSource = worktreeCreationSource(workspaces, w);
 
-  const items: Item[] = [];
+  const items: Item[] = [
+    {
+      label: `${pinned ? "Unpin" : "Pin"} ${isLinked ? "worktree" : "workspace"}`,
+      action: () => onPinnedChange(w, !pinned),
+    },
+  ];
   if (w.worktree) {
     items.push({
       label: "Worktree lifecycle…",

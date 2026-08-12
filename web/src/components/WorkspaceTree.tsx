@@ -4,12 +4,44 @@ import { agentClass } from "../utils";
 import { useEffect, useRef, useState } from "react";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
-import { buildWorkspaceHierarchy } from "../worktree";
-import { GitBranch } from "lucide-react";
+import { buildWorkspaceHierarchy, worktreeCreationSource } from "../worktree";
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  GitFork,
+  Pin,
+} from "lucide-react";
 import { WorktreeLifecycleDialog } from "./WorktreeLifecycleDialog";
+import {
+  WORKSPACE_PINS_STORAGE_KEY,
+  isWorkspacePinned,
+  parseWorkspacePins,
+  serializeWorkspacePins,
+  setWorkspacePinned,
+} from "../workspacePins";
+import {
+  COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY,
+  isWorktreeGroupCollapsed,
+  parseCollapsedWorktreeGroups,
+  serializeCollapsedWorktreeGroups,
+  setWorktreeGroupCollapsed,
+} from "../workspaceTreeCollapse";
+import {
+  showWorkspaceBranchBadge,
+  workspaceDisplayName,
+} from "../workspaceTreeBadges";
+import { pruneClosedWorkspacePreferenceKeys } from "../workspacePreferences";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
+
+function stringArraysEqual(left: readonly string[], right: readonly string[]) {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
 
 function gitChangedCount(status: GitStatusSummary) {
   return status.staged + status.unstaged + status.untracked + status.conflicted;
@@ -31,11 +63,20 @@ function gitStatusTitle(status?: GitStatusSummary) {
   return parts.join(" · ");
 }
 
-function GitStatusBadges({ status }: { status?: GitStatusSummary }) {
+function GitStatusBadges({
+  status,
+  showBranch = true,
+}: {
+  status?: GitStatusSummary;
+  showBranch?: boolean;
+}) {
   if (!status) return null;
   if (status.error) {
     return (
-      <span className="git-badge git-badge-error" title={gitStatusTitle(status)}>
+      <span
+        className="git-badge git-badge-error"
+        title={gitStatusTitle(status)}
+      >
         git?
       </span>
     );
@@ -43,9 +84,14 @@ function GitStatusBadges({ status }: { status?: GitStatusSummary }) {
 
   const changed = gitChangedCount(status);
   const branch = status.branch || "git";
+  const hasVisibleBadge =
+    showBranch || changed > 0 || status.ahead > 0 || status.behind > 0;
+  if (!hasVisibleBadge) return null;
   return (
     <span className="git-status" title={gitStatusTitle(status)}>
-      <span className="git-badge git-branch">{branch}</span>
+      {showBranch ? (
+        <span className="git-badge git-branch">{branch}</span>
+      ) : null}
       {changed > 0 ? (
         <span className="git-badge git-dirty">Δ{changed}</span>
       ) : null}
@@ -59,17 +105,92 @@ function GitStatusBadges({ status }: { status?: GitStatusSummary }) {
   );
 }
 
-export function WorkspaceTree({
-  onSelect,
-}: {
-  onSelect?: () => void;
-}) {
+export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
   const s = useStore();
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [lifecycleWorkspaceId, setLifecycleWorkspaceId] = useState<
     string | null
   >(null);
+  const lastPrunedWorkspaceRefresh = useRef(0);
+  const [pinnedWorkspaceKeys, setPinnedWorkspaceKeys] = useState<string[]>(() =>
+    parseWorkspacePins(localStorage.getItem(WORKSPACE_PINS_STORAGE_KEY)),
+  );
+  const [collapsedWorktreeGroupKeys, setCollapsedWorktreeGroupKeys] = useState<
+    string[]
+  >(() =>
+    parseCollapsedWorktreeGroups(
+      localStorage.getItem(COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY),
+    ),
+  );
+  const pinnedWorkspaceSet = new Set(pinnedWorkspaceKeys);
+  const collapsedWorktreeGroupSet = new Set(collapsedWorktreeGroupKeys);
+
+  useEffect(() => {
+    localStorage.setItem(
+      WORKSPACE_PINS_STORAGE_KEY,
+      serializeWorkspacePins(pinnedWorkspaceKeys),
+    );
+  }, [pinnedWorkspaceKeys]);
+  useEffect(() => {
+    localStorage.setItem(
+      COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY,
+      serializeCollapsedWorktreeGroups(collapsedWorktreeGroupKeys),
+    );
+  }, [collapsedWorktreeGroupKeys]);
+  useEffect(() => {
+    if (
+      s.status !== "connected" ||
+      s.lastRefresh === 0 ||
+      s.lastRefresh <= lastPrunedWorkspaceRefresh.current
+    ) {
+      return;
+    }
+    lastPrunedWorkspaceRefresh.current = s.lastRefresh;
+    setPinnedWorkspaceKeys((current) => {
+      const next = pruneClosedWorkspacePreferenceKeys(current, s.workspaces);
+      return stringArraysEqual(current, next) ? current : next;
+    });
+    setCollapsedWorktreeGroupKeys((current) => {
+      const next = pruneClosedWorkspacePreferenceKeys(current, s.workspaces);
+      return stringArraysEqual(current, next) ? current : next;
+    });
+  }, [s.lastRefresh, s.status, s.workspaces]);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === WORKSPACE_PINS_STORAGE_KEY) {
+        setPinnedWorkspaceKeys(parseWorkspacePins(event.newValue));
+      } else if (event.key === COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY) {
+        setCollapsedWorktreeGroupKeys(
+          parseCollapsedWorktreeGroups(event.newValue),
+        );
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const updatePinnedWorkspace = (workspace: Workspace, pinned: boolean) => {
+    setPinnedWorkspaceKeys((current) =>
+      setWorkspacePinned(current, workspace, pinned),
+    );
+    if (!pinned && workspace.worktree?.is_linked_worktree) {
+      const parent = worktreeCreationSource(s.workspaces, workspace);
+      if (parent) {
+        setCollapsedWorktreeGroupKeys((current) =>
+          setWorktreeGroupCollapsed(current, parent, false),
+        );
+      }
+    }
+  };
+  const updateCollapsedWorktreeGroup = (
+    workspace: Workspace,
+    collapsed: boolean,
+  ) => {
+    setCollapsedWorktreeGroupKeys((current) =>
+      setWorktreeGroupCollapsed(current, workspace, collapsed),
+    );
+  };
 
   if (s.workspaces.length === 0) {
     return (
@@ -99,7 +220,10 @@ export function WorkspaceTree({
     );
   }
 
-  const { topLevel, childrenByParent } = buildWorkspaceHierarchy(s.workspaces);
+  const { topLevel, childrenByParent } = buildWorkspaceHierarchy(
+    s.workspaces,
+    pinnedWorkspaceSet,
+  );
   const focusedRepoWorkspace = s.workspaces.find(
     (workspace) => workspace.focused && workspace.worktree,
   );
@@ -138,6 +262,9 @@ export function WorkspaceTree({
             w={w}
             depth={0}
             childrenByParent={childrenByParent}
+            pinnedWorkspaceKeys={pinnedWorkspaceSet}
+            collapsedWorktreeGroupKeys={collapsedWorktreeGroupSet}
+            onCollapsedChange={updateCollapsedWorktreeGroup}
             onSelect={onSelect}
             onContextMenu={(w, x, y) => setMenu({ workspace: w, x, y })}
           />
@@ -145,6 +272,8 @@ export function WorkspaceTree({
       </div>
       <ContextMenu
         state={menu}
+        pinnedWorkspaceKeys={pinnedWorkspaceSet}
+        onPinnedChange={updatePinnedWorkspace}
         onClose={() => setMenu(null)}
       />
       <CreateWorkspaceDialog
@@ -164,19 +293,33 @@ function WorkspaceRow({
   w,
   depth,
   childrenByParent,
+  pinnedWorkspaceKeys,
+  collapsedWorktreeGroupKeys,
+  onCollapsedChange,
   onSelect,
   onContextMenu,
 }: {
   w: Workspace;
   depth: number;
   childrenByParent: Map<string, Workspace[]>;
+  pinnedWorkspaceKeys: ReadonlySet<string>;
+  collapsedWorktreeGroupKeys: ReadonlySet<string>;
+  onCollapsedChange: (workspace: Workspace, collapsed: boolean) => void;
   onSelect?: () => void;
   onContextMenu: (w: Workspace, x: number, y: number) => void;
 }) {
   const children = childrenByParent.get(w.workspace_id) ?? [];
   const s = useStore();
   const isChild = depth > 0;
-  const isPendingFocus = s.pendingFocusWorkspaceId === w.workspace_id && !w.focused;
+  const hasChildren = children.length > 0;
+  const collapsed =
+    hasChildren && isWorktreeGroupCollapsed(collapsedWorktreeGroupKeys, w);
+  const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
+  const worktreeMarkerRepoName =
+    w.worktree?.is_linked_worktree === true ? w.worktree.repo_name : null;
+  const compactWorktreeMarker = isChild && !pinned;
+  const isPendingFocus =
+    s.pendingFocusWorkspaceId === w.workspace_id && !w.focused;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const longPressTriggered = useRef(false);
@@ -226,7 +369,7 @@ function WorkspaceRow({
       <div
         className={`tree-row clickable-row ${w.focused ? "is-focused" : ""} ${
           isChild ? "is-child" : ""
-        } ${isPendingFocus ? "is-loading" : ""}`}
+        } ${pinned ? "is-pinned" : ""} ${isPendingFocus ? "is-loading" : ""}`}
         style={{ paddingLeft: 6 + depth * 16 }}
         onClick={(e) => {
           if (longPressTriggered.current) {
@@ -258,26 +401,90 @@ function WorkspaceRow({
             : w.workspace_id
         }
       >
-        <span className="twisty">{isChild ? "⌞" : " "}</span>
-        <strong className="ws-label">{w.label || w.workspace_id}</strong>
+        {hasChildren ? (
+          <button
+            type="button"
+            className="workspace-group-toggle"
+            title={
+              collapsed
+                ? "Expand linked worktrees"
+                : "Collapse linked worktrees"
+            }
+            aria-label={
+              collapsed
+                ? "Expand linked worktrees"
+                : "Collapse linked worktrees"
+            }
+            aria-expanded={!collapsed}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerMove={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onPointerCancel={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openMenu(event.clientX, event.clientY);
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onCollapsedChange(w, !collapsed);
+            }}
+          >
+            {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+          </button>
+        ) : (
+          <span className="twisty">{isChild ? "⌞" : " "}</span>
+        )}
+        <strong className="ws-label">{workspaceDisplayName(w)}</strong>
+        {worktreeMarkerRepoName ? (
+          <span
+            className={`workspace-worktree-marker ${
+              compactWorktreeMarker ? "is-compact" : ""
+            }`}
+            title={`Linked worktree · ${worktreeMarkerRepoName}`}
+            aria-label={`Linked worktree in ${worktreeMarkerRepoName}`}
+          >
+            <GitFork size={11} aria-hidden="true" />
+            {!compactWorktreeMarker ? <span aria-hidden="true">WT</span> : null}
+          </span>
+        ) : null}
+        {pinned ? (
+          <Pin
+            className="workspace-pin"
+            size={11}
+            fill="currentColor"
+            aria-label="Pinned"
+          />
+        ) : null}
         {isPendingFocus ? (
           <span className="row-spinner" aria-label="Loading workspace" />
         ) : null}
         {w.worktree ? (
-          <GitStatusBadges status={w.worktree.git_status} />
+          <GitStatusBadges
+            status={w.worktree.git_status}
+            showBranch={showWorkspaceBranchBadge(w)}
+          />
         ) : null}
-        <span className={agentClass(w.agent_status)}>{w.agent_status}</span>
+        {w.agent_status !== "unknown" ? (
+          <span className={agentClass(w.agent_status)}>{w.agent_status}</span>
+        ) : null}
       </div>
-      {children.map((child) => (
-        <WorkspaceRow
-          key={child.workspace_id}
-          w={child}
-          depth={depth + 1}
-          childrenByParent={childrenByParent}
-          onSelect={onSelect}
-          onContextMenu={onContextMenu}
-        />
-      ))}
+      {!collapsed
+        ? children.map((child) => (
+            <WorkspaceRow
+              key={child.workspace_id}
+              w={child}
+              depth={depth + 1}
+              childrenByParent={childrenByParent}
+              pinnedWorkspaceKeys={pinnedWorkspaceKeys}
+              collapsedWorktreeGroupKeys={collapsedWorktreeGroupKeys}
+              onCollapsedChange={onCollapsedChange}
+              onSelect={onSelect}
+              onContextMenu={onContextMenu}
+            />
+          ))
+        : null}
     </>
   );
 }
