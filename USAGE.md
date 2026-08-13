@@ -359,10 +359,14 @@ launchctl bootout "gui/$(id -u)/dev.herdr.herdr-gui"
 
 顶部右侧的 `Menu` 用来查看和修改配置，包括：
 
-- 当前连接状态。
-- 当前访问 URL。
-- 当前 Herdr socket。
-- Worktree Hooks 状态和配置路径。
+- 明暗主题、强调色和任务完成通知。
+- 移动端 terminal 快捷键和自动 branch 更新。
+- Changelog、键盘快捷键和 herdr-gui 更新。
+- 当前连接状态、client 数量、访问 URL、Herdr socket、server 版本和协议。
+- 暂停或恢复当前 client，以及暂停其他已连接 client。
+
+Worktree Hooks 属于仓库配置，请从 workspace 右键菜单、命令菜单或
+`Worktree Lifecycle` 打开。
 
 ## Terminal
 
@@ -389,37 +393,53 @@ terminal 区域支持鼠标滚轮和触摸滑动。移动端默认显示两行�
 
 ## Worktree Hooks
 
-打开顶部 `Menu`，点击 `Edit worktree hooks` 可以配置 worktree 事件 hook。
-
-当前支持三个事件：
-
-- `Created`：对应 `worktree.created`
-- `Opened`：对应 `worktree.opened`
-- `Removed`：对应 `worktree.removed`
-
-每个输入框填写一段 shell 命令。保存后，herdr-gui 会生成一个 Herdr plugin：
-
-```text
-~/.config/herdr-gui/plugins/worktree-hooks
-```
-
-如果当前使用 `--ssh-host` 连接远程 Herdr，plugin 会写到远程机器的同一路径。
+herdr-gui 直接读取仓库里的 Paseo `paseo.json`，不会生成 Herdr plugin，也不会在
+界面中修改 hook 命令。Hook 对每个仓库默认启用；可以从 workspace 右键菜单选择
+`Worktree hooks...`，或在 `Worktree Lifecycle` 中打开 `Hook details`，查看当前
+仓库检测到的配置并按仓库禁用或重新启用。完整功能说明见
+[FEATURES.md](./FEATURES.md#paseo-worktree-hooks)。
 
 示例：
 
-```bash
-echo "worktree event: $PWD" >> /tmp/herdr-worktree-hooks.log
+```json
+{
+  "worktree": {
+    "setup": "bun install",
+    "opened": "./scripts/worktree-opened.sh",
+    "teardown": "./scripts/worktree-teardown.sh",
+    "removed": "./scripts/worktree-removed.sh"
+  }
+}
 ```
 
-Hook 命令由 Herdr 在事件发生时执行。命令会通过 `sh -c` 运行，所以可以使用普通 shell 语法。
+当前支持四个 Paseo hook：
 
-`worktree.created` 和 `worktree.opened` hook 会在目标 worktree 根目录执行，因此可以使用相对路径：
+| Hook | 执行时机 | 工作目录 |
+| --- | --- | --- |
+| `setup` | 新 linked worktree 创建并打开之后 | 新 worktree |
+| `opened` | 已有 linked worktree 打开之后 | 打开的 worktree |
+| `teardown` | 删除 linked worktree 之前 | 即将删除的 worktree |
+| `removed` | 删除完成之后 | source checkout |
 
-```bash
-bash ./scripts/setup-worktree-env.sh
-```
+命令通过 `sh -c` 执行，可以使用普通 shell 语法。`setup`、`opened` 和
+`teardown` 会先读取目标 checkout 的 `paseo.json`；只有目标中不存在该文件时，
+才回退到 source checkout。命令可以使用以下环境变量：
 
-创建 worktree 后，如果配置了 `worktree.created` hook，界面会显示 hook 的执行状态；失败时会展示 exit code、stderr 或 error，成功时会展示最多一部分 stdout。
+- `PASEO_HOOK`
+- `PASEO_CHECKOUT_PATH`
+- `PASEO_SOURCE_CHECKOUT_PATH`
+- `HERDR_GUI_HOOK_EVENT`
+- `HERDR_GUI_HOOK_CHECKOUT_PATH`
+- `HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH`
+
+操作通知会展示 hook 结果和长度受限的诊断信息；失败时可能包含 exit code、
+stderr 或 error。`teardown` 失败时会停止删除，修复命令或临时禁用该仓库的 hook
+后才能重试。其他 hook 不会回滚已经完成的生命周期操作：`setup` 或 `opened`
+失败不会撤销创建/打开，`removed` 失败也无法恢复已删除的 worktree。
+
+如果使用 `--ssh-host`，`paseo.json` 会从远程仓库读取，hook 也在远程机器执行。
+Hook 属于受信任的仓库代码，不会运行在 sandbox 中；执行 worktree 操作前应先检查
+仓库的 `paseo.json`。
 
 ## 开发模式
 

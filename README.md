@@ -5,6 +5,9 @@ running Herdr server through its local socket API and gives you a browser
 dashboard: workspace/tab/pane tree, a spatial layout view, agent status, and
 basic pane control (send text, read output, split/close/zoom).
 
+See [FEATURES.md](./FEATURES.md) for a complete feature tour, keyboard
+shortcuts, and repository-local Paseo worktree hooks.
+
 中文使用说明见 [USAGE.md](./USAGE.md)。长期运行可直接使用
 [`herdr-gui service`](#run-as-a-user-service) 安装 systemd/launchd 用户服务。
 
@@ -324,9 +327,10 @@ Unix-socket forwards for both the control and terminal-render sockets:
 ./herdr-gui --ssh-host user@host
 ```
 
-`--ssh-host` also makes pasted images and worktree-hook config writes happen on
-the remote host. If you need custom local socket paths, pass
-`--socket-path <path>` and `--client-socket-path <path>` explicitly; those flags
+`--ssh-host` also makes pasted images, workspace file operations, and
+repository worktree-hook execution happen on the remote host. If you need custom
+local socket paths, pass `--socket-path <path>` and
+`--client-socket-path <path>` explicitly; those flags
 override the automatic tunnel paths.
 
 ## Stack
