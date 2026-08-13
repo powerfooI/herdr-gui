@@ -16,25 +16,61 @@ basic pane control (send text, read output, split/close/zoom).
 
 Workspace terminal with live agent and session inspection.
 
-| File explorer | Diff viewer | Command palette |
-| :---: | :---: | :---: |
-| [![Desktop file explorer][desktop-finder]][desktop-finder] | [![Desktop diff viewer][desktop-diff]][desktop-diff] | [![Desktop terminal with the command palette open][desktop-terminal]][desktop-terminal] |
+<!-- markdownlint-disable MD033 -->
+
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="33.33%" align="center">File explorer</th>
+      <th width="33.33%" align="center">Diff viewer</th>
+      <th width="33.33%" align="center">Command palette</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-desktop-finder.png"><img src="./docs/images/herdr-gui-desktop-finder.png" alt="Desktop file explorer" width="100%" /></a>
+      </td>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-desktop-diff-viewer.png"><img src="./docs/images/herdr-gui-desktop-diff-viewer.png" alt="Desktop diff viewer" width="100%" /></a>
+      </td>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-desktop-terminal.png"><img src="./docs/images/herdr-gui-desktop-terminal.png" alt="Desktop terminal with the command palette open" width="100%" /></a>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ### Mobile
 
-| Workspaces and agents | Full terminal control | File explorer |
-| :---: | :---: | :---: |
-| [![Mobile workspace and agent list][mobile-workspaces]][mobile-workspaces] | [![Mobile terminal][mobile-terminal]][mobile-terminal] | [![Mobile file explorer][mobile-finder]][mobile-finder] |
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="33.33%" align="center">Workspaces and agents</th>
+      <th width="33.33%" align="center">Full terminal control</th>
+      <th width="33.33%" align="center">File explorer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-mobile-workspaces.png"><img src="./docs/images/herdr-gui-mobile-workspaces.png" alt="Mobile workspace and agent list" width="100%" /></a>
+      </td>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-mobile-terminal.png"><img src="./docs/images/herdr-gui-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+      </td>
+      <td width="33.33%" align="center" valign="top">
+        <a href="./docs/images/herdr-gui-mobile-finder.png"><img src="./docs/images/herdr-gui-mobile-finder.png" alt="Mobile file explorer" width="100%" /></a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-enable MD033 -->
 
 Click any screenshot to open the full-resolution image.
 
 [desktop-session]: ./docs/images/herdr-gui-desktop-session-inspect.png
-[desktop-finder]: ./docs/images/herdr-gui-desktop-finder.png
-[desktop-diff]: ./docs/images/herdr-gui-desktop-diff-viewer.png
-[desktop-terminal]: ./docs/images/herdr-gui-desktop-terminal.png
-[mobile-workspaces]: ./docs/images/herdr-gui-mobile-workspaces.png
-[mobile-terminal]: ./docs/images/herdr-gui-mobile-terminal.png
-[mobile-finder]: ./docs/images/herdr-gui-mobile-finder.png
 
 ## Install
 
