@@ -156,6 +156,53 @@ export function commandPathQuery(value: string) {
   return "";
 }
 
+type CommandNumberShortcutModifiers = Pick<
+  KeyboardEvent,
+  "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
+>;
+
+type CommandNumberShortcutEvent = CommandNumberShortcutModifiers &
+  Pick<KeyboardEvent, "preventDefault" | "repeat" | "stopPropagation">;
+
+export function commandNumberShortcutIndex(
+  event: CommandNumberShortcutModifiers,
+) {
+  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return null;
+  }
+  if (/^[1-9]$/.test(event.key)) return Number(event.key) - 1;
+  const match = /^Digit([1-9])$/.exec(event.code);
+  return match ? Number(match[1]) - 1 : null;
+}
+
+export function commandNumberedActions<T>(
+  groups: readonly { actions: readonly T[] }[],
+) {
+  return groups.flatMap((group) => group.actions).slice(0, 9);
+}
+
+export function commandNumberShortcutTarget<T>(
+  event: CommandNumberShortcutModifiers,
+  actions: readonly T[],
+) {
+  const index = commandNumberShortcutIndex(event);
+  return index === null ? null : (actions[index] ?? null);
+}
+
+export function runCommandNumberShortcut<T>(
+  event: CommandNumberShortcutEvent,
+  actions: readonly T[],
+  runAction: (action: T) => void,
+) {
+  if (event.repeat) return false;
+  const action = commandNumberShortcutTarget(event, actions);
+  if (action === null) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  runAction(action);
+  return true;
+}
+
 export function CommandCombobox({
   onOpenFileExplorer,
   onOpenFile,
@@ -811,6 +858,10 @@ export function CommandCombobox({
       }))
       .filter((group) => group.actions.length > 0),
   ];
+  const numberedActions = commandNumberedActions(displayedActionGroups);
+  const numberShortcutIndexByKey = new Map(
+    numberedActions.map((action, index) => [action.key, index]),
+  );
   const firstDisplayedActionValue = displayedActionGroups[0]?.actions[0]
     ? actionCommandValue(displayedActionGroups[0].actions[0])
     : "";
@@ -855,7 +906,15 @@ export function CommandCombobox({
             <ChevronsUpDown size={14} />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="command-popover" align="end">
+        <PopoverContent
+          className="command-popover"
+          align="end"
+          onKeyDownCapture={(event) => {
+            runCommandNumberShortcut(event, numberedActions, (action) =>
+              run(action.run),
+            );
+          }}
+        >
           <Command
             loop
             shouldFilter={false}
@@ -882,6 +941,9 @@ export function CommandCombobox({
                       title={action.title}
                       detail={action.detail}
                       shortcut={action.shortcut}
+                      numberShortcutIndex={numberShortcutIndexByKey.get(
+                        action.key,
+                      )}
                       keywords={action.keywords}
                       danger={action.danger}
                       onSelect={() => run(action.run)}
@@ -995,6 +1057,7 @@ function ActionItem({
   title,
   detail,
   shortcut,
+  numberShortcutIndex,
   keywords,
   danger,
   onSelect,
@@ -1004,23 +1067,33 @@ function ActionItem({
   title: string;
   detail?: string;
   shortcut?: string;
+  numberShortcutIndex?: number;
   keywords?: string[];
   danger?: boolean;
   onSelect: () => void;
 }) {
+  const numberShortcut =
+    numberShortcutIndex === undefined ? null : `⌘${numberShortcutIndex + 1}`;
   return (
     <CommandItem
       value={value}
       keywords={keywords}
       onSelect={onSelect}
       className={danger ? "is-danger" : undefined}
+      aria-keyshortcuts={
+        numberShortcutIndex === undefined
+          ? undefined
+          : `Meta+${numberShortcutIndex + 1}`
+      }
     >
       <span className="command-item-icon">{icon}</span>
       <span className="command-item-text">
         <span className="command-item-title">{title}</span>
         {detail ? <span className="command-item-detail">{detail}</span> : null}
       </span>
-      {shortcut ? <CommandShortcut>{shortcut}</CommandShortcut> : null}
+      {numberShortcut || shortcut ? (
+        <CommandShortcut>{numberShortcut ?? shortcut}</CommandShortcut>
+      ) : null}
     </CommandItem>
   );
 }

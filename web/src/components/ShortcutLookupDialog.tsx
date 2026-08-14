@@ -14,6 +14,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Global",
     shortcuts: [
       { keys: "Cmd/Ctrl+K", description: "Open or close the command menu" },
+      { keys: "Cmd+1 ... Cmd+9 in menu", description: "Run a numbered command menu action" },
       { keys: "Cmd+B", description: "Toggle the sidebar on desktop" },
       { keys: "Ctrl+Tab / Ctrl+Shift+Tab", description: "Open the recent pane switcher" },
       { keys: "Cmd+T", description: "Create a tab in the focused workspace" },
