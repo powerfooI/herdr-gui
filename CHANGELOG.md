@@ -7,6 +7,13 @@
 - Run the first nine visible command-menu actions with `Cmd+1` through `Cmd+9`,
   with matching shortcut hints beside each action.
 
+### Fixed
+
+- Recover iOS terminal input committed by third-party IMEs during keyup or input
+  events when xterm does not forward the helper-textarea mutation.
+- Route complete native iOS paste mutations through the terminal paste API when
+  the ClipboardEvent text is missing or truncated.
+
 ## 0.3.3 - 2026-08-13
 
 ### Added

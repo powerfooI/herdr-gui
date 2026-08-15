@@ -44,6 +44,99 @@ export function terminalImeFallbackText(input: ImeInputEvent): string | null {
 }
 
 /**
+ * Returns append-only text committed to xterm's helper textarea. Replacement
+ * and deletion remain under xterm's control because replaying them here could
+ * race its own keyCode 229 fallback and duplicate destructive input.
+ */
+export function terminalImeTextareaDelta(
+	before: string,
+	after: string,
+): string | null {
+	if (after === before || !after.startsWith(before)) return null;
+	return after.slice(before.length) || null;
+}
+
+/**
+ * Tracks one iOS keyCode 229 cycle and subtracts any prefix xterm already
+ * emitted. A synchronous flush catches short-lived keyup/input mutations; an
+ * unchanged cycle stays pending for one final timer fallback.
+ */
+export type TerminalImeTextareaFlushResult =
+	| { status: "pending" }
+	| { status: "unhandled" }
+	| { status: "handled"; text: string | null };
+
+export class TerminalImeTextareaFallbackTracker {
+	private pending: { textareaValue: string; xtermData: string } | null = null;
+	private suppressXtermData = "";
+
+	begin(textareaValue: string): void {
+		this.pending ??= { textareaValue, xtermData: "" };
+	}
+
+	recordXtermData(text: string): string | null {
+		if (this.pending) this.pending.xtermData += text;
+		if (!this.suppressXtermData) return text;
+
+		if (this.suppressXtermData.startsWith(text)) {
+			this.suppressXtermData = this.suppressXtermData.slice(text.length);
+			return null;
+		}
+		if (text.startsWith(this.suppressXtermData)) {
+			const unsuppressedText = text.slice(this.suppressXtermData.length);
+			this.suppressXtermData = "";
+			return unsuppressedText || null;
+		}
+
+		this.suppressXtermData = "";
+		return text;
+	}
+
+	flush(textareaValue: string, final = false): TerminalImeTextareaFlushResult {
+		const pending = this.pending;
+		if (!pending) return { status: "unhandled" };
+		const committedText = terminalImeTextareaDelta(
+			pending.textareaValue,
+			textareaValue,
+		);
+		if (!committedText) {
+			if (final || textareaValue !== pending.textareaValue) {
+				this.pending = null;
+				return { status: "unhandled" };
+			}
+			return { status: "pending" };
+		}
+
+		this.pending = null;
+		if (!committedText.startsWith(pending.xtermData)) {
+			return { status: "unhandled" };
+		}
+		this.suppressXtermData = committedText;
+		return {
+			status: "handled",
+			text: committedText.slice(pending.xtermData.length) || null,
+		};
+	}
+
+	hasPending(): boolean {
+		return this.pending !== null;
+	}
+
+	cancelPending(): void {
+		this.pending = null;
+	}
+
+	complete(): void {
+		this.pending = null;
+		this.suppressXtermData = "";
+	}
+
+	cancel(): void {
+		this.complete();
+	}
+}
+
+/**
  * DOM event timestamps share performance.now()'s clock in modern browsers.
  * Fall back to observation time for older Safari timestamps that used epoch
  * milliseconds, as those cannot be compared with xterm's performance time.

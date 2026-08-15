@@ -40,7 +40,11 @@ import {
   type TerminalFileLinkCandidate,
   TerminalFileResolutionCache,
 } from "../terminalFileLinks";
-import { terminalPasteRequest } from "../terminalPaste";
+import {
+	terminalPasteInputText,
+	terminalPasteRequest,
+	type TerminalPasteTextareaSnapshot,
+} from "../terminalPaste";
 import {
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
@@ -53,6 +57,7 @@ import {
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
+	TerminalImeTextareaFallbackTracker,
 } from "../terminalIme";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
 import {
@@ -519,7 +524,9 @@ export function TerminalView({
     }
     try {
       fit.fit();
-    } catch {}
+		} catch {
+			// A hidden or detaching terminal can reject a transient fit.
+		}
     return { cols: term.cols, rows: term.rows };
   }, [container]);
   const relayViewportFor = useCallback(
@@ -751,7 +758,9 @@ export function TerminalView({
     }
     try {
       fit.fit();
-    } catch {}
+		} catch {
+			// ResizeObserver will retry after the terminal becomes measurable.
+		}
     termRef.current = term;
     fitRef.current = fit;
     const linkProvider = registerTerminalLinkProvider(
@@ -761,11 +770,32 @@ export function TerminalView({
     );
 
     const imeFallback = new TerminalImeFallbackTracker();
+		const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
+		const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
+			const textarea = term.textarea;
+			const value = textarea?.value ?? "";
+			const selectionStart = textarea?.selectionStart ?? value.length;
+			return {
+				value,
+				selectionStart,
+				selectionEnd: textarea?.selectionEnd ?? selectionStart,
+			};
+		};
+		let imeTextareaTimer: number | null = null;
+		let terminalCompositionActive = false;
+		let compositionSettleTimer: number | null = null;
+		let nativePasteFallbackTimer: number | null = null;
+		let pasteTextareaClearTimer: number | null = null;
+		let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
+		let pastePaneIdBeforeInput: string | null = null;
+		let lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
     term.onData((data) => {
+			const unsuppressedData = imeTextareaFallback.recordXtermData(data);
+			if (!unsuppressedData) return;
       const dataAt = performance.now();
-      const shouldSend = imeFallback.recordXtermData(data, dataAt);
+			const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
       if (!shouldSend) return;
-      const bytes = new TextEncoder().encode(data);
+			const bytes = new TextEncoder().encode(unsuppressedData);
       sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
     });
 
@@ -828,11 +858,13 @@ export function TerminalView({
       const bytes = new TextEncoder().encode(text);
       sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
     };
-    const pasteText = async (text: string) => {
+		const pasteText = async (
+			text: string,
+			destinationPaneId: string | null = paneIdRef.current ?? null,
+		) => {
       if (!text) return;
-      const activePaneId = paneIdRef.current;
-      if (activePaneId) {
-        const request = terminalPasteRequest(activePaneId, text);
+			if (destinationPaneId) {
+				const request = terminalPasteRequest(destinationPaneId, text);
         await bridge.call(request.method, request.params);
         return;
       }
@@ -843,7 +875,7 @@ export function TerminalView({
       }
       sendText(text);
     };
-    const sendMissingImePunctuation = (
+		const sendMissingImeText = (
       text: string,
       eventTime: number,
       observedAt: number,
@@ -851,7 +883,40 @@ export function TerminalView({
       const shouldSend = imeFallback.recordInput(text, eventTime, observedAt);
       if (shouldSend) sendText(text);
     };
-    const pasteImage = async (blob: Blob) => {
+		const cancelImeTextareaFallback = () => {
+			if (imeTextareaTimer !== null) {
+				window.clearTimeout(imeTextareaTimer);
+				imeTextareaTimer = null;
+			}
+			imeTextareaFallback.cancel();
+		};
+		const cancelCompositionSettle = () => {
+			if (compositionSettleTimer === null) return;
+			window.clearTimeout(compositionSettleTimer);
+			compositionSettleTimer = null;
+		};
+		const cancelNativePasteFallback = () => {
+			if (nativePasteFallbackTimer === null) return;
+			window.clearTimeout(nativePasteFallbackTimer);
+			nativePasteFallbackTimer = null;
+		};
+		const cancelPasteTextareaClear = () => {
+			if (pasteTextareaClearTimer === null) return;
+			window.clearTimeout(pasteTextareaClearTimer);
+			pasteTextareaClearTimer = null;
+		};
+		let pasteOperationCount = 0;
+		const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
+			pasteOperationCount += 1;
+			setPasteLoading(true);
+			try {
+				return await operation();
+			} finally {
+				pasteOperationCount -= 1;
+				if (pasteOperationCount === 0) setPasteLoading(false);
+			}
+		};
+		const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
       const file =
         blob instanceof File
           ? blob
@@ -859,14 +924,15 @@ export function TerminalView({
               type: blob.type || "image/png",
             });
       const path = await uploadImage(file);
-      sendText(path);
+			await pasteText(path, destinationPaneId);
     };
     let clipboardPasteInFlight = false;
     const pasteFromBrowserClipboard = async () => {
       if (clipboardPasteInFlight) return;
       clipboardPasteInFlight = true;
-      setPasteLoading(true);
+			const destinationPaneId = paneIdRef.current ?? null;
       try {
+				await runPasteOperation(async () => {
         if (!navigator.clipboard) {
           throw new Error("browser clipboard API is unavailable");
         }
@@ -886,7 +952,7 @@ export function TerminalView({
                 CLIPBOARD_READ_TIMEOUT_MS,
                 "读取剪贴板图片超时",
               );
-              await pasteImage(blob);
+								await pasteImage(blob, destinationPaneId);
               return;
             }
           }
@@ -902,7 +968,7 @@ export function TerminalView({
                 CLIPBOARD_READ_TIMEOUT_MS,
                 "读取剪贴板文本超时",
               );
-              await pasteText(text);
+								await pasteText(text, destinationPaneId);
               return;
             }
           }
@@ -913,16 +979,20 @@ export function TerminalView({
           CLIPBOARD_READ_TIMEOUT_MS,
           "读取剪贴板文本超时",
         );
-        await pasteText(text);
+					await pasteText(text, destinationPaneId);
+				});
       } finally {
         clipboardPasteInFlight = false;
-        setPasteLoading(false);
       }
     };
     const applePlatform = isApplePlatform();
+		const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
     const shouldHandleCtrlVPaste = !applePlatform;
 
     term.attachCustomKeyEventHandler((e) => {
+			if (e.type === "keydown" && e.keyCode !== 229) {
+				imeTextareaFallback.cancelPending();
+			}
       const modifiedEnter = modifiedEnterSequence(e);
       if (modifiedEnter) {
         e.preventDefault();
@@ -985,8 +1055,91 @@ export function TerminalView({
       return true;
     });
 
+    const flushTextareaImeFallback = (
+      event: Event,
+      final = false,
+    ): "pending" | "unhandled" | "handled" => {
+      const result = imeTextareaFallback.flush(
+        term.textarea?.value ?? "",
+        final,
+      );
+      if (result.status === "handled" && result.text) {
+        const observedAt = performance.now();
+        const eventAt = terminalImeEventTime(event, observedAt);
+        sendMissingImeText(result.text, eventAt, observedAt);
+      }
+      return result.status;
+    };
+    const scheduleImeTextareaFinal = (event: Event) => {
+      if (imeTextareaTimer !== null) window.clearTimeout(imeTextareaTimer);
+      imeTextareaTimer = window.setTimeout(() => {
+        imeTextareaTimer = null;
+        flushTextareaImeFallback(event, true);
+        imeTextareaFallback.complete();
+      }, 0);
+    };
+    const onTerminalKeyDown = (event: KeyboardEvent) => {
+      lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      if (
+        !applePlatform ||
+        event.keyCode !== 229 ||
+        terminalCompositionActive
+      ) {
+        return;
+      }
+      // Do not trust event.isComposing here. Third-party iOS keyboards can set
+      // it without dispatching a real composition lifecycle.
+      imeTextareaFallback.begin(lastTerminalTextareaSnapshot.value);
+    };
+    const onTerminalKeyUp = (event: KeyboardEvent) => {
+      if (!applePlatform || event.keyCode !== 229) return;
+
+      // Read synchronously: some third-party iOS keyboards expose the committed
+      // textarea value only during keyup. If it is not visible yet, keep the
+      // cycle pending for one final task, matching xterm's upstream fallback.
+      flushTextareaImeFallback(event);
+      scheduleImeTextareaFinal(event);
+    };
+    const onTerminalCompositionStart = () => {
+      cancelCompositionSettle();
+      terminalCompositionActive = true;
+      cancelNativePasteFallback();
+      cancelPasteTextareaClear();
+      pasteTextareaBeforeInput = null;
+      pastePaneIdBeforeInput = null;
+      lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      cancelImeTextareaFallback();
+    };
+    const onTerminalCompositionEnd = () => {
+      lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      cancelImeTextareaFallback();
+      cancelCompositionSettle();
+      // This listener runs after xterm's compositionend listener. Keep fallback
+      // disabled until xterm's queued composition finalization has completed.
+      compositionSettleTimer = window.setTimeout(() => {
+        compositionSettleTimer = null;
+        terminalCompositionActive = false;
+      }, 0);
+    };
+    const onTerminalBlur = () => {
+      cancelCompositionSettle();
+      terminalCompositionActive = false;
+      cancelNativePasteFallback();
+      cancelPasteTextareaClear();
+      pasteTextareaBeforeInput = null;
+      pastePaneIdBeforeInput = null;
+      lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      cancelImeTextareaFallback();
+    };
     const onTerminalBeforeInput = (e: Event) => {
       const input = e as InputEvent;
+      if (input.inputType === "insertFromPaste" && !input.isComposing) {
+        if (!pasteTextareaBeforeInput) {
+          pasteTextareaBeforeInput = readTerminalTextareaSnapshot();
+          pastePaneIdBeforeInput = paneIdRef.current ?? null;
+        }
+        return;
+      }
       const fallbackText = terminalImeFallbackText(input);
       if (!fallbackText || !input.cancelable) return;
       const observedAt = performance.now();
@@ -997,16 +1150,108 @@ export function TerminalView({
       // relying on the bridge round trip before the next key is processed.
       input.preventDefault();
       input.stopPropagation();
-      sendMissingImePunctuation(fallbackText, eventAt, observedAt);
+      sendMissingImeText(fallbackText, eventAt, observedAt);
     };
     const onTerminalTextInput = (e: Event) => {
       const input = e as InputEvent;
+      const textareaSnapshot = readTerminalTextareaSnapshot();
+      const hadPasteSnapshot = pasteTextareaBeforeInput !== null;
+      const beforePaste =
+        pasteTextareaBeforeInput ?? lastTerminalTextareaSnapshot;
+      const destinationPaneId = hadPasteSnapshot
+        ? pastePaneIdBeforeInput
+        : (paneIdRef.current ?? null);
+      const pastedText = terminalPasteInputText(
+        input,
+        beforePaste,
+        textareaSnapshot.value,
+      );
+      if (pastedText !== null) {
+        cancelNativePasteFallback();
+        cancelPasteTextareaClear();
+        cancelImeTextareaFallback();
+        pasteTextareaBeforeInput = null;
+        pastePaneIdBeforeInput = null;
+        const textarea = term.textarea;
+        if (textarea) {
+          // Restore xterm's keydown baseline until its queued 229 timer runs.
+          // Clearing immediately makes xterm emit a spurious DEL.
+          textarea.value = beforePaste.value;
+          textarea.setSelectionRange(
+            beforePaste.selectionStart,
+            beforePaste.selectionEnd,
+          );
+          lastTerminalTextareaSnapshot = beforePaste;
+          pasteTextareaClearTimer = window.setTimeout(() => {
+            pasteTextareaClearTimer = null;
+            if (
+              term.textarea === textarea &&
+              textarea.value === beforePaste.value
+            ) {
+              textarea.value = "";
+              lastTerminalTextareaSnapshot = {
+                value: "",
+                selectionStart: 0,
+                selectionEnd: 0,
+              };
+            }
+          }, 0);
+        }
+        input.stopPropagation();
+        void runPasteOperation(() =>
+          pasteText(pastedText, destinationPaneId),
+        ).catch((error) => {
+          setUploadError(`文本粘贴失败：${(error as Error).message}`);
+        });
+        return;
+      }
+
+      lastTerminalTextareaSnapshot = textareaSnapshot;
+      if (input.inputType === "insertFromPaste") {
+        input.stopPropagation();
+        if (nativePasteFallbackTimer === null) {
+          pasteTextareaBeforeInput = null;
+          pastePaneIdBeforeInput = null;
+        }
+        return;
+      }
+      cancelNativePasteFallback();
+      cancelPasteTextareaClear();
+      pasteTextareaBeforeInput = null;
+      pastePaneIdBeforeInput = null;
+
+      if (
+        applePlatform &&
+        !terminalCompositionActive &&
+        input.inputType === "insertText" &&
+        imeTextareaFallback.hasPending()
+      ) {
+        const flushStatus = flushTextareaImeFallback(input);
+        scheduleImeTextareaFinal(input);
+        if (flushStatus === "handled") return;
+      }
+
       const fallbackText = terminalImeFallbackText(input);
       if (!fallbackText) return;
       const observedAt = performance.now();
       const eventAt = terminalImeEventTime(input, observedAt);
-      sendMissingImePunctuation(fallbackText, eventAt, observedAt);
+      sendMissingImeText(fallbackText, eventAt, observedAt);
     };
+    term.textarea?.addEventListener("keydown", onTerminalKeyDown, {
+      capture: true,
+    });
+    term.textarea?.addEventListener("keyup", onTerminalKeyUp, {
+      capture: true,
+    });
+    term.textarea?.addEventListener(
+      "compositionstart",
+      onTerminalCompositionStart,
+      { capture: true },
+    );
+    term.textarea?.addEventListener("compositionend", onTerminalCompositionEnd);
+    term.textarea?.addEventListener("blur", onTerminalBlur, {
+      capture: true,
+    });
     term.textarea?.addEventListener("beforeinput", onTerminalBeforeInput, {
       capture: true,
     });
@@ -1021,7 +1266,6 @@ export function TerminalView({
         .find((it) => it.type.startsWith("image/"))
         ?.getAsFile();
       const text = img ? "" : (e.clipboardData?.getData("text/plain") ?? "");
-      if (!img && !text) return;
       const active = document.activeElement;
       const target = e.target;
       const isTerminalPaste =
@@ -1029,18 +1273,53 @@ export function TerminalView({
         container.contains(target as Node | null) ||
         (active ? container.contains(active) : false);
       if (!isTerminalPaste && isEditableElement(target)) return;
+      const destinationPaneId = paneIdRef.current ?? null;
+      if (!img && appleTouchPlatform && isTerminalPaste) {
+        cancelImeTextareaFallback();
+        cancelNativePasteFallback();
+        cancelPasteTextareaClear();
+        const beforePaste = readTerminalTextareaSnapshot();
+        pasteTextareaBeforeInput = beforePaste;
+        pastePaneIdBeforeInput = destinationPaneId;
+        lastTerminalTextareaSnapshot = beforePaste;
+
+        // Keep WebKit's native insertion so insertFromPaste can expose the full
+        // text, but stop xterm's target listener from consuming truncated
+        // ClipboardEvent data and clearing the textarea first.
+        e.stopPropagation();
+        if (text) {
+          nativePasteFallbackTimer = window.setTimeout(() => {
+            nativePasteFallbackTimer = null;
+            if (pasteTextareaBeforeInput !== beforePaste) return;
+            pasteTextareaBeforeInput = null;
+            pastePaneIdBeforeInput = null;
+            void runPasteOperation(() =>
+              pasteText(text, destinationPaneId),
+            ).catch((error) => {
+              setUploadError(`文本粘贴失败：${(error as Error).message}`);
+            });
+          }, 0);
+        }
+        return;
+      }
+      if (!img && !text) return;
+      cancelImeTextareaFallback();
+      cancelNativePasteFallback();
+      cancelPasteTextareaClear();
+      pasteTextareaBeforeInput = null;
+      pastePaneIdBeforeInput = null;
       e.preventDefault();
       e.stopPropagation();
-      setPasteLoading(true);
       try {
-        if (img) await pasteImage(img);
-        else await pasteText(text);
+        await runPasteOperation(() =>
+          img
+            ? pasteImage(img, destinationPaneId)
+            : pasteText(text, destinationPaneId),
+        );
       } catch (err) {
         setUploadError(
           `${img ? "图片上传" : "文本粘贴"}失败：${(err as Error).message}`,
         );
-      } finally {
-        setPasteLoading(false);
       }
     };
     container.addEventListener("paste", onPaste);
@@ -1159,6 +1438,28 @@ export function TerminalView({
       resizeSync.dispose();
       resizeSyncRef.current = null;
       attachWatchdogRef.current?.cancel();
+			cancelImeTextareaFallback();
+			cancelCompositionSettle();
+			cancelNativePasteFallback();
+			cancelPasteTextareaClear();
+			term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
+				capture: true,
+			});
+			term.textarea?.removeEventListener("keyup", onTerminalKeyUp, {
+				capture: true,
+			});
+			term.textarea?.removeEventListener(
+				"compositionstart",
+				onTerminalCompositionStart,
+				{ capture: true },
+			);
+			term.textarea?.removeEventListener(
+				"compositionend",
+				onTerminalCompositionEnd,
+			);
+			term.textarea?.removeEventListener("blur", onTerminalBlur, {
+				capture: true,
+			});
       term.textarea?.removeEventListener("input", onTerminalTextInput, {
         capture: true,
       });
