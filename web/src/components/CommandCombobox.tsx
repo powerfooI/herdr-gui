@@ -167,10 +167,17 @@ type CommandNumberShortcutEvent = CommandNumberShortcutModifiers &
 export function commandNumberShortcutIndex(
   event: CommandNumberShortcutModifiers,
 ) {
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
-    return null;
-  }
+  // Desktop browsers reserve bare Cmd/Win+1-9 (tab switching on macOS, taskbar
+  // shortcuts on Windows) and never deliver them to pages, so Alt+1-9 is the
+  // displayed shortcut: it is the only modifier combo that reliably reaches
+  // the page across macOS, Windows and Linux. Ctrl (delivered on macOS) and
+  // Meta (delivered by embedded webviews) are accepted as aliases.
+  const modifiers =
+    Number(event.altKey) + Number(event.ctrlKey) + Number(event.metaKey);
+  if (modifiers !== 1 || event.shiftKey) return null;
   if (/^[1-9]$/.test(event.key)) return Number(event.key) - 1;
+  // Option+digit types alternate characters on macOS (e.g. ¡ for 1), so fall
+  // back to the physical key code for layout-independent matching.
   const match = /^Digit([1-9])$/.exec(event.code);
   return match ? Number(match[1]) - 1 : null;
 }
@@ -1073,7 +1080,7 @@ function ActionItem({
   onSelect: () => void;
 }) {
   const numberShortcut =
-    numberShortcutIndex === undefined ? null : `⌘${numberShortcutIndex + 1}`;
+    numberShortcutIndex === undefined ? null : `⌥${numberShortcutIndex + 1}`;
   return (
     <CommandItem
       value={value}
@@ -1083,7 +1090,7 @@ function ActionItem({
       aria-keyshortcuts={
         numberShortcutIndex === undefined
           ? undefined
-          : `Meta+${numberShortcutIndex + 1}`
+          : `Alt+${numberShortcutIndex + 1}`
       }
     >
       <span className="command-item-icon">{icon}</span>

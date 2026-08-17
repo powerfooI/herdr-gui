@@ -40,22 +40,32 @@ describe("command combobox search helpers", () => {
     expect(commandPathQuery("README")).toBe("");
   });
 
-  test("maps Command-number-row shortcuts across keyboard layouts", () => {
+  test("maps modifier-number-row shortcuts across keyboard layouts", () => {
     const event = {
-      altKey: false,
+      altKey: true,
       code: "Digit4",
       ctrlKey: false,
       key: "4",
-      metaKey: true,
+      metaKey: false,
       shiftKey: false,
     };
     expect(commandNumberShortcutIndex(event)).toBe(3);
+    // Option+digit types alternate characters on macOS, so the physical key
+    // code wins over the produced character.
     expect(
-      commandNumberShortcutIndex({ ...event, code: "Digit1", key: "&" }),
+      commandNumberShortcutIndex({ ...event, code: "Digit1", key: "¡" }),
     ).toBe(0);
-    expect(commandNumberShortcutIndex({ ...event, metaKey: false })).toBeNull();
-    expect(commandNumberShortcutIndex({ ...event, ctrlKey: true })).toBeNull();
-    expect(commandNumberShortcutIndex({ ...event, altKey: true })).toBeNull();
+    // Ctrl (macOS) and Meta (embedded webviews) work as aliases.
+    expect(
+      commandNumberShortcutIndex({ ...event, altKey: false, ctrlKey: true }),
+    ).toBe(3);
+    expect(
+      commandNumberShortcutIndex({ ...event, altKey: false, metaKey: true }),
+    ).toBe(3);
+    expect(commandNumberShortcutIndex({ ...event, altKey: false })).toBeNull();
+    expect(
+      commandNumberShortcutIndex({ ...event, ctrlKey: true, shiftKey: false }),
+    ).toBeNull();
     expect(commandNumberShortcutIndex({ ...event, shiftKey: true })).toBeNull();
     expect(
       commandNumberShortcutIndex({ ...event, code: "Digit0", key: "0" }),
