@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, FolderOpen, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, FolderOpen, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { html as diffToHtml } from "diff2html";
 import "diff2html/bundles/css/diff2html.min.css";
@@ -215,6 +215,9 @@ export function DiffContentView({
     Record<string, ImagePreviewState>
   >({});
   const requestedImagePreviewsRef = useRef<Set<string>>(new Set());
+  const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const effectiveViewMode: DiffViewMode = mobile ? "unified" : viewMode;
   const wrapEnabled = mobile ? mobileWrap : desktopWrap;
   const activeSearchQuery = searchQuery;
@@ -412,6 +415,15 @@ export function DiffContentView({
     [searchMatchCount],
   );
 
+  const toggleSectionCollapsed = useCallback((key: string) => {
+    setCollapsedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
@@ -453,6 +465,16 @@ export function DiffContentView({
           </strong>
           {entry ? <span>{entry.path}</span> : null}
         </div>
+        {mobile ? (
+          <button
+            type="button"
+            className={`diff-wrap-toggle ${mobileWrap ? "is-active" : ""}`}
+            onClick={() => setMobileWrap((value) => !value)}
+            aria-pressed={mobileWrap}
+          >
+            {mobileWrap ? "Wrap" : "No wrap"}
+          </button>
+        ) : null}
         <div className="diff-content-actions">
           <label className="diff-search">
             <Search size={13} />
@@ -546,17 +568,6 @@ export function DiffContentView({
         </div>
       </div>
 
-      {mobile ? (
-        <button
-          type="button"
-          className={`diff-wrap-toggle ${mobileWrap ? "is-active" : ""}`}
-          onClick={() => setMobileWrap((value) => !value)}
-          aria-pressed={mobileWrap}
-        >
-          {mobileWrap ? "Wrap" : "No wrap"}
-        </button>
-      ) : null}
-
       {error && !visibleEntries.length ? (
         <div className="diff-content-state is-error">{error}</div>
       ) : null}
@@ -582,6 +593,7 @@ export function DiffContentView({
             const sectionLoading =
               loading && activeEntryKey === section.key && !section.file;
             const loadingFile = !section.file && !section.error;
+            const collapsed = collapsedKeys.has(section.key);
             return (
               <article
                 className="diff-file-section"
@@ -589,6 +601,20 @@ export function DiffContentView({
                 data-diff-entry-key={section.key}
               >
                 <header className="diff-file-section-head">
+                  <button
+                    type="button"
+                    className="diff-file-collapse"
+                    onClick={() => toggleSectionCollapsed(section.key)}
+                    aria-expanded={!collapsed}
+                    aria-label={`${collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
+                    title={collapsed ? "Expand" : "Collapse"}
+                  >
+                    {collapsed ? (
+                      <ChevronRight size={14} />
+                    ) : (
+                      <ChevronDown size={14} />
+                    )}
+                  </button>
                   <div className="diff-file-section-title">
                     <strong>{section.entry.path}</strong>
                     <span>
@@ -606,37 +632,41 @@ export function DiffContentView({
                     <span>Open in Files</span>
                   </button>
                 </header>
-                {section.error ? (
-                  <div className="diff-content-state is-error">
-                    {section.error}
-                  </div>
-                ) : null}
-                {loadingFile ? (
-                  <div className="diff-content-state">
-                    {sectionLoading ? <span className="file-loading-spinner" /> : null}
-                    Loading diff
-                  </div>
-                ) : null}
-                {section.file && !section.file.diff && !section.imagePreview ? (
-                  <div className="diff-content-state">
-                    No textual diff available.
-                  </div>
-                ) : null}
-                {section.imagePreview && section.file ? (
-                  <DiffImagePreview
-                    state={imagePreviews[imagePreviewKey(section.file)]}
-                    path={section.entry.path}
-                  />
-                ) : null}
-                {section.file?.truncated ? (
-                  <div className="diff-truncated">Diff truncated at 512 KB.</div>
-                ) : null}
-                {section.html ? (
-                  <div
-                    className="diff-file-html"
-                    dangerouslySetInnerHTML={{ __html: section.html }}
-                  />
-                ) : null}
+                {collapsed ? null : (
+                  <>
+                    {section.error ? (
+                      <div className="diff-content-state is-error">
+                        {section.error}
+                      </div>
+                    ) : null}
+                    {loadingFile ? (
+                      <div className="diff-content-state">
+                        {sectionLoading ? <span className="file-loading-spinner" /> : null}
+                        Loading diff
+                      </div>
+                    ) : null}
+                    {section.file && !section.file.diff && !section.imagePreview ? (
+                      <div className="diff-content-state">
+                        No textual diff available.
+                      </div>
+                    ) : null}
+                    {section.imagePreview && section.file ? (
+                      <DiffImagePreview
+                        state={imagePreviews[imagePreviewKey(section.file)]}
+                        path={section.entry.path}
+                      />
+                    ) : null}
+                    {section.file?.truncated ? (
+                      <div className="diff-truncated">Diff truncated at 512 KB.</div>
+                    ) : null}
+                    {section.html ? (
+                      <div
+                        className="diff-file-html"
+                        dangerouslySetInnerHTML={{ __html: section.html }}
+                      />
+                    ) : null}
+                  </>
+                )}
               </article>
             );
           })}

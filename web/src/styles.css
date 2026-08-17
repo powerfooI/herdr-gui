@@ -4117,9 +4117,27 @@ textarea:focus {
   );
 }
 .diff-file-section-title {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+.diff-file-collapse {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.diff-file-collapse:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
 }
 .diff-file-section-title strong,
 .diff-file-section-title span {
@@ -4159,6 +4177,10 @@ textarea:focus {
 }
 .diff-file-html {
   min-width: 0;
+  /* Scope horizontal scrolling to the code area so the file header and state
+     banners stay put in no-wrap mode (previously the whole wrapper scrolled
+     and carried the header off screen). */
+  overflow-x: auto;
 }
 .diff-image-preview {
   display: grid;
@@ -4190,7 +4212,11 @@ textarea:focus {
 .diff2html-wrapper {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  /* Only scroll vertically here. Horizontal scrolling is scoped to each
+     .diff-file-html code area; nothing else may carry the file headers off
+     screen, so clamp this axis instead of letting it scroll again. */
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--diff-bg);
 }
 .diff2html-wrapper .d2h-wrapper {
@@ -6508,7 +6534,7 @@ textarea:focus {
     flex-wrap: wrap;
   }
   .diff-content-title {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
   }
   .diff-content-actions {
     flex: 1 1 100%;
@@ -6523,27 +6549,12 @@ textarea:focus {
   }
   .diff-file-section-head {
     align-items: flex-start;
-    padding-right: calc(72px + env(safe-area-inset-right, 0px));
   }
   .diff-file-open span {
     display: none;
   }
   .diff-view-toggle {
     display: none;
-  }
-  .diff-wrap-toggle {
-    position: absolute;
-    top: 50px;
-    right: calc(8px + env(safe-area-inset-right, 0px));
-    z-index: 3;
-    padding: 4px 8px;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--panel) 76%, transparent);
-    box-shadow: var(--shadow-lg);
-    color: var(--text-strong);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
   .diff2html-wrapper {
     box-sizing: border-box;
@@ -6569,6 +6580,13 @@ textarea:focus {
     min-width: max-content;
     width: max-content;
     white-space: nowrap;
+  }
+  /* Unified rows carry two line-number cells; 7.5em each would consume half
+     of a phone screen before any code is visible. */
+  .diff2html-wrapper .d2h-code-linenumber {
+    width: 3.4em;
+    min-width: 3.4em;
+    padding: 0 0.25em;
   }
   .diff2html-wrapper .d2h-code-line-ctn {
     flex: 0 0 auto;
