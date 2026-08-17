@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Download, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
+import {
+  Brain,
+  ChevronRight,
+  Copy,
+  Download,
+  FileText,
+  Info,
+  Wrench,
+  X,
+} from "lucide-react";
 import { useStore } from "../store";
 import type { Pane } from "../types";
 import { shortId } from "../utils";
@@ -11,11 +20,13 @@ import {
   type AgentSessionSummary,
   downloadSession,
   downloadSessionAtif,
+  firstLinePreview,
   formatBytes,
   formatCount,
   formatOptionalCompact,
   formatTokenTotal,
   groupTrajectoryTurns,
+  toolArgumentsPreview,
 } from "./agentSession";
 import { focusDialogElement } from "./dialogFocus";
 
@@ -326,27 +337,24 @@ function SessionTimeline({ turns }: { turns: AgentSessionTurn[] }) {
   );
 }
 
-function SessionTurn({ turn }: { turn: AgentSessionTurn }) {
-  const userMessages = turn.steps.filter(
-    (step) => step.source === "user" && meaningfulMessage(step),
-  );
-  const agentMessages = turn.steps.filter(
-    (step) => step.source === "agent" && meaningfulMessage(step),
-  );
-  const systemMessages = turn.steps.filter(
-    (step) => step.source === "system" && meaningfulMessage(step),
-  );
-  const reasoning = turn.steps.filter(
-    (step) =>
-      step.reasoning_content &&
-      step.reasoning_content !== meaningfulMessage(step),
-  );
-  const toolCalls = turn.steps.flatMap((step) => step.tool_calls ?? []);
-  const observations = turn.steps.flatMap(
-    (step) => step.observation?.results ?? [],
-  );
+// The timeline subscribes to the global store higher up, so it re-renders on
+// every unrelated app update. Turn objects are stable (memoized on the
+// trajectory steps), making each turn cheap to skip.
+const SessionTurn = memo(function SessionTurn({
+  turn,
+}: {
+  turn: AgentSessionTurn;
+}) {
   const metrics = stepMetricText(turn.steps);
   const firstTimestamp = turn.steps.find((step) => step.timestamp)?.timestamp;
+  // Match tool results back to their calls so output rows can carry the tool
+  // name regardless of which step reported the call.
+  const toolNameById = new Map<string, string>();
+  for (const step of turn.steps) {
+    for (const tool of step.tool_calls ?? []) {
+      toolNameById.set(tool.tool_call_id, tool.function_name);
+    }
+  }
 
   return (
     <article className="agent-session-turn">
@@ -362,61 +370,114 @@ function SessionTurn({ turn }: { turn: AgentSessionTurn }) {
         </span>
       </header>
       <div className="agent-session-turn-body">
-        {userMessages.map((step) => (
-          <section className="agent-session-exchange is-user" key={step.step_id}>
-            <span>Prompt</span>
-            <pre>{step.message}</pre>
-          </section>
+        {turn.steps.map((step) => (
+          <SessionStepRows
+            step={step}
+            toolNameById={toolNameById}
+            key={step.step_id}
+          />
         ))}
-        {agentMessages.map((step) => (
-          <section className="agent-session-exchange is-agent" key={step.step_id}>
-            <span>Response</span>
-            <pre>{step.message}</pre>
-          </section>
-        ))}
-        {systemMessages.length > 0 ? (
-          <details className="agent-session-turn-details">
-            <summary>System context ({systemMessages.length})</summary>
-            {systemMessages.map((step) => (
-              <pre key={step.step_id}>{step.message}</pre>
-            ))}
-          </details>
-        ) : null}
-        {reasoning.length > 0 ? (
-          <details className="agent-session-turn-details">
-            <summary>Reasoning ({reasoning.length})</summary>
-            {reasoning.map((step) => (
-              <pre key={step.step_id}>{step.reasoning_content}</pre>
-            ))}
-          </details>
-        ) : null}
-        {toolCalls.length > 0 ? (
-          <details className="agent-session-turn-details">
-            <summary>Tool calls ({toolCalls.length})</summary>
-            <div className="agent-session-tool-list">
-              {toolCalls.map((tool) => (
-                <code key={tool.tool_call_id}>
-                  <strong>{tool.function_name}</strong>
-                  {JSON.stringify(tool.arguments, null, 2)}
-                </code>
-              ))}
-            </div>
-          </details>
-        ) : null}
-        {observations.length > 0 ? (
-          <details className="agent-session-turn-details">
-            <summary>Tool output ({observations.length})</summary>
-            <div className="agent-session-observation-list">
-              {observations.map((result, index) => (
-                <pre key={`${result.source_call_id ?? "result"}:${index}`}>
-                  {result.content}
-                </pre>
-              ))}
-            </div>
-          </details>
-        ) : null}
         {metrics ? <footer>{metrics}</footer> : null}
       </div>
     </article>
+  );
+});
+
+// Render one trajectory step in place so the timeline follows the actual
+// execution order: reasoning, messages, tool calls and their results appear
+// exactly where they happened instead of being regrouped by type.
+function SessionStepRows({
+  step,
+  toolNameById,
+}: {
+  step: AgentSessionTrajectoryStep;
+  toolNameById: Map<string, string>;
+}) {
+  const message = meaningfulMessage(step);
+  const reasoning =
+    step.reasoning_content && step.reasoning_content !== message
+      ? step.reasoning_content
+      : "";
+  const observations = step.observation?.results ?? [];
+  return (
+    <>
+      {reasoning ? (
+        <details className="agent-session-turn-details">
+          <summary>
+            <ChevronRight size={12} className="agent-session-details-icon" />
+            <Brain size={12} />
+            <span>Reasoning</span>
+            <small>{firstLinePreview(reasoning)}</small>
+          </summary>
+          <pre>{reasoning}</pre>
+        </details>
+      ) : null}
+      {step.source === "user" && message ? (
+        <section className="agent-session-exchange is-user">
+          <span>Prompt</span>
+          <pre>{message}</pre>
+        </section>
+      ) : null}
+      {step.source === "agent" && message ? (
+        <section className="agent-session-exchange is-agent">
+          <span>Response</span>
+          <pre>{message}</pre>
+        </section>
+      ) : null}
+      {(step.tool_calls ?? []).map((tool) => (
+        <details className="agent-session-turn-details" key={tool.tool_call_id}>
+          <summary>
+            <ChevronRight size={12} className="agent-session-details-icon" />
+            <Wrench size={12} />
+            <span>{tool.function_name}</span>
+            <small>
+              {toolArgumentsPreview(
+                tool.arguments,
+                typeof tool.extra?.description === "string"
+                  ? tool.extra.description
+                  : undefined,
+              )}
+            </small>
+          </summary>
+          <div className="agent-session-tool-list">
+            <code>
+              <strong>{tool.function_name}</strong>
+              {JSON.stringify(tool.arguments, null, 2)}
+            </code>
+          </div>
+        </details>
+      ))}
+      {observations.map((result, index) => (
+        <details
+          className="agent-session-turn-details"
+          key={`${result.source_call_id ?? "result"}:${index}`}
+        >
+          <summary>
+            <ChevronRight size={12} className="agent-session-details-icon" />
+            <FileText size={12} />
+            <span>
+              {(result.source_call_id &&
+                toolNameById.get(result.source_call_id)) ||
+                "Tool output"}
+            </span>
+            <small>{firstLinePreview(result.content ?? "")}</small>
+          </summary>
+          <div className="agent-session-observation-list">
+            <pre>{result.content}</pre>
+          </div>
+        </details>
+      ))}
+      {step.source === "system" && message && observations.length === 0 ? (
+        <details className="agent-session-turn-details">
+          <summary>
+            <ChevronRight size={12} className="agent-session-details-icon" />
+            <Info size={12} />
+            <span>System</span>
+            <small>{firstLinePreview(message)}</small>
+          </summary>
+          <pre>{message}</pre>
+        </details>
+      ) : null}
+    </>
   );
 }

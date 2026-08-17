@@ -20,6 +20,7 @@ export type AgentSessionTrajectoryStep = {
     tool_call_id: string;
     function_name: string;
     arguments: Record<string, unknown>;
+    extra?: Record<string, unknown>;
   }[];
   observation?: {
     results: {
@@ -129,6 +130,50 @@ export function visibleSessionMessages<
       ? [{ message, sequence: index + 1 }]
       : [],
   );
+}
+
+// Build a compact one-line preview for a tool call, preferring the most
+// descriptive argument (command, path, pattern, ...) before falling back to
+// the agent-provided description or the raw JSON.
+const TOOL_ARGUMENT_PREVIEW_KEYS = [
+  "command",
+  "file_path",
+  "path",
+  "pattern",
+  "query",
+  "url",
+  "description",
+  "prompt",
+];
+
+export function toolArgumentsPreview(
+  args: Record<string, unknown>,
+  description?: string,
+  max = 72,
+) {
+  const truncate = (value: string) => {
+    const text = value.replace(/\s+/g, " ").trim();
+    return text.length > max ? `${text.slice(0, max)}…` : text;
+  };
+  for (const key of TOOL_ARGUMENT_PREVIEW_KEYS) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) return truncate(value);
+  }
+  if (description?.trim()) return truncate(description);
+  try {
+    return truncate(JSON.stringify(args) ?? "");
+  } catch {
+    return "";
+  }
+}
+
+export function firstLinePreview(text: string, max = 96) {
+  const line =
+    text
+      .split("\n")
+      .map((value) => value.trim())
+      .find(Boolean) ?? "";
+  return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
 export function formatCount(value: number) {

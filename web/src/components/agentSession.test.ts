@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  firstLinePreview,
   groupTrajectoryTurns,
   type AgentSessionTrajectoryStep,
+  toolArgumentsPreview,
   visibleSessionMessages,
 } from "./agentSession";
 
@@ -61,5 +63,27 @@ describe("agent session presentation", () => {
       { sequence: 1, message: { text: "first" } },
       { sequence: 3, message: { text: "second" } },
     ]);
+  });
+
+  test("previews tool call arguments by priority key", () => {
+    expect(
+      toolArgumentsPreview({ command: "ls\napps/roadie", cwd: "/repo" }),
+    ).toBe("ls apps/roadie");
+    expect(toolArgumentsPreview({ file_path: "src/index.ts" })).toBe(
+      "src/index.ts",
+    );
+    expect(toolArgumentsPreview({}, "List files in apps/roadie")).toBe(
+      "List files in apps/roadie",
+    );
+    expect(toolArgumentsPreview({ a: 1 })).toBe('{"a":1}');
+    expect(toolArgumentsPreview({ command: "x".repeat(120) }, undefined, 10)).toBe(
+      `${"x".repeat(10)}…`,
+    );
+  });
+
+  test("previews the first non-empty line with truncation", () => {
+    expect(firstLinePreview("\n  first line  \nsecond")).toBe("first line");
+    expect(firstLinePreview("")).toBe("");
+    expect(firstLinePreview("x".repeat(120), 10)).toBe(`${"x".repeat(10)}…`);
   });
 });
