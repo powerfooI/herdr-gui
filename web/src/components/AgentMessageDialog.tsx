@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Copy, X } from "lucide-react";
 import { focusDialogElement } from "./dialogFocus";
+import { MarkdownPreview } from "./markdown";
 
 type AgentMessage = {
   role: "user" | "assistant";
@@ -25,6 +26,16 @@ export function AgentMessageDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
+  const [viewModeMessage, setViewModeMessage] = useState(message);
+
+  if (message !== viewModeMessage) {
+    // Reset the view for each newly opened message during render so the stale
+    // mode never flashes. Assistant messages are usually markdown; user
+    // messages are usually prose.
+    setViewModeMessage(message);
+    setViewMode(message?.role === "assistant" ? "rendered" : "raw");
+  }
 
   useEffect(() => {
     if (!message) return;
@@ -64,6 +75,21 @@ export function AgentMessageDialog({
           <div className="agent-message-modal-actions">
             <button
               type="button"
+              className="agent-message-mode-toggle"
+              onClick={() =>
+                setViewMode((mode) => (mode === "rendered" ? "raw" : "rendered"))
+              }
+              aria-label={
+                viewMode === "rendered"
+                  ? "Show raw markdown"
+                  : "Show rendered markdown"
+              }
+              title={viewMode === "rendered" ? "Show raw" : "Show rendered"}
+            >
+              {viewMode === "rendered" ? "Raw" : "Rendered"}
+            </button>
+            <button
+              type="button"
               className="agent-history-icon"
               onClick={() => void navigator.clipboard?.writeText(message.text)}
               aria-label="Copy message"
@@ -82,7 +108,17 @@ export function AgentMessageDialog({
             </button>
           </div>
         </div>
-        <pre className="agent-message-modal-content">{message.text}</pre>
+        {viewMode === "rendered" ? (
+          <div className="agent-message-modal-content is-rendered">
+            <MarkdownPreview
+              text={message.text}
+              className="agent-message-markdown"
+              breaks
+            />
+          </div>
+        ) : (
+          <pre className="agent-message-modal-content">{message.text}</pre>
+        )}
       </div>
     </div>
   );

@@ -691,6 +691,13 @@ function TerminalPaneLayout({
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = horizontal ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
+    // Capture the pointer so pointerup still reaches the window (and restores
+    // cursor/user-select) even when released outside the browser window.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Pointer capture is best-effort; window listeners still apply.
+    }
 
     const finish = (event: PointerEvent) => {
       window.removeEventListener("pointerup", finish, true);

@@ -289,6 +289,13 @@ export function AgentHistoryDrawer({
     setPreviewError("");
   }, []);
 
+  // Stable identity so the message dialog's focus effect only re-runs when the
+  // message itself changes, not on every drawer re-render.
+  const closeExpandedMessage = useCallback(
+    () => setExpandedMessage(null),
+    [],
+  );
+
   const usage = tokenUsage(session);
   const messages = history?.messages ?? [];
   const visibleMessages = visibleSessionMessages(
@@ -558,7 +565,7 @@ export function AgentHistoryDrawer({
       </aside>
       <AgentMessageDialog
         message={expandedMessage}
-        onClose={() => setExpandedMessage(null)}
+        onClose={closeExpandedMessage}
       />
       <AgentSessionPreviewDialog
         pane={previewPane}

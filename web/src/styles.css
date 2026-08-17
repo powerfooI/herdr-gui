@@ -5922,6 +5922,21 @@ textarea:focus {
   align-items: center;
   gap: 4px;
 }
+.agent-message-mode-toggle {
+  flex: 0 0 auto;
+  height: 24px;
+  margin-right: 4px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: var(--viewer-panel-bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.agent-message-mode-toggle:hover {
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
 .agent-message-modal-content {
   min-height: 0;
   max-height: min(660px, calc(100dvh - 122px));
@@ -5937,6 +5952,19 @@ textarea:focus {
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.agent-message-modal-content.is-rendered {
+  color: var(--text);
+  font-family: inherit;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.agent-message-markdown {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .terminal-loading {
   position: absolute;
