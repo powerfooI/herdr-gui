@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Reload the current browser page or standalone PWA from the application menu.
+
 ## 0.3.5 - 2026-08-18
 
 ### Added

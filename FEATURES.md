@@ -216,6 +216,7 @@ preserved in the browser.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
   or Edge. PWA mode removes browser chrome but still requires a reachable
   herdr-gui server; it does not provide offline access.
+- Reload the current browser or standalone PWA from **Menu → Reload page**.
 
 Mobile shortcut layouts and appearance preferences are stored in the current
 browser and do not change Herdr server configuration.
@@ -253,7 +254,7 @@ The in-app reference is available from **Menu → Keyboard shortcuts**.
 | Shortcut | Action |
 | --- | --- |
 | `Cmd/Ctrl+K` | Open or close the command menu |
-| `Cmd+1` … `Cmd+9` while the command menu is open | Run the corresponding numbered visible action |
+| `Alt/Option+1` … `Alt/Option+9` while the command menu is open | Run the corresponding numbered visible action |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Open and navigate the recent Pane switcher |
 | `Cmd+B` | Toggle the desktop sidebar |
 | `Cmd+T` | Create a tab in the focused workspace |
@@ -265,9 +266,8 @@ The in-app reference is available from **Menu → Keyboard shortcuts**.
 | `Ctrl+Shift+G` | Open Diff Viewer |
 | `Esc` | Dismiss the current menu, dialog, notification, or update banner |
 
-A host browser can reserve shortcuts such as `Cmd+1` … `Cmd+9`, `Cmd+T`, and
-`Cmd+W`; they are most reliable in an installed PWA or another
-standalone/webview host.
+A host browser can reserve shortcuts such as `Cmd+T` and `Cmd+W`; they are most
+reliable in an installed PWA or another standalone/webview host.
 
 ### Terminal
 

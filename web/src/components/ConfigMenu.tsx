@@ -11,6 +11,7 @@ import {
   Palette,
   Pause,
   Play,
+  RefreshCw,
   ScrollText,
   Server,
   Sun,
@@ -36,6 +37,12 @@ import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 
 const APP_VERSION = packageJson.version;
 export const CONFIG_MENU_ID = "herdr-config-menu";
+
+export function reloadApplicationPage(
+  target: Pick<Location, "reload"> = window.location,
+) {
+  target.reload();
+}
 
 type HealthInfo = {
   socket?: string;
@@ -337,6 +344,15 @@ export function ConfigMenu({
                 onClick={() => {
                   setOpen(false);
                   setShortcutsOpen(true);
+                }}
+              />
+              <ConfigMenuItem
+                icon={<RefreshCw size={15} />}
+                label="Reload page"
+                description="Refresh the application"
+                onClick={() => {
+                  setOpen(false);
+                  reloadApplicationPage();
                 }}
               />
               <ConfigMenuItem
