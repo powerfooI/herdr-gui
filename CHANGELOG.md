@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Keep browser WebSocket connections open when Bun queues outbound data under
+  backpressure, while retaining the 8 MiB slow-client protection.
+
 ## 0.3.4 - 2026-08-17
 
 ### Added

@@ -21,6 +21,7 @@ import { createSettingsRpcHandler } from "./bridge/settings-rpc";
 import { serveStatic } from "./http/static-files";
 import { createSshTunnelManager } from "./bridge/ssh-tunnel";
 import { createTerminalBridge } from "./bridge/terminal-bridge";
+import { sendWebSocketMessage } from "./bridge/websocket-send";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
@@ -89,8 +90,6 @@ interface RpcRequest {
   method: string;
   params?: Record<string, unknown>;
 }
-
-const WS_BACKPRESSURE_LIMIT_BYTES = 8 * 1024 * 1024;
 
 const socketPath = config.socketPath;
 const clientSocketPath = config.clientSocketPath;
@@ -350,37 +349,10 @@ function safeSend(
   payload: string,
   context = "message",
 ): boolean {
-  const bufferedAmount = Number((ws as any).bufferedAmount ?? 0);
-  if (Number.isFinite(bufferedAmount) && bufferedAmount > WS_BACKPRESSURE_LIMIT_BYTES) {
-    console.warn(
-      `[bridge] closing slow websocket during ${context}: ${bufferedAmount}B buffered`,
-    );
-    cleanupWs(ws);
-    try {
-      ws.close(1013, "client too slow");
-    } catch {}
-    return false;
-  }
-  try {
-    const result = ws.send(payload);
-    if (result === -1) {
-      cleanupWs(ws);
-      try {
-        ws.close();
-      } catch {}
-      return false;
-    }
-    return true;
-  } catch (e) {
-    cleanupWs(ws);
-    console.warn(
-      `[bridge] websocket send failed during ${context}: ${(e as Error).message}`,
-    );
-    try {
-      ws.close();
-    } catch {}
-    return false;
-  }
+  return sendWebSocketMessage(ws, payload, {
+    cleanup: () => cleanupWs(ws),
+    context,
+  });
 }
 
 // Broadcast pushed Herdr events to every connected browser.
