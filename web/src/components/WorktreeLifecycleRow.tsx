@@ -53,7 +53,9 @@ export function WorktreeLifecycleRow({
           <span className="badge">
             {row.worktree.is_linked_worktree ? "Linked" : "Main"}
           </span>
-          <span className={`lifecycle-open-state ${workspace ? "is-open" : ""}`}>
+          <span
+            className={`lifecycle-open-state ${workspace ? "is-open" : ""}`}
+          >
             {workspace ? "Open" : "Closed"}
           </span>
         </div>
@@ -67,7 +69,7 @@ export function WorktreeLifecycleRow({
               className={`lifecycle-sync-status lifecycle-sync-${
                 syncInfo?.running
                   ? "running"
-                  : syncInfo?.last_status ?? "idle"
+                  : (syncInfo?.last_status ?? "idle")
               }`}
               title={syncInfo?.last_message}
             >

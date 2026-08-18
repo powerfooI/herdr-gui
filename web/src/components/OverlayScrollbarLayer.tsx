@@ -145,8 +145,10 @@ export function OverlayScrollbarLayer() {
   const clearTimerRef = useRef<number | null>(null);
 
   const clearHideTimers = useCallback(() => {
-    if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
-    if (clearTimerRef.current !== null) window.clearTimeout(clearTimerRef.current);
+    if (hideTimerRef.current !== null)
+      window.clearTimeout(hideTimerRef.current);
+    if (clearTimerRef.current !== null)
+      window.clearTimeout(clearTimerRef.current);
     hideTimerRef.current = null;
     clearTimerRef.current = null;
   }, []);
@@ -177,7 +179,9 @@ export function OverlayScrollbarLayer() {
         if (!nextTarget) return;
         const nextLayout = measureScrollbars(nextTarget);
         targetRef.current = nextTarget;
-        setLayout((current) => (sameLayout(current, nextLayout) ? current : nextLayout));
+        setLayout((current) =>
+          sameLayout(current, nextLayout) ? current : nextLayout,
+        );
         setVisible(Boolean(nextLayout));
         if (nextLayout) scheduleHide();
       });
@@ -188,7 +192,10 @@ export function OverlayScrollbarLayer() {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
       if (overlayScrollbarExcludedElement(target)) {
-        if (targetRef.current && overlayScrollbarExcludedElement(targetRef.current)) {
+        if (
+          targetRef.current &&
+          overlayScrollbarExcludedElement(targetRef.current)
+        ) {
           targetRef.current = null;
           setVisible(false);
           setLayout(null);
@@ -199,13 +206,17 @@ export function OverlayScrollbarLayer() {
     };
     const onPointerMove = (event: PointerEvent) => {
       if (dragRef.current) return;
-      const eventTarget = event.target instanceof HTMLElement ? event.target : null;
+      const eventTarget =
+        event.target instanceof HTMLElement ? event.target : null;
       const activeTarget = targetRef.current;
       if (eventTarget && activeTarget) {
         const xtermViewport = eventTarget
           .closest(".xterm")
           ?.querySelector<HTMLElement>(".xterm-viewport");
-        if (activeTarget.contains(eventTarget) || activeTarget === xtermViewport) {
+        if (
+          activeTarget.contains(eventTarget) ||
+          activeTarget === xtermViewport
+        ) {
           refresh(activeTarget);
           return;
         }
@@ -223,7 +234,10 @@ export function OverlayScrollbarLayer() {
 
     document.addEventListener("scroll", onScroll, true);
     document.addEventListener("pointermove", onPointerMove, true);
-    document.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    document.addEventListener("wheel", onWheel, {
+      capture: true,
+      passive: true,
+    });
     window.addEventListener("resize", onResize);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
@@ -262,7 +276,8 @@ export function OverlayScrollbarLayer() {
     event.preventDefault();
     const pointer = drag.axis === "vertical" ? event.clientY : event.clientX;
     const nextScroll =
-      drag.scrollStart + ((pointer - drag.pointerStart) / drag.travel) * drag.maxScroll;
+      drag.scrollStart +
+      ((pointer - drag.pointerStart) / drag.travel) * drag.maxScroll;
     if (drag.axis === "vertical") drag.target.scrollTop = nextScroll;
     else drag.target.scrollLeft = nextScroll;
     refreshRef.current(drag.target);

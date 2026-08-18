@@ -5,12 +5,7 @@ import {
   forgetTerminalRelayViewportsExcept,
   terminalRelayViewportForTab,
 } from "./terminalResize";
-import type {
-  Pane,
-  PaneLayout,
-  Tab,
-  Workspace,
-} from "./types";
+import type { Pane, PaneLayout, Tab, Workspace } from "./types";
 
 export interface State {
   status: ConnectionStatus;
@@ -135,9 +130,12 @@ export function bindTaskNotificationActivation(
   target: TaskNotificationTarget,
   activate: (target: TaskNotificationTarget) => void = (nextTarget) => {
     window.dispatchEvent(
-      new CustomEvent<TaskNotificationTarget>(TASK_NOTIFICATION_ACTIVATE_EVENT, {
-        detail: nextTarget,
-      }),
+      new CustomEvent<TaskNotificationTarget>(
+        TASK_NOTIFICATION_ACTIVATE_EVENT,
+        {
+          detail: nextTarget,
+        },
+      ),
     );
   },
   focusWindow: () => void = () => window.focus(),
@@ -295,7 +293,9 @@ function wait(ms: number) {
  * and it serves the expected version. The session marker survives a manual
  * reload during the restart window and is cleared before the automatic reload.
  */
-function reloadWhenUpdatedServerIsReady(expectedVersion: string): Promise<void> {
+function reloadWhenUpdatedServerIsReady(
+  expectedVersion: string,
+): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (updateReloadVerification?.version === expectedVersion) {
     return updateReloadVerification.promise;
@@ -324,7 +324,8 @@ function reloadWhenUpdatedServerIsReady(expectedVersion: string): Promise<void> 
               notice: {
                 kind: "success",
                 message: `herdr-gui ${expectedVersion} is running`,
-                detail: "Reloading the application to use the updated frontend.",
+                detail:
+                  "Reloading the application to use the updated frontend.",
                 loading: true,
               },
             });
@@ -406,7 +407,9 @@ function taskNotificationBody(
   workspaces: Workspace[],
   tabs: Tab[],
 ) {
-  const workspace = workspaces.find((w) => w.workspace_id === pane.workspace_id);
+  const workspace = workspaces.find(
+    (w) => w.workspace_id === pane.workspace_id,
+  );
   const tab = tabs.find((t) => t.tab_id === pane.tab_id);
   const parts = [
     pane.agent ?? "Agent",
@@ -435,20 +438,14 @@ function maybeShowBrowserTaskNotification(
   }
 }
 
-function notifyTaskCompleted(
-  pane: Pane,
-  workspaces: Workspace[],
-  tabs: Tab[],
-) {
+function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
   if (!state.taskNotificationsEnabled) return;
   const body = taskNotificationBody(pane, workspaces, tabs);
   const title = "Herdr task completed";
-  maybeShowBrowserTaskNotification(
-    title,
-    body,
-    `herdr-task-${pane.pane_id}`,
-    { workspaceId: pane.workspace_id, paneId: pane.pane_id },
-  );
+  maybeShowBrowserTaskNotification(title, body, `herdr-task-${pane.pane_id}`, {
+    workspaceId: pane.workspace_id,
+    paneId: pane.pane_id,
+  });
   set({
     notice: {
       kind: "success",
@@ -533,9 +530,7 @@ async function refreshNow() {
     const workspaces: Workspace[] = wsRes?.workspaces ?? [];
     const tabs: Tab[] = tabRes?.tabs ?? [];
     const panes: Pane[] = paneRes?.panes ?? [];
-    forgetTerminalRelayViewportsExcept(
-      new Set(tabs.map((tab) => tab.tab_id)),
-    );
+    forgetTerminalRelayViewportsExcept(new Set(tabs.map((tab) => tab.tab_id)));
     const completedPanes = trackTaskCompletions(panes);
 
     const next: Partial<State> = {
@@ -745,9 +740,12 @@ async function checkForUpdate(showErrors = false) {
 function startUpdatePolling() {
   if (updateTimer) return;
   void checkForUpdate(false);
-  updateTimer = setInterval(() => {
-    void checkForUpdate(false);
-  }, 30 * 60 * 1000);
+  updateTimer = setInterval(
+    () => {
+      void checkForUpdate(false);
+    },
+    30 * 60 * 1000,
+  );
 }
 
 function stopPolling() {
@@ -903,9 +901,10 @@ export function worktreeRemovalCompletionNotice(
       ]
         .filter(Boolean)
         .join("\n"),
-      detailTitle: removedHookNotice.detail || cleanupWarning
-        ? "Worktree removal details"
-        : undefined,
+      detailTitle:
+        removedHookNotice.detail || cleanupWarning
+          ? "Worktree removal details"
+          : undefined,
     };
   }
 
@@ -1052,40 +1051,40 @@ export const store = {
   },
 
   focusTab(tabId: string) {
-    const workspaceId = state.tabs.find((t) => t.tab_id === tabId)?.workspace_id;
+    const workspaceId = state.tabs.find(
+      (t) => t.tab_id === tabId,
+    )?.workspace_id;
     const targetPane =
       state.panes.find((pane) => pane.tab_id === tabId && pane.focused) ??
       state.panes.find((pane) => pane.tab_id === tabId);
     if (workspaceId) set({ pendingFocusWorkspaceId: workspaceId });
     return action(
-      () => enqueueFocusAction(async () => {
-        const relaySize = terminalRelayViewportForTab(tabId);
-        if (relaySize) {
-          // Pre-size background runtimes for the target tab while the current
-          // tab's direct attachments are still locked. The bridge confirms the
-          // projected viewport through pane.layout before focus proceeds, so
-          // the target is stable before it becomes visible.
-          await bridge
-            .call("terminal.relay_resize", {
-              cols: relaySize.cols,
-              rows: relaySize.rows,
-              ...(targetPane ? { pane_id: targetPane.pane_id } : {}),
-            })
-            .catch(() => null);
-        }
-        if (workspaceId) {
-          await bridge.call("workspace.focus", { workspace_id: workspaceId });
-        }
-        return bridge.call("tab.focus", { tab_id: tabId });
-      }),
+      () =>
+        enqueueFocusAction(async () => {
+          const relaySize = terminalRelayViewportForTab(tabId);
+          if (relaySize) {
+            // Pre-size background runtimes for the target tab while the current
+            // tab's direct attachments are still locked. The bridge confirms the
+            // projected viewport through pane.layout before focus proceeds, so
+            // the target is stable before it becomes visible.
+            await bridge
+              .call("terminal.relay_resize", {
+                cols: relaySize.cols,
+                rows: relaySize.rows,
+                ...(targetPane ? { pane_id: targetPane.pane_id } : {}),
+              })
+              .catch(() => null);
+          }
+          if (workspaceId) {
+            await bridge.call("workspace.focus", { workspace_id: workspaceId });
+          }
+          return bridge.call("tab.focus", { tab_id: tabId });
+        }),
       { refresh: "immediate", pendingFocusWorkspaceId: workspaceId },
     );
   },
 
-  createTab(
-    workspaceId: string,
-    options: { numberedLabel?: boolean } = {},
-  ) {
+  createTab(workspaceId: string, options: { numberedLabel?: boolean } = {}) {
     return action(async () => {
       const result: unknown = await bridge.call("tab.create", {
         workspace_id: workspaceId,
@@ -1252,8 +1251,12 @@ export const store = {
           branch,
           focus: true,
         });
-        const setupHook = result?.setup_hook as WorktreeHookRunResult | undefined;
-        const setupNotice = setupHook ? summarizeDirectHookResult(setupHook) : null;
+        const setupHook = result?.setup_hook as
+          | WorktreeHookRunResult
+          | undefined;
+        const setupNotice = setupHook
+          ? summarizeDirectHookResult(setupHook)
+          : null;
         if (setupNotice) {
           set({ notice: setupNotice });
         } else {
@@ -1286,23 +1289,21 @@ export const store = {
     const locator = trimmed.startsWith("/")
       ? { path: trimmed }
       : { branch: trimmed };
-    return action(
-      async () => {
-        const result = await bridge.call("worktree.open", {
-          workspace_id: workspaceId,
-          ...locator,
-          focus,
-        });
-        const openedHook = result?.opened_hook as
-          | WorktreeHookRunResult
-          | undefined;
-        const openedNotice = openedHook
-          ? summarizeDirectHookResult(openedHook)
-          : null;
-        if (openedNotice) set({ notice: openedNotice });
-        return result;
-      },
-    );
+    return action(async () => {
+      const result = await bridge.call("worktree.open", {
+        workspace_id: workspaceId,
+        ...locator,
+        focus,
+      });
+      const openedHook = result?.opened_hook as
+        | WorktreeHookRunResult
+        | undefined;
+      const openedNotice = openedHook
+        ? summarizeDirectHookResult(openedHook)
+        : null;
+      if (openedNotice) set({ notice: openedNotice });
+      return result;
+    });
   },
 
   // A linked checkout can remain open after its main workspace is closed.
@@ -1414,10 +1415,13 @@ export const store = {
   setWorkspaceAutoSyncEnabled(workspaceId: string, enabled: boolean) {
     return action(
       async () => {
-        const result = await bridge.call("settings.workspace_auto_sync.update", {
-          workspace_id: workspaceId,
-          enabled,
-        });
+        const result = await bridge.call(
+          "settings.workspace_auto_sync.update",
+          {
+            workspace_id: workspaceId,
+            enabled,
+          },
+        );
         set({
           notice: {
             kind: "success",
@@ -1556,7 +1560,10 @@ export const store = {
   },
 
   updateOrCheck() {
-    if (state.updateInfo?.update_available && state.updateInfo.can_auto_update) {
+    if (
+      state.updateInfo?.update_available &&
+      state.updateInfo.can_auto_update
+    ) {
       return this.installUpdate();
     }
     return checkForUpdate(true);
@@ -1663,32 +1670,33 @@ export const store = {
     const pane = state.panes.find((p) => p.pane_id === paneId);
     if (pane?.workspace_id) set({ pendingFocusWorkspaceId: pane.workspace_id });
     return action(
-      () => enqueueFocusAction(async () => {
-        if (pane?.workspace_id) {
-          await bridge.call("workspace.focus", { workspace_id: pane.workspace_id });
-        }
-        if (pane) await bridge.call("tab.focus", { tab_id: pane.tab_id });
-        set({ selectedPaneId: paneId });
-        return pane;
-      }),
+      () =>
+        enqueueFocusAction(async () => {
+          if (pane?.workspace_id) {
+            await bridge.call("workspace.focus", {
+              workspace_id: pane.workspace_id,
+            });
+          }
+          if (pane) await bridge.call("tab.focus", { tab_id: pane.tab_id });
+          set({ selectedPaneId: paneId });
+          return pane;
+        }),
       { refresh: "immediate", pendingFocusWorkspaceId: pane?.workspace_id },
     );
   },
 
   splitPane(paneId: string, direction: "right" | "down") {
-    return action(
-      async () => {
-        const result = await bridge.call("pane.split", {
-          target_pane_id: paneId,
-          direction,
-          focus: true,
-        });
-        const nextPaneId =
-          typeof result?.pane?.pane_id === "string" ? result.pane.pane_id : null;
-        if (nextPaneId) set({ selectedPaneId: nextPaneId });
-        return result;
-      },
-    );
+    return action(async () => {
+      const result = await bridge.call("pane.split", {
+        target_pane_id: paneId,
+        direction,
+        focus: true,
+      });
+      const nextPaneId =
+        typeof result?.pane?.pane_id === "string" ? result.pane.pane_id : null;
+      if (nextPaneId) set({ selectedPaneId: nextPaneId });
+      return result;
+    });
   },
 
   zoomPane(paneId: string) {
@@ -1723,7 +1731,9 @@ export const store = {
       });
       const focus = result?.focus ?? result?.focus_direction ?? result;
       const focusedPaneId =
-        typeof focus?.focused_pane_id === "string" ? focus.focused_pane_id : null;
+        typeof focus?.focused_pane_id === "string"
+          ? focus.focused_pane_id
+          : null;
       if (focusedPaneId) set({ selectedPaneId: focusedPaneId });
       if (focus?.layout) set({ layout: focus.layout as PaneLayout });
       await refreshNow();

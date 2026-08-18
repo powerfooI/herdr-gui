@@ -157,6 +157,9 @@ bun run dev:web
 
 Then open <http://localhost:5173>.
 
+Use `bun run format` to format supported files with the repository's pinned
+Biome version and `bun run format:check` to verify formatting without writing.
+
 ## Configuration (CLI flags **or** env vars)
 
 Flags override env vars, which override defaults. Run `herdr-gui --help` for the

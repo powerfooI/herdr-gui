@@ -503,7 +503,11 @@ describe("terminal bridge sharing", () => {
 
     // Once no browser is connected the relay has no consumer and closes.
     bridge.browserClientCountChanged(0);
-    for (let attempt = 0; attempt < 50 && tracker.appCloses === 0; attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < 50 && tracker.appCloses === 0;
+      attempt += 1
+    ) {
       await Bun.sleep(2);
     }
     expect(tracker.appCloses).toBe(1);
@@ -581,23 +585,33 @@ describe("terminal bridge sharing", () => {
     }
     expect(tracker.appSizes).toEqual(["168x45", "170x46"]);
 
-    await bridge.handleTerminalRpc(browser, "inactive-resize", "terminal.resize", {
-      terminal_id: "term_inactive",
-      cols: 72,
-      rows: 44,
-      relay_active: false,
-    });
+    await bridge.handleTerminalRpc(
+      browser,
+      "inactive-resize",
+      "terminal.resize",
+      {
+        terminal_id: "term_inactive",
+        cols: 72,
+        rows: 44,
+        relay_active: false,
+      },
+    );
     await Bun.sleep(5);
     expect(tracker.appSizes).toEqual(["168x45", "170x46"]);
 
-    await bridge.handleTerminalRpc(browser, "active-resize", "terminal.resize", {
-      terminal_id: "term_active",
-      cols: 72,
-      rows: 44,
-      relay_active: true,
-      relay_cols: 172,
-      relay_rows: 45,
-    });
+    await bridge.handleTerminalRpc(
+      browser,
+      "active-resize",
+      "terminal.resize",
+      {
+        terminal_id: "term_active",
+        cols: 72,
+        rows: 44,
+        relay_active: true,
+        relay_cols: 172,
+        relay_rows: 45,
+      },
+    );
     for (
       let attempt = 0;
       attempt < 50 && !tracker.appSizes.includes("172x45");
@@ -605,11 +619,7 @@ describe("terminal bridge sharing", () => {
     ) {
       await Bun.sleep(2);
     }
-    expect(tracker.appSizes).toEqual([
-      "168x45",
-      "170x46",
-      "172x45",
-    ]);
+    expect(tracker.appSizes).toEqual(["168x45", "170x46", "172x45"]);
     bridge.cleanupWs(browser);
   });
 

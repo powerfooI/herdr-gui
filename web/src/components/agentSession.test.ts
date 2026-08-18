@@ -31,9 +31,9 @@ describe("agent session presentation", () => {
     ]);
 
     expect(groups.map((group) => group.number)).toEqual([null, 1, 2]);
-    expect(groups.map((group) => group.steps.map((item) => item.step_id))).toEqual(
-      [[1], [2, 3, 4], [5, 6]],
-    );
+    expect(
+      groups.map((group) => group.steps.map((item) => item.step_id)),
+    ).toEqual([[1], [2, 3, 4], [5, 6]]);
   });
 
   test("keeps agent-only trajectories in a setup group", () => {
@@ -76,9 +76,9 @@ describe("agent session presentation", () => {
       "List files in apps/roadie",
     );
     expect(toolArgumentsPreview({ a: 1 })).toBe('{"a":1}');
-    expect(toolArgumentsPreview({ command: "x".repeat(120) }, undefined, 10)).toBe(
-      `${"x".repeat(10)}…`,
-    );
+    expect(
+      toolArgumentsPreview({ command: "x".repeat(120) }, undefined, 10),
+    ).toBe(`${"x".repeat(10)}…`);
   });
 
   test("previews the first non-empty line with truncation", () => {

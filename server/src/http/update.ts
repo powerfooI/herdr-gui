@@ -151,9 +151,10 @@ export function parseUpdateChecksumFile(
     throw new Error("invalid update checksum file");
   }
   const lines = text.trim().split(/\r?\n/);
-  const match = lines.length === 1
-    ? lines[0].match(/^([0-9a-fA-F]{64})[ \t]+\*?(\S+)$/)
-    : null;
+  const match =
+    lines.length === 1
+      ? lines[0].match(/^([0-9a-fA-F]{64})[ \t]+\*?(\S+)$/)
+      : null;
   if (!match || match[2] !== archiveName) {
     throw new Error("invalid update checksum file");
   }
@@ -206,7 +207,11 @@ export function compareVersion(a: string, b: string): number {
     if (pa.prerelease === pb.prerelease) return 0;
     return pa.prerelease === null ? 1 : -1;
   }
-  for (let i = 0; i < Math.max(pa.prerelease.length, pb.prerelease.length); i++) {
+  for (
+    let i = 0;
+    i < Math.max(pa.prerelease.length, pb.prerelease.length);
+    i++
+  ) {
     const va = pa.prerelease[i];
     const vb = pb.prerelease[i];
     if (va === undefined || vb === undefined) {
@@ -234,10 +239,7 @@ export function isSupervisorManagedEnvironment(
   return Boolean(xpcServiceName && xpcServiceName !== "0");
 }
 
-function updateJson(
-  body: unknown,
-  init: ResponseInit = {},
-): Response {
+function updateJson(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("cache-control", "no-store");
   return Response.json(body, { ...init, headers });
@@ -309,9 +311,8 @@ export function createUpdateHandlers({
   }
 
   function curlTransportArgs(): string[] {
-    const protocol = new URL(updateBaseUrl()).protocol === "https:"
-      ? "=https"
-      : "=http";
+    const protocol =
+      new URL(updateBaseUrl()).protocol === "https:" ? "=https" : "=http";
     return ["--proto", protocol, "--proto-redir", protocol];
   }
 
@@ -687,7 +688,11 @@ target_tmp=""
       if (result.code !== 0) {
         return updateJson(
           {
-            error: (result.stderr || result.stdout || `install exited ${result.code}`)
+            error: (
+              result.stderr ||
+              result.stdout ||
+              `install exited ${result.code}`
+            )
               .trim()
               .slice(0, 1000),
             current_version: appVersion,

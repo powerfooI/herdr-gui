@@ -4,7 +4,8 @@ import { isWorkspacePinned } from "./workspacePins";
 const EMPTY_WORKSPACE_PINS = new Set<string>();
 
 export type WorktreeOpenSource =
-  { workspaceId: string; cwd?: never } | { workspaceId?: never; cwd: string };
+  | { workspaceId: string; cwd?: never }
+  | { workspaceId?: never; cwd: string };
 
 // worktree.list accepts a linked checkout and resolves its repository parent,
 // while worktree.open rejects that same linked workspace as a source. Use the

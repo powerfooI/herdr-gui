@@ -52,7 +52,12 @@ export function CreateWorkspaceDialog({
       >
         <div className="modal-head">
           <h2>Create Workspace</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>

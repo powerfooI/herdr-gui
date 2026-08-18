@@ -21,6 +21,7 @@ jobs:
         working-directory: web
       - run: bun install --frozen-lockfile
         working-directory: server
+      - run: bun run format:check
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test

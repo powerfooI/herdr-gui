@@ -49,11 +49,11 @@ export function terminalImeFallbackText(input: ImeInputEvent): string | null {
  * race its own keyCode 229 fallback and duplicate destructive input.
  */
 export function terminalImeTextareaDelta(
-	before: string,
-	after: string,
+  before: string,
+  after: string,
 ): string | null {
-	if (after === before || !after.startsWith(before)) return null;
-	return after.slice(before.length) || null;
+  if (after === before || !after.startsWith(before)) return null;
+  return after.slice(before.length) || null;
 }
 
 /**
@@ -62,78 +62,78 @@ export function terminalImeTextareaDelta(
  * unchanged cycle stays pending for one final timer fallback.
  */
 export type TerminalImeTextareaFlushResult =
-	| { status: "pending" }
-	| { status: "unhandled" }
-	| { status: "handled"; text: string | null };
+  | { status: "pending" }
+  | { status: "unhandled" }
+  | { status: "handled"; text: string | null };
 
 export class TerminalImeTextareaFallbackTracker {
-	private pending: { textareaValue: string; xtermData: string } | null = null;
-	private suppressXtermData = "";
+  private pending: { textareaValue: string; xtermData: string } | null = null;
+  private suppressXtermData = "";
 
-	begin(textareaValue: string): void {
-		this.pending ??= { textareaValue, xtermData: "" };
-	}
+  begin(textareaValue: string): void {
+    this.pending ??= { textareaValue, xtermData: "" };
+  }
 
-	recordXtermData(text: string): string | null {
-		if (this.pending) this.pending.xtermData += text;
-		if (!this.suppressXtermData) return text;
+  recordXtermData(text: string): string | null {
+    if (this.pending) this.pending.xtermData += text;
+    if (!this.suppressXtermData) return text;
 
-		if (this.suppressXtermData.startsWith(text)) {
-			this.suppressXtermData = this.suppressXtermData.slice(text.length);
-			return null;
-		}
-		if (text.startsWith(this.suppressXtermData)) {
-			const unsuppressedText = text.slice(this.suppressXtermData.length);
-			this.suppressXtermData = "";
-			return unsuppressedText || null;
-		}
+    if (this.suppressXtermData.startsWith(text)) {
+      this.suppressXtermData = this.suppressXtermData.slice(text.length);
+      return null;
+    }
+    if (text.startsWith(this.suppressXtermData)) {
+      const unsuppressedText = text.slice(this.suppressXtermData.length);
+      this.suppressXtermData = "";
+      return unsuppressedText || null;
+    }
 
-		this.suppressXtermData = "";
-		return text;
-	}
+    this.suppressXtermData = "";
+    return text;
+  }
 
-	flush(textareaValue: string, final = false): TerminalImeTextareaFlushResult {
-		const pending = this.pending;
-		if (!pending) return { status: "unhandled" };
-		const committedText = terminalImeTextareaDelta(
-			pending.textareaValue,
-			textareaValue,
-		);
-		if (!committedText) {
-			if (final || textareaValue !== pending.textareaValue) {
-				this.pending = null;
-				return { status: "unhandled" };
-			}
-			return { status: "pending" };
-		}
+  flush(textareaValue: string, final = false): TerminalImeTextareaFlushResult {
+    const pending = this.pending;
+    if (!pending) return { status: "unhandled" };
+    const committedText = terminalImeTextareaDelta(
+      pending.textareaValue,
+      textareaValue,
+    );
+    if (!committedText) {
+      if (final || textareaValue !== pending.textareaValue) {
+        this.pending = null;
+        return { status: "unhandled" };
+      }
+      return { status: "pending" };
+    }
 
-		this.pending = null;
-		if (!committedText.startsWith(pending.xtermData)) {
-			return { status: "unhandled" };
-		}
-		this.suppressXtermData = committedText;
-		return {
-			status: "handled",
-			text: committedText.slice(pending.xtermData.length) || null,
-		};
-	}
+    this.pending = null;
+    if (!committedText.startsWith(pending.xtermData)) {
+      return { status: "unhandled" };
+    }
+    this.suppressXtermData = committedText;
+    return {
+      status: "handled",
+      text: committedText.slice(pending.xtermData.length) || null,
+    };
+  }
 
-	hasPending(): boolean {
-		return this.pending !== null;
-	}
+  hasPending(): boolean {
+    return this.pending !== null;
+  }
 
-	cancelPending(): void {
-		this.pending = null;
-	}
+  cancelPending(): void {
+    this.pending = null;
+  }
 
-	complete(): void {
-		this.pending = null;
-		this.suppressXtermData = "";
-	}
+  complete(): void {
+    this.pending = null;
+    this.suppressXtermData = "";
+  }
 
-	cancel(): void {
-		this.complete();
-	}
+  cancel(): void {
+    this.complete();
+  }
 }
 
 /**

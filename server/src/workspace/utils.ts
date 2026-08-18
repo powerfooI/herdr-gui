@@ -1,4 +1,6 @@
-export function uniqueStrings(values: Array<string | undefined | null>): string[] {
+export function uniqueStrings(
+  values: Array<string | undefined | null>,
+): string[] {
   return Array.from(
     new Set(values.filter((value): value is string => Boolean(value))),
   );

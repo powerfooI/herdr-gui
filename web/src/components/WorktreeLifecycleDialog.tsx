@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  FolderOpen,
-  GitBranch,
-  RefreshCw,
-  Settings,
-  X,
-} from "lucide-react";
+import { FolderOpen, GitBranch, RefreshCw, Settings, X } from "lucide-react";
 import { bridge } from "../api";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { store, useStore } from "../store";
 import type { WorktreeList } from "../types";
-import {
-  resolveWorktreeOpenSource,
-  worktreeCreationSource,
-} from "../worktree";
+import { resolveWorktreeOpenSource, worktreeCreationSource } from "../worktree";
 import {
   buildWorktreeLifecycleRows,
   lifecycleActionError,
@@ -38,7 +29,6 @@ type LifecycleOperation = {
   status: "running" | "succeeded" | "warning" | "failed";
   detail?: string;
 };
-
 
 export function WorktreeLifecycleDialog({
   open,
@@ -277,7 +267,10 @@ export function WorktreeLifecycleDialog({
   const setHooksEnabled = (enabled: boolean) => {
     if (!hooks?.key) return;
     void runOperation("hooks", "Updating hook policy", async () => {
-      const result = await store.setRepoWorktreeHooksEnabled(hooks.key!, enabled);
+      const result = await store.setRepoWorktreeHooksEnabled(
+        hooks.key!,
+        enabled,
+      );
       if (result !== undefined) {
         setHooks((current) => (current ? { ...current, enabled } : current));
       }
@@ -300,11 +293,7 @@ export function WorktreeLifecycleDialog({
     if (!openSource?.cwd) {
       throw new Error("The repository root is unavailable.");
     }
-    return store.openWorktreeFromCwd(
-      openSource.cwd,
-      row.worktree.path,
-      focus,
-    );
+    return store.openWorktreeFromCwd(openSource.cwd, row.worktree.path, focus);
   };
 
   const removeWorktree = async (row: WorktreeLifecycleRow) => {
@@ -338,7 +327,8 @@ export function WorktreeLifecycleDialog({
               <span className="lifecycle-kicker">Repository operations</span>
               <h2>Worktree Lifecycle</h2>
               <p>
-                {list?.source.repo_name ?? selectedWorkspace?.worktree?.repo_name ??
+                {list?.source.repo_name ??
+                  selectedWorkspace?.worktree?.repo_name ??
                   "Repository"}
                 <code title={list?.source.repo_root}>
                   {list?.source.repo_root ??
@@ -449,7 +439,10 @@ export function WorktreeLifecycleDialog({
             </div>
           ) : (
             <div className="lifecycle-content">
-              <div className="lifecycle-overview" aria-label="Repository summary">
+              <div
+                className="lifecycle-overview"
+                aria-label="Repository summary"
+              >
                 <div>
                   <strong>{rows.length}</strong>
                   <span>Checkouts</span>

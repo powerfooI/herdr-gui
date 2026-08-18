@@ -10,10 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  defaultAuthTokenPath,
-  loadOrCreateAuthToken,
-} from "./auth-token";
+import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
 const tempDirs: string[] = [];
 

@@ -16,12 +16,7 @@ const darwinRuntime = {
   platform: "darwin",
   arch: "arm64",
   execPath: "/Applications/herdr-gui",
-  argv: [
-    "bun",
-    "/$bunfs/root/herdr-gui-darwin-arm64",
-    "--port",
-    "8781",
-  ],
+  argv: ["bun", "/$bunfs/root/herdr-gui-darwin-arm64", "--port", "8781"],
 };
 
 const linuxRuntime = {
@@ -132,9 +127,9 @@ describe("update helpers", () => {
     expect(normalizeUpdateBaseUrl(undefined)).toBe(
       "https://github.com/powerfooI/herdr-gui/releases/latest/download",
     );
-    expect(normalizeUpdateBaseUrl(" https://downloads.example.com/herdr/// ")).toBe(
-      "https://downloads.example.com/herdr",
-    );
+    expect(
+      normalizeUpdateBaseUrl(" https://downloads.example.com/herdr/// "),
+    ).toBe("https://downloads.example.com/herdr");
     expect(normalizeUpdateBaseUrl("http://127.0.0.1:8080/releases/")).toBe(
       "http://127.0.0.1:8080/releases",
     );
@@ -145,7 +140,9 @@ describe("update helpers", () => {
       normalizeUpdateBaseUrl(credentialBearingUpdateBaseUrl()),
     ).toThrow("must not contain credentials");
     expect(() =>
-      normalizeUpdateBaseUrl("https://downloads.example.com/herdr?token=secret"),
+      normalizeUpdateBaseUrl(
+        "https://downloads.example.com/herdr?token=secret",
+      ),
     ).toThrow("must not contain a query or fragment");
   });
 
@@ -574,8 +571,7 @@ describe("update helpers", () => {
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({
-      error:
-        "latest update platform is linux-x64, expected darwin-arm64",
+      error: "latest update platform is linux-x64, expected darwin-arm64",
     });
   });
 
@@ -621,22 +617,14 @@ describe("update helpers", () => {
     expect(installCommand).toContain(`expected_sha256='${updateSha256}'`);
     expect(installCommand).toContain('shasum -a 256 "$archive"');
     expect(installCommand).toContain('sha256sum "$archive"');
-    expect(installCommand).toContain(
-      'version_file="$package_dir/VERSION"',
-    );
+    expect(installCommand).toContain('version_file="$package_dir/VERSION"');
     expect(installCommand).toContain('binary="$package_dir/herdr-gui"');
-    expect(installCommand).toContain(
-      "tar -xJf \"$archive\" -C \"$tmp\"",
-    );
-    expect(installCommand).toContain(
-      "'herdr-gui-darwin-arm64/VERSION'",
-    );
-    expect(installCommand).toContain(
-      "'herdr-gui-darwin-arm64/herdr-gui'",
-    );
+    expect(installCommand).toContain('tar -xJf "$archive" -C "$tmp"');
+    expect(installCommand).toContain("'herdr-gui-darwin-arm64/VERSION'");
+    expect(installCommand).toContain("'herdr-gui-darwin-arm64/herdr-gui'");
     expect(installCommand).toContain("target='/Applications/herdr-gui'");
     expect(installCommand).toContain('backup="$target.previous"');
-    expect(installCommand).toContain("mktemp \"$target_dir/.$target_base.new.");
+    expect(installCommand).toContain('mktemp "$target_dir/.$target_base.new.');
     expect(installCommand).not.toContain("herdr-gui-linux-x64");
     expect(
       Bun.spawnSync(["sh", "-n"], {
@@ -679,7 +667,9 @@ describe("update helpers", () => {
 
     const firstInstall = handlers.handleUpdateInstall(updateInstallRequest());
     await versionCheckStarted;
-    const concurrentResponse = await handlers.handleUpdateInstall(updateInstallRequest());
+    const concurrentResponse = await handlers.handleUpdateInstall(
+      updateInstallRequest(),
+    );
     expect(concurrentResponse.status).toBe(409);
     expect(await concurrentResponse.json()).toMatchObject({
       error: "An update installation is already in progress.",
@@ -689,7 +679,9 @@ describe("update helpers", () => {
     const firstResponse = await firstInstall;
     expect(firstResponse.status).toBe(200);
     expect(callCount).toBe(2);
-    const restartWindowResponse = await handlers.handleUpdateInstall(updateInstallRequest());
+    const restartWindowResponse = await handlers.handleUpdateInstall(
+      updateInstallRequest(),
+    );
     expect(restartWindowResponse.status).toBe(409);
     expect(callCount).toBe(2);
   });
@@ -761,7 +753,9 @@ describe("update helpers", () => {
     expect(callCount).toBe(2);
     expect(exitScheduled).toBe(false);
 
-    const retryResponse = await handlers.handleUpdateInstall(updateInstallRequest());
+    const retryResponse = await handlers.handleUpdateInstall(
+      updateInstallRequest(),
+    );
     expect(retryResponse.status).toBe(500);
     expect(callCount).toBe(4);
   });

@@ -27,7 +27,9 @@ function currentReleasePlatform(): string {
   if (process.platform === "linux" && process.arch === "x64") {
     return "linux-x64";
   }
-  throw new Error(`unsupported test platform: ${process.platform}-${process.arch}`);
+  throw new Error(
+    `unsupported test platform: ${process.platform}-${process.arch}`,
+  );
 }
 
 function createInstallerFixture(checksumName?: string) {
@@ -49,10 +51,7 @@ function createInstallerFixture(checksumName?: string) {
     '#!/bin/sh\n[ "${1:-}" = "--version" ] && { echo "herdr-gui 9.8.7"; exit 0; }\nexit 1\n',
     { mode: 0o755 },
   );
-  writeFileSync(
-    join(packagePath, "VERSION"),
-    `herdr-gui 9.8.7 ${platform}\n`,
-  );
+  writeFileSync(join(packagePath, "VERSION"), `herdr-gui 9.8.7 ${platform}\n`);
 
   const archive = join(assets, archiveName);
   const packaged = Bun.spawnSync(
@@ -65,7 +64,9 @@ function createInstallerFixture(checksumName?: string) {
   if (packaged.exitCode !== 0) {
     throw new Error(packaged.stderr.toString());
   }
-  const digest = createHash("sha256").update(readFileSync(archive)).digest("hex");
+  const digest = createHash("sha256")
+    .update(readFileSync(archive))
+    .digest("hex");
   writeFileSync(
     `${archive}.sha256`,
     `${digest}  ${checksumName ?? archiveName}\n`,

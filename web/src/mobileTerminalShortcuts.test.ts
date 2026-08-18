@@ -20,14 +20,14 @@ describe("mobile terminal shortcuts", () => {
     expect(rows).toHaveLength(2);
     expect(MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW).toBe(8);
     expect(
-      rows.map((row) =>
-        row.map((shortcut) => shortcut?.action ?? null),
-      ),
+      rows.map((row) => row.map((shortcut) => shortcut?.action ?? null)),
     ).toEqual([
       ["ctrl-c", "ctrl-d", "ctrl-r", "escape", "page-up", null, null, null],
       ["tab", "enter", "alt-up", "page-down", null, null, null, null],
     ]);
-    expect(rows.every((row) => row.length <= MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW)).toBe(true);
+    expect(
+      rows.every((row) => row.length <= MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW),
+    ).toBe(true);
   });
 
   test("normalizes untrusted stored rows, labels, actions, and ids", () => {
@@ -91,7 +91,11 @@ describe("mobile terminal shortcuts", () => {
     expect(rows[0][0]).toBeNull();
     expect(rows[0][2]?.action).toBe("home");
     expect(rows[1][1]?.action).toBe("end");
-    expect(parseMobileTerminalShortcutRows(serializeMobileTerminalShortcutRows(rows))).toEqual(rows);
+    expect(
+      parseMobileTerminalShortcutRows(
+        serializeMobileTerminalShortcutRows(rows),
+      ),
+    ).toEqual(rows);
   });
 
   test("preserves four optional side shortcut slots", () => {
@@ -134,7 +138,11 @@ describe("mobile terminal shortcuts", () => {
     const empty = normalizeMobileTerminalShortcutRows([[], []]);
 
     expect(mobileTerminalShortcutCount(empty)).toBe(0);
-    expect(parseMobileTerminalShortcutRows(serializeMobileTerminalShortcutRows(empty))).toEqual(empty);
+    expect(
+      parseMobileTerminalShortcutRows(
+        serializeMobileTerminalShortcutRows(empty),
+      ),
+    ).toEqual(empty);
   });
 
   test("falls back safely for missing or malformed storage", () => {
@@ -142,7 +150,6 @@ describe("mobile terminal shortcuts", () => {
 
     expect(parseMobileTerminalShortcutRows(null)).toEqual(expected);
     expect(parseMobileTerminalShortcutRows("not json")).toEqual(expected);
-
   });
 
   test("round-trips normalized rows without sharing mutable defaults", () => {

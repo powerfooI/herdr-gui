@@ -27,7 +27,9 @@ describe("workspace file path helpers", () => {
 
   test("allows preview paths inside and outside the checkout", () => {
     expect(sanitizePreviewPath("src/App.tsx")).toBe("src/App.tsx");
-    expect(sanitizePreviewPath("/tmp/screenshot.png")).toBe("/tmp/screenshot.png");
+    expect(sanitizePreviewPath("/tmp/screenshot.png")).toBe(
+      "/tmp/screenshot.png",
+    );
   });
 
   test("rejects unsafe preview and upload paths", () => {

@@ -1,7 +1,4 @@
-import {
-  PREVIEW_IMAGE_MAX_BYTES,
-  PREVIEW_MAX_BYTES,
-} from "./file-constants";
+import { PREVIEW_IMAGE_MAX_BYTES, PREVIEW_MAX_BYTES } from "./file-constants";
 
 export function trimIncompleteUtf8Tail(buffer: Buffer) {
   if (!buffer.length) return buffer;
@@ -53,7 +50,11 @@ export function previewLimitForPath(path: string, size: number) {
     : PREVIEW_MAX_BYTES;
 }
 
-export function decodePreviewBuffer(buffer: Buffer, truncated = false, path = "") {
+export function decodePreviewBuffer(
+  buffer: Buffer,
+  truncated = false,
+  path = "",
+) {
   const imageMime = imageMimeForPath(path);
   if (imageMime && !truncated) {
     return {

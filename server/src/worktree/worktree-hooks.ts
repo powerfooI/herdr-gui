@@ -1,4 +1,7 @@
-import { repoWorktreeHooksEnabled, workspaceRepoSettingsKey } from "../config/gui-settings";
+import {
+  repoWorktreeHooksEnabled,
+  workspaceRepoSettingsKey,
+} from "../config/gui-settings";
 import {
   uniqueStrings,
   checkoutPath as workspaceCheckoutPath,
@@ -43,7 +46,9 @@ export type PaseoWorktreeHookConfig = {
 };
 
 export function createWorktreeHookRunner(args: {
-  herdr: { call(method: string, params?: Record<string, unknown>): Promise<any> };
+  herdr: {
+    call(method: string, params?: Record<string, unknown>): Promise<any>;
+  };
   sshHost: () => string | undefined;
   runProcess: RunProcess;
   runProcessWithCode: RunProcessWithCode;
@@ -74,13 +79,10 @@ export function createWorktreeHookRunner(args: {
   async function readPaseoWorktreeHooks(
     checkoutPath: string,
     sourceCheckoutPath?: string,
-  ): Promise<
-    | {
-        path: string;
-        config: PaseoWorktreeHookConfig;
-      }
-    | null
-  > {
+  ): Promise<{
+    path: string;
+    config: PaseoWorktreeHookConfig;
+  } | null> {
     for (const base of uniqueStrings([checkoutPath, sourceCheckoutPath])) {
       const path = `${base.replace(/\/+$/, "")}/paseo.json`;
       const text = await readTextFileMaybe(path);
@@ -275,7 +277,9 @@ export function createWorktreeHookRunner(args: {
       result?.checkout_path ??
       result?.path;
     if (typeof checkoutPath === "string" && checkoutPath) {
-      const list = await args.herdr.call("workspace.list", {}).catch(() => null);
+      const list = await args.herdr
+        .call("workspace.list", {})
+        .catch(() => null);
       return (
         (list?.workspaces ?? []).find(
           (workspace: any) => workspaceCheckoutPath(workspace) === checkoutPath,

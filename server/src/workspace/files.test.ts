@@ -196,16 +196,20 @@ describe("workspace file handlers", () => {
     const handlers = createFileHandlers({
       herdr: { call: async () => ({}) } as any,
       sshHost: () => undefined,
-      runProcessWithCodeTimeout: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runProcessWithCodeTimeout: async () => ({
+        code: 0,
+        stdout: "",
+        stderr: "",
+      }),
       shQuote,
     });
 
     await expect(handlers.listWorkspaceFiles({})).rejects.toThrow(
       "file.list requires workspace_id",
     );
-    await expect(handlers.readWorkspaceFile({ path: "README.md" })).rejects.toThrow(
-      "file.read requires workspace_id",
-    );
+    await expect(
+      handlers.readWorkspaceFile({ path: "README.md" }),
+    ).rejects.toThrow("file.read requires workspace_id");
     await expect(handlers.resolveWorkspaceFiles({ paths: [] })).rejects.toThrow(
       "file.resolve requires workspace_id",
     );

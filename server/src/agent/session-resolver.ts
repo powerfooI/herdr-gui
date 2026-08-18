@@ -94,7 +94,10 @@ async function findCodexSession(id: string) {
 async function findClaudeSession(id: string) {
   return resolveCachedSessionPath(`claude:${id}`, async () => {
     const root = join(homedir(), ".claude", "projects");
-    const files = await walkFiles(root, (path) => basename(path) === `${id}.jsonl`);
+    const files = await walkFiles(
+      root,
+      (path) => basename(path) === `${id}.jsonl`,
+    );
     return newestFile(files);
   });
 }
@@ -105,7 +108,8 @@ async function findKimiSession(id: string) {
     const suffix = join(id, "agents", "main", "wire.jsonl");
     const files = await walkFiles(
       root,
-      (path) => path.endsWith(suffix) || path.includes(`/${id}/agents/main/wire.jsonl`),
+      (path) =>
+        path.endsWith(suffix) || path.includes(`/${id}/agents/main/wire.jsonl`),
     );
     return newestFile(files);
   });
@@ -114,28 +118,27 @@ async function findKimiSession(id: string) {
 async function findPiSession(id: string) {
   return resolveCachedSessionPath(`pi:${id}`, async () => {
     const root = join(piAgentDirectory(), "sessions");
-    const files = await walkFiles(
-      root,
-      (path) => {
-        const name = basename(path);
-        return name === `${id}.jsonl` || name.endsWith(`_${id}.jsonl`);
-      },
-    );
+    const files = await walkFiles(root, (path) => {
+      const name = basename(path);
+      return name === `${id}.jsonl` || name.endsWith(`_${id}.jsonl`);
+    });
     return newestFile(files);
   });
 }
 
 function newestFile(paths: string[]) {
-  return paths
-    .map((path) => {
-      try {
-        return { path, mtimeMs: statSync(path).mtimeMs };
-      } catch {
-        return null;
-      }
-    })
-    .filter((file): file is SessionFile => !!file)
-    .toSorted((a, b) => b.mtimeMs - a.mtimeMs)[0]?.path ?? null;
+  return (
+    paths
+      .map((path) => {
+        try {
+          return { path, mtimeMs: statSync(path).mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+      .filter((file): file is SessionFile => !!file)
+      .toSorted((a, b) => b.mtimeMs - a.mtimeMs)[0]?.path ?? null
+  );
 }
 
 async function sessionFileFor(
@@ -218,7 +221,8 @@ export async function resolveAgentSession(
     version: 1 as const,
     agent,
     pane_id: params.pane_id,
-    workspace_id: stringValue(agentInfo?.workspace_id) || params.workspace_id || "",
+    workspace_id:
+      stringValue(agentInfo?.workspace_id) || params.workspace_id || "",
     tab_id: stringValue(agentInfo?.tab_id) || params.tab_id || "",
   };
   let resolvedSession = session;

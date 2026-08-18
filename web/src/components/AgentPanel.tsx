@@ -37,9 +37,8 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
   const [menu, setMenu] = useState<AgentMenuState | null>(null);
   const [pendingClosePane, setPendingClosePane] = useState<Pane | null>(null);
   const [previewPane, setPreviewPane] = useState<Pane | null>(null);
-  const [previewSummary, setPreviewSummary] = useState<AgentSessionSummary | null>(
-    null,
-  );
+  const [previewSummary, setPreviewSummary] =
+    useState<AgentSessionSummary | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
 

@@ -38,7 +38,9 @@ export function requestCloseTab(tabId: string) {
  */
 export function TabBar({ mobile = false }: { mobile?: boolean }) {
   const s = useStore();
-  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(
+    null,
+  );
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const focusedWs = s.workspaces.find((w) => w.focused);

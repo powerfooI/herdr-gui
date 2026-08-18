@@ -233,7 +233,11 @@ export function downloadSession(pane: Pane) {
 }
 
 function sessionAtifFilename(path?: string) {
-  const raw = path?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "session";
+  const raw =
+    path
+      ?.split(/[\\/]/)
+      .pop()
+      ?.replace(/\.[^.]+$/, "") || "session";
   return `${raw.replace(/[^\w.-]+/g, "_")}.atif.json`;
 }
 
@@ -261,7 +265,7 @@ export async function exportSession(pane: Pane) {
         message: "Session unavailable",
         detail: summary.command
           ? `${summary.detail ?? summary.status} (${summary.command})`
-          : summary.detail ?? summary.status,
+          : (summary.detail ?? summary.status),
       });
       return;
     }

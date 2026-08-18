@@ -72,7 +72,10 @@ async function createPiSession() {
       },
     },
   ];
-  await writeFile(path, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+  await writeFile(
+    path,
+    `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+  );
   return path;
 }
 

@@ -14,13 +14,7 @@ import {
 } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
-import {
-  Columns2,
-  History,
-  Keyboard,
-  Maximize2,
-  Rows2,
-} from "lucide-react";
+import { Columns2, History, Keyboard, Maximize2, Rows2 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { store, useStore } from "../store";
 import { bridge } from "../api";
@@ -41,9 +35,9 @@ import {
   TerminalFileResolutionCache,
 } from "../terminalFileLinks";
 import {
-	terminalPasteInputText,
-	terminalPasteRequest,
-	type TerminalPasteTextareaSnapshot,
+  terminalPasteInputText,
+  terminalPasteRequest,
+  type TerminalPasteTextareaSnapshot,
 } from "../terminalPaste";
 import {
   createTerminalClipboardProvider,
@@ -57,7 +51,7 @@ import {
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
-	TerminalImeTextareaFallbackTracker,
+  TerminalImeTextareaFallbackTracker,
 } from "../terminalIme";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
 import {
@@ -117,7 +111,8 @@ const FONT_FAMILY =
   'SFMono-Regular, Menlo, Monaco, "0xProto Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", Consolas, "Liberation Mono", "Courier New", "Noto Sans Mono CJK SC", "Source Han Mono SC", "Sarasa Mono SC", "Herdr Nerd Symbols", monospace';
 const LINK_BLUE = "\x1b[94m";
 const RESET_FOREGROUND = "\x1b[39m";
-const ANSI_SEQUENCE_RE = /\x1b\][\s\S]*?(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
+const ANSI_SEQUENCE_RE =
+  /\x1b\][\s\S]*?(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
 const CLIPBOARD_READ_TIMEOUT_MS = 2000;
 
 const terminalFileResolutionCache = new TerminalFileResolutionCache(
@@ -194,7 +189,8 @@ function colorHttpLinks(input: string): string {
 
   for (const match of input.matchAll(ANSI_SEQUENCE_RE)) {
     const start = match.index ?? 0;
-    if (start > index) output += colorHttpLinksInText(input.slice(index, start));
+    if (start > index)
+      output += colorHttpLinksInText(input.slice(index, start));
     output += match[0];
     index = start + match[0].length;
   }
@@ -327,24 +323,21 @@ function registerTerminalLinkProvider(
         const currentText = currentLine
           ? lineTextWithColumns(currentLine, columnCount).text
           : null;
-        callback(
-          currentText === text && links.length > 0 ? links : undefined,
-        );
+        callback(currentText === text && links.length > 0 ? links : undefined);
       };
       if (relativeCandidates.length === 0 || !resolveRelativePaths) {
         finish();
         return;
       }
-      void resolveRelativePaths(relativeCandidates.map((item) => item.path)).then(
-        (resolved) => {
-          for (const candidate of relativeCandidates) {
-            const path = resolved.get(candidate.path);
-            if (path) addFileLink(candidate, path);
-          }
-          finish();
-        },
-        finish,
-      );
+      void resolveRelativePaths(
+        relativeCandidates.map((item) => item.path),
+      ).then((resolved) => {
+        for (const candidate of relativeCandidates) {
+          const path = resolved.get(candidate.path);
+          if (path) addFileLink(candidate, path);
+        }
+        finish();
+      }, finish);
     },
   });
   return {
@@ -456,12 +449,12 @@ export function TerminalView({
     : (s.panes.find((p) => p.pane_id === selectedPaneInLayout) ??
       s.panes.find((p) => p.pane_id === s.layout?.focused_pane_id) ??
       null);
-  const activePaneId = selectedPaneInLayout ?? s.layout?.focused_pane_id ?? null;
+  const activePaneId =
+    selectedPaneInLayout ?? s.layout?.focused_pane_id ?? null;
   const isActivePane = !!pane && (!paneId || pane.pane_id === activePaneId);
   const canShowAgentHistory =
     isActivePane && !!pane?.agent && pane.agent_status !== "unknown";
-  const agentHistoryOpen =
-    controlledAgentHistoryOpen ?? localAgentHistoryOpen;
+  const agentHistoryOpen = controlledAgentHistoryOpen ?? localAgentHistoryOpen;
   const setAgentHistoryOpen = useCallback(
     (open: boolean) => {
       if (controlledAgentHistoryOpen === undefined) {
@@ -504,7 +497,8 @@ export function TerminalView({
         const active = document.activeElement;
         const activeElement = active instanceof HTMLElement ? active : null;
         const activeIsTerminalInput = !!activeElement?.closest(".xterm");
-        if (!term || (isEditableElement(active) && !activeIsTerminalInput)) return;
+        if (!term || (isEditableElement(active) && !activeIsTerminalInput))
+          return;
         term.focus();
       }, 0);
     });
@@ -524,9 +518,9 @@ export function TerminalView({
     }
     try {
       fit.fit();
-		} catch {
-			// A hidden or detaching terminal can reject a transient fit.
-		}
+    } catch {
+      // A hidden or detaching terminal can reject a transient fit.
+    }
     return { cols: term.cols, rows: term.rows };
   }, [container]);
   const relayViewportFor = useCallback(
@@ -558,7 +552,10 @@ export function TerminalView({
         !e.altKey &&
         (e.metaKey || e.ctrlKey);
       if (!isHistoryShortcut) return;
-      if (isEditableElement(e.target) && !(e.target as HTMLElement).closest(".xterm")) {
+      if (
+        isEditableElement(e.target) &&
+        !(e.target as HTMLElement).closest(".xterm")
+      ) {
         return;
       }
       e.preventDefault();
@@ -566,7 +563,8 @@ export function TerminalView({
       setAgentHistoryOpen(!agentHistoryOpen);
     };
     window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
   }, [
     agentHistoryOpen,
     canShowAgentHistory,
@@ -640,7 +638,8 @@ export function TerminalView({
       .then((preview) => {
         const entry: FileExplorerEntry = {
           ...initialEntry,
-          name: preview.path.split("/").filter(Boolean).pop() ?? initialEntry.name,
+          name:
+            preview.path.split("/").filter(Boolean).pop() ?? initialEntry.name,
           path: preview.path,
           size: preview.size,
           mtime_ms: preview.mtime_ms,
@@ -665,7 +664,10 @@ export function TerminalView({
   const resolveRelativeFilePaths = useCallback(async (paths: string[]) => {
     const workspaceId = previewWorkspaceIdRef.current;
     if (!workspaceId) return new Map<string, string>();
-    const resolved = await terminalFileResolutionCache.resolve(workspaceId, paths);
+    const resolved = await terminalFileResolutionCache.resolve(
+      workspaceId,
+      paths,
+    );
     return previewWorkspaceIdRef.current === workspaceId
       ? resolved
       : new Map<string, string>();
@@ -758,9 +760,9 @@ export function TerminalView({
     }
     try {
       fit.fit();
-		} catch {
-			// ResizeObserver will retry after the terminal becomes measurable.
-		}
+    } catch {
+      // ResizeObserver will retry after the terminal becomes measurable.
+    }
     termRef.current = term;
     fitRef.current = fit;
     const linkProvider = registerTerminalLinkProvider(
@@ -770,32 +772,32 @@ export function TerminalView({
     );
 
     const imeFallback = new TerminalImeFallbackTracker();
-		const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
-		const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
-			const textarea = term.textarea;
-			const value = textarea?.value ?? "";
-			const selectionStart = textarea?.selectionStart ?? value.length;
-			return {
-				value,
-				selectionStart,
-				selectionEnd: textarea?.selectionEnd ?? selectionStart,
-			};
-		};
-		let imeTextareaTimer: number | null = null;
-		let terminalCompositionActive = false;
-		let compositionSettleTimer: number | null = null;
-		let nativePasteFallbackTimer: number | null = null;
-		let pasteTextareaClearTimer: number | null = null;
-		let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
-		let pastePaneIdBeforeInput: string | null = null;
-		let lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+    const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
+    const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
+      const textarea = term.textarea;
+      const value = textarea?.value ?? "";
+      const selectionStart = textarea?.selectionStart ?? value.length;
+      return {
+        value,
+        selectionStart,
+        selectionEnd: textarea?.selectionEnd ?? selectionStart,
+      };
+    };
+    let imeTextareaTimer: number | null = null;
+    let terminalCompositionActive = false;
+    let compositionSettleTimer: number | null = null;
+    let nativePasteFallbackTimer: number | null = null;
+    let pasteTextareaClearTimer: number | null = null;
+    let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
+    let pastePaneIdBeforeInput: string | null = null;
+    let lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
     term.onData((data) => {
-			const unsuppressedData = imeTextareaFallback.recordXtermData(data);
-			if (!unsuppressedData) return;
+      const unsuppressedData = imeTextareaFallback.recordXtermData(data);
+      if (!unsuppressedData) return;
       const dataAt = performance.now();
-			const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
+      const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
       if (!shouldSend) return;
-			const bytes = new TextEncoder().encode(unsuppressedData);
+      const bytes = new TextEncoder().encode(unsuppressedData);
       sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
     });
 
@@ -858,13 +860,13 @@ export function TerminalView({
       const bytes = new TextEncoder().encode(text);
       sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
     };
-		const pasteText = async (
-			text: string,
-			destinationPaneId: string | null = paneIdRef.current ?? null,
-		) => {
+    const pasteText = async (
+      text: string,
+      destinationPaneId: string | null = paneIdRef.current ?? null,
+    ) => {
       if (!text) return;
-			if (destinationPaneId) {
-				const request = terminalPasteRequest(destinationPaneId, text);
+      if (destinationPaneId) {
+        const request = terminalPasteRequest(destinationPaneId, text);
         await bridge.call(request.method, request.params);
         return;
       }
@@ -875,7 +877,7 @@ export function TerminalView({
       }
       sendText(text);
     };
-		const sendMissingImeText = (
+    const sendMissingImeText = (
       text: string,
       eventTime: number,
       observedAt: number,
@@ -883,40 +885,40 @@ export function TerminalView({
       const shouldSend = imeFallback.recordInput(text, eventTime, observedAt);
       if (shouldSend) sendText(text);
     };
-		const cancelImeTextareaFallback = () => {
-			if (imeTextareaTimer !== null) {
-				window.clearTimeout(imeTextareaTimer);
-				imeTextareaTimer = null;
-			}
-			imeTextareaFallback.cancel();
-		};
-		const cancelCompositionSettle = () => {
-			if (compositionSettleTimer === null) return;
-			window.clearTimeout(compositionSettleTimer);
-			compositionSettleTimer = null;
-		};
-		const cancelNativePasteFallback = () => {
-			if (nativePasteFallbackTimer === null) return;
-			window.clearTimeout(nativePasteFallbackTimer);
-			nativePasteFallbackTimer = null;
-		};
-		const cancelPasteTextareaClear = () => {
-			if (pasteTextareaClearTimer === null) return;
-			window.clearTimeout(pasteTextareaClearTimer);
-			pasteTextareaClearTimer = null;
-		};
-		let pasteOperationCount = 0;
-		const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
-			pasteOperationCount += 1;
-			setPasteLoading(true);
-			try {
-				return await operation();
-			} finally {
-				pasteOperationCount -= 1;
-				if (pasteOperationCount === 0) setPasteLoading(false);
-			}
-		};
-		const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
+    const cancelImeTextareaFallback = () => {
+      if (imeTextareaTimer !== null) {
+        window.clearTimeout(imeTextareaTimer);
+        imeTextareaTimer = null;
+      }
+      imeTextareaFallback.cancel();
+    };
+    const cancelCompositionSettle = () => {
+      if (compositionSettleTimer === null) return;
+      window.clearTimeout(compositionSettleTimer);
+      compositionSettleTimer = null;
+    };
+    const cancelNativePasteFallback = () => {
+      if (nativePasteFallbackTimer === null) return;
+      window.clearTimeout(nativePasteFallbackTimer);
+      nativePasteFallbackTimer = null;
+    };
+    const cancelPasteTextareaClear = () => {
+      if (pasteTextareaClearTimer === null) return;
+      window.clearTimeout(pasteTextareaClearTimer);
+      pasteTextareaClearTimer = null;
+    };
+    let pasteOperationCount = 0;
+    const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
+      pasteOperationCount += 1;
+      setPasteLoading(true);
+      try {
+        return await operation();
+      } finally {
+        pasteOperationCount -= 1;
+        if (pasteOperationCount === 0) setPasteLoading(false);
+      }
+    };
+    const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
       const file =
         blob instanceof File
           ? blob
@@ -924,75 +926,75 @@ export function TerminalView({
               type: blob.type || "image/png",
             });
       const path = await uploadImage(file);
-			await pasteText(path, destinationPaneId);
+      await pasteText(path, destinationPaneId);
     };
     let clipboardPasteInFlight = false;
     const pasteFromBrowserClipboard = async () => {
       if (clipboardPasteInFlight) return;
       clipboardPasteInFlight = true;
-			const destinationPaneId = paneIdRef.current ?? null;
+      const destinationPaneId = paneIdRef.current ?? null;
       try {
-				await runPasteOperation(async () => {
-        if (!navigator.clipboard) {
-          throw new Error("browser clipboard API is unavailable");
-        }
-        if (navigator.clipboard.read) {
-          const items = await withTimeout(
-            navigator.clipboard.read(),
-            CLIPBOARD_READ_TIMEOUT_MS,
-            "读取剪贴板超时",
-          );
-          for (const item of items) {
-            const imageType = item.types.find((type) =>
-              type.startsWith("image/"),
+        await runPasteOperation(async () => {
+          if (!navigator.clipboard) {
+            throw new Error("browser clipboard API is unavailable");
+          }
+          if (navigator.clipboard.read) {
+            const items = await withTimeout(
+              navigator.clipboard.read(),
+              CLIPBOARD_READ_TIMEOUT_MS,
+              "读取剪贴板超时",
             );
-            if (imageType) {
-              const blob = await withTimeout(
-                item.getType(imageType),
-                CLIPBOARD_READ_TIMEOUT_MS,
-                "读取剪贴板图片超时",
+            for (const item of items) {
+              const imageType = item.types.find((type) =>
+                type.startsWith("image/"),
               );
-								await pasteImage(blob, destinationPaneId);
-              return;
+              if (imageType) {
+                const blob = await withTimeout(
+                  item.getType(imageType),
+                  CLIPBOARD_READ_TIMEOUT_MS,
+                  "读取剪贴板图片超时",
+                );
+                await pasteImage(blob, destinationPaneId);
+                return;
+              }
             }
-          }
-          for (const item of items) {
-            if (item.types.includes("text/plain")) {
-              const blob = await withTimeout(
-                item.getType("text/plain"),
-                CLIPBOARD_READ_TIMEOUT_MS,
-                "读取剪贴板文本超时",
-              );
-              const text = await withTimeout(
-                blob.text(),
-                CLIPBOARD_READ_TIMEOUT_MS,
-                "读取剪贴板文本超时",
-              );
-								await pasteText(text, destinationPaneId);
-              return;
+            for (const item of items) {
+              if (item.types.includes("text/plain")) {
+                const blob = await withTimeout(
+                  item.getType("text/plain"),
+                  CLIPBOARD_READ_TIMEOUT_MS,
+                  "读取剪贴板文本超时",
+                );
+                const text = await withTimeout(
+                  blob.text(),
+                  CLIPBOARD_READ_TIMEOUT_MS,
+                  "读取剪贴板文本超时",
+                );
+                await pasteText(text, destinationPaneId);
+                return;
+              }
             }
+            return;
           }
-          return;
-        }
-        const text = await withTimeout(
-          navigator.clipboard.readText(),
-          CLIPBOARD_READ_TIMEOUT_MS,
-          "读取剪贴板文本超时",
-        );
-					await pasteText(text, destinationPaneId);
-				});
+          const text = await withTimeout(
+            navigator.clipboard.readText(),
+            CLIPBOARD_READ_TIMEOUT_MS,
+            "读取剪贴板文本超时",
+          );
+          await pasteText(text, destinationPaneId);
+        });
       } finally {
         clipboardPasteInFlight = false;
       }
     };
     const applePlatform = isApplePlatform();
-		const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
+    const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
     const shouldHandleCtrlVPaste = !applePlatform;
 
     term.attachCustomKeyEventHandler((e) => {
-			if (e.type === "keydown" && e.keyCode !== 229) {
-				imeTextareaFallback.cancelPending();
-			}
+      if (e.type === "keydown" && e.keyCode !== 229) {
+        imeTextareaFallback.cancelPending();
+      }
       const modifiedEnter = modifiedEnterSequence(e);
       if (modifiedEnter) {
         e.preventDefault();
@@ -1262,9 +1264,7 @@ export function TerminalView({
     const onPaste = async (e: ClipboardEvent) => {
       if (!isActivePaneRef.current) return;
       const items = Array.from(e.clipboardData?.items ?? []);
-      const img = items
-        .find((it) => it.type.startsWith("image/"))
-        ?.getAsFile();
+      const img = items.find((it) => it.type.startsWith("image/"))?.getAsFile();
       const text = img ? "" : (e.clipboardData?.getData("text/plain") ?? "");
       const active = document.activeElement;
       const target = e.target;
@@ -1331,7 +1331,10 @@ export function TerminalView({
       if (!selectedText) return;
       e.preventDefault();
       e.stopPropagation();
-      e.clipboardData.setData("text/plain", trimCopiedLinePadding(selectedText));
+      e.clipboardData.setData(
+        "text/plain",
+        trimCopiedLinePadding(selectedText),
+      );
     };
     container.addEventListener("copy", onCopy, { capture: true });
 
@@ -1438,28 +1441,28 @@ export function TerminalView({
       resizeSync.dispose();
       resizeSyncRef.current = null;
       attachWatchdogRef.current?.cancel();
-			cancelImeTextareaFallback();
-			cancelCompositionSettle();
-			cancelNativePasteFallback();
-			cancelPasteTextareaClear();
-			term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
-				capture: true,
-			});
-			term.textarea?.removeEventListener("keyup", onTerminalKeyUp, {
-				capture: true,
-			});
-			term.textarea?.removeEventListener(
-				"compositionstart",
-				onTerminalCompositionStart,
-				{ capture: true },
-			);
-			term.textarea?.removeEventListener(
-				"compositionend",
-				onTerminalCompositionEnd,
-			);
-			term.textarea?.removeEventListener("blur", onTerminalBlur, {
-				capture: true,
-			});
+      cancelImeTextareaFallback();
+      cancelCompositionSettle();
+      cancelNativePasteFallback();
+      cancelPasteTextareaClear();
+      term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
+        capture: true,
+      });
+      term.textarea?.removeEventListener("keyup", onTerminalKeyUp, {
+        capture: true,
+      });
+      term.textarea?.removeEventListener(
+        "compositionstart",
+        onTerminalCompositionStart,
+        { capture: true },
+      );
+      term.textarea?.removeEventListener(
+        "compositionend",
+        onTerminalCompositionEnd,
+      );
+      term.textarea?.removeEventListener("blur", onTerminalBlur, {
+        capture: true,
+      });
       term.textarea?.removeEventListener("input", onTerminalTextInput, {
         capture: true,
       });
@@ -1543,10 +1546,7 @@ export function TerminalView({
     if (attachedRef.current === paneTerminalId) return;
     if (attachingRef.current === paneTerminalId) return;
     const terminalId = paneTerminalId;
-    const staleTerminalIds = [
-      attachedRef.current,
-      attachingRef.current,
-    ].filter(
+    const staleTerminalIds = [attachedRef.current, attachingRef.current].filter(
       (id, index, ids): id is string =>
         !!id && id !== terminalId && ids.indexOf(id) === index,
     );
@@ -1603,24 +1603,20 @@ export function TerminalView({
             const watchdogMs = terminalAttachWatchdogMs(
               performance.now() - attachStartedAt,
             );
-            attachWatchdogRef.current?.arm(
-              attachAttempt,
-              watchdogMs,
-              () => {
-                if (desiredTerminalRef.current !== terminalId) return;
-                attachTimeoutCountRef.current += 1;
-                attachedRef.current = null;
-                attachingRef.current = null;
-                void bridge
-                  .call("terminal.detach", { terminal_id: terminalId })
-                  .catch(() => null);
-                if (attachTimeoutCountRef.current > 2) {
-                  setTerminalLoading(false);
-                  return;
-                }
-                setAttachRetry((value) => value + 1);
-              },
-            );
+            attachWatchdogRef.current?.arm(attachAttempt, watchdogMs, () => {
+              if (desiredTerminalRef.current !== terminalId) return;
+              attachTimeoutCountRef.current += 1;
+              attachedRef.current = null;
+              attachingRef.current = null;
+              void bridge
+                .call("terminal.detach", { terminal_id: terminalId })
+                .catch(() => null);
+              if (attachTimeoutCountRef.current > 2) {
+                setTerminalLoading(false);
+                return;
+              }
+              setAttachRetry((value) => value + 1);
+            });
           }
         },
         (e) => {
@@ -1629,9 +1625,7 @@ export function TerminalView({
           if (desiredTerminalRef.current === terminalId) {
             attachedRef.current = null;
             setTerminalLoading(false);
-            setTerminalAttachError(
-              e instanceof Error ? e.message : String(e),
-            );
+            setTerminalAttachError(e instanceof Error ? e.message : String(e));
           }
           console.error("[term] attach failed", e);
         },
@@ -1753,9 +1747,11 @@ export function TerminalView({
             <div className="terminal-mobile-keys-panel">
               <div
                 className="terminal-mobile-keys-grid"
-                style={{
-                  "--mobile-shortcut-columns": visibleMobileShortcutColumns,
-                } as CSSProperties}
+                style={
+                  {
+                    "--mobile-shortcut-columns": visibleMobileShortcutColumns,
+                  } as CSSProperties
+                }
               >
                 {visibleMobileShortcutRows.map((row, rowIndex) => (
                   <div

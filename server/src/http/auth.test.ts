@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthHandlers } from "./auth";
-import {
-  browserUrlFor,
-  withLoginToken,
-} from "../config/server-config";
+import { browserUrlFor, withLoginToken } from "../config/server-config";
 
 function cookieHeader(response: Response): string {
   const cookie = response.headers.get("set-cookie");
@@ -49,9 +46,7 @@ describe("generated token login", () => {
     );
 
     expect(response?.status).toBe(303);
-    expect(response?.headers.get("location")).toBe(
-      "/workspace?view=terminal",
-    );
+    expect(response?.headers.get("location")).toBe("/workspace?view=terminal");
     expect(response?.headers.get("cache-control")).toBe("no-store");
     expect(response?.headers.get("referrer-policy")).toBe("no-referrer");
     expect(
@@ -115,9 +110,9 @@ describe("generated token login", () => {
   });
 
   test("builds an encoded token URL for local and LAN startup output", () => {
-    expect(
-      withLoginToken(browserUrlFor("0.0.0.0", 8787), "secret token"),
-    ).toBe("http://localhost:8787/?token=secret+token");
+    expect(withLoginToken(browserUrlFor("0.0.0.0", 8787), "secret token")).toBe(
+      "http://localhost:8787/?token=secret+token",
+    );
   });
 
   test("rejects an empty authentication secret", () => {

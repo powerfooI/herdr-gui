@@ -11,9 +11,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  runServiceCommand,
-} from "./service-manager";
+import { runServiceCommand } from "./service-manager";
 import {
   renderLaunchdService,
   renderSystemdService,
@@ -67,7 +65,7 @@ describe("service definition rendering", () => {
     );
     expect(definition).toContain("<key>KeepAlive</key>");
     expect(definition).toContain("<key>HERDR_GUI_RESTART_SUPERVISOR</key>");
-    expect(definition).toContain('exec &quot;$2&quot;');
+    expect(definition).toContain("exec &quot;$2&quot;");
   });
 });
 
@@ -99,21 +97,11 @@ describe("service commands", () => {
         quiet: false,
       },
       {
-        argv: [
-          "systemctl",
-          "--user",
-          "enable",
-          "herdr-gui.service",
-        ],
+        argv: ["systemctl", "--user", "enable", "herdr-gui.service"],
         quiet: false,
       },
       {
-        argv: [
-          "systemctl",
-          "--user",
-          "restart",
-          "herdr-gui.service",
-        ],
+        argv: ["systemctl", "--user", "restart", "herdr-gui.service"],
         quiet: false,
       },
     ]);
@@ -124,12 +112,7 @@ describe("service commands", () => {
       "user",
       "herdr-gui.service",
     );
-    const configPath = join(
-      homeDir,
-      ".config",
-      "herdr-gui",
-      "herdr-gui.env",
-    );
+    const configPath = join(homeDir, ".config", "herdr-gui", "herdr-gui.env");
     expect(readFileSync(definitionPath, "utf8")).toContain(
       "ExecStart=/opt/herdr-gui-test/bin/herdr-gui",
     );
@@ -243,12 +226,7 @@ describe("service commands", () => {
 
   test("preserves an existing environment file during reinstall", () => {
     const homeDir = tempHome();
-    const configPath = join(
-      homeDir,
-      ".config",
-      "herdr-gui",
-      "herdr-gui.env",
-    );
+    const configPath = join(homeDir, ".config", "herdr-gui", "herdr-gui.env");
     mkdirSync(join(homeDir, ".config", "herdr-gui"), { recursive: true });
     writeFileSync(configPath, "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=secret\n");
     chmodSync(configPath, 0o644);
@@ -286,8 +264,7 @@ describe("service commands", () => {
     const binaryPath = join(homeDir, ".local", "bin", "herdr-gui");
     const wrapperPath = join(homeDir, ".local", "libexec", "service-wrapper");
     const wrapperCommand =
-      `${wrapperPath} --service example -- ` +
-      `${binaryPath} --host 0.0.0.0`;
+      `${wrapperPath} --service example -- ` + `${binaryPath} --host 0.0.0.0`;
     mkdirSync(join(homeDir, ".config", "systemd", "user"), {
       recursive: true,
     });
@@ -421,12 +398,7 @@ describe("service commands", () => {
     ).toThrow();
     expect(() =>
       readFileSync(
-        join(
-          homeDir,
-          "Library",
-          "LaunchAgents",
-          "dev.herdr.herdr-gui.plist",
-        ),
+        join(homeDir, "Library", "LaunchAgents", "dev.herdr.herdr-gui.plist"),
         "utf8",
       ),
     ).toThrow();
@@ -493,11 +465,7 @@ describe("service commands", () => {
     expect(() => readFileSync(plistPath, "utf8")).toThrow();
     expect(commands).toEqual([
       {
-        argv: [
-          "launchctl",
-          "print",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "print", "gui/501/dev.herdr.herdr-gui"],
         quiet: true,
       },
       {
@@ -509,28 +477,15 @@ describe("service commands", () => {
         quiet: false,
       },
       {
-        argv: [
-          "launchctl",
-          "kickstart",
-          "-k",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "kickstart", "-k", "gui/501/dev.herdr.herdr-gui"],
         quiet: false,
       },
       {
-        argv: [
-          "launchctl",
-          "print",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "print", "gui/501/dev.herdr.herdr-gui"],
         quiet: true,
       },
       {
-        argv: [
-          "launchctl",
-          "bootout",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "bootout", "gui/501/dev.herdr.herdr-gui"],
         quiet: false,
       },
       {
@@ -538,28 +493,20 @@ describe("service commands", () => {
         quiet: false,
       },
       {
-        argv: [
-          "launchctl",
-          "print",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "print", "gui/501/dev.herdr.herdr-gui"],
         quiet: true,
       },
       {
-        argv: [
-          "launchctl",
-          "bootout",
-          "gui/501/dev.herdr.herdr-gui",
-        ],
+        argv: ["launchctl", "bootout", "gui/501/dev.herdr.herdr-gui"],
         quiet: false,
       },
     ]);
-    expect(readFileSync(join(
-      homeDir,
-      ".config",
-      "herdr-gui",
-      "herdr-gui.env",
-    ), "utf8")).toContain("HOST=0.0.0.0");
+    expect(
+      readFileSync(
+        join(homeDir, ".config", "herdr-gui", "herdr-gui.env"),
+        "utf8",
+      ),
+    ).toContain("HOST=0.0.0.0");
   });
 
   test("does not install a development runtime as a service", () => {
@@ -642,8 +589,7 @@ describe("service commands", () => {
     );
     const code = runServiceCommand(["service", "uninstall"], {
       runtime,
-      runCommand: (argv) =>
-        argv.includes("disable") ? 1 : 0,
+      runCommand: (argv) => (argv.includes("disable") ? 1 : 0),
       log: () => undefined,
     });
 

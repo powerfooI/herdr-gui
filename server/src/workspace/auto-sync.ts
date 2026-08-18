@@ -23,11 +23,10 @@ type ProcessResult = {
 };
 
 function processMessage(result: ProcessResult, fallback: string): string {
-  return (
-    result.stderr.trim() ||
-    result.stdout.trim() ||
-    fallback
-  ).slice(0, 2_000);
+  return (result.stderr.trim() || result.stdout.trim() || fallback).slice(
+    0,
+    2_000,
+  );
 }
 
 function configuredCheckoutPath(
@@ -94,7 +93,9 @@ export async function syncWorkspaceBranch({
 
   // Automated merges are only safe when no user changes can be overwritten or
   // mixed into conflict recovery.
-  const statusResult = await runGit("status --porcelain=v1 --untracked-files=normal");
+  const statusResult = await runGit(
+    "status --porcelain=v1 --untracked-files=normal",
+  );
   if (statusResult.code !== 0) {
     return {
       last_status: "failed",
@@ -247,7 +248,9 @@ export function createWorkspaceAutoSync(args: {
     try {
       const settings = await readGuiSettings();
       const host = args.sshHost();
-      const enabledEntries = Object.entries(settings.workspace_auto_sync).filter(
+      const enabledEntries = Object.entries(
+        settings.workspace_auto_sync,
+      ).filter(
         ([key, entry]) =>
           entry.enabled && !!configuredCheckoutPath(key, entry, host),
       );
@@ -257,7 +260,10 @@ export function createWorkspaceAutoSync(args: {
       const workspaces = Array.isArray((workspaceResult as any)?.workspaces)
         ? (workspaceResult as any).workspaces
         : [];
-      const workspaceByKey = new Map<string, { workspace: any; root: string }>();
+      const workspaceByKey = new Map<
+        string,
+        { workspace: any; root: string }
+      >();
       const enabledKeys = new Set(enabledEntries.map(([key]) => key));
       const enabledRoots = enabledEntries
         .map(([key, entry]) => ({
@@ -310,8 +316,7 @@ export function createWorkspaceAutoSync(args: {
           : Number.NaN;
         const intervalMs =
           (entry.interval_minutes ||
-            DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES) *
-          60_000;
+            DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES) * 60_000;
         if (
           !forced &&
           Number.isFinite(lastRunAt) &&

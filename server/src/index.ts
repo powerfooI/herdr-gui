@@ -237,7 +237,10 @@ function logDetail(value: string): string {
   return value.replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
-function parseRpcMeta(raw: string): { id: string | null; method: string | null } {
+function parseRpcMeta(raw: string): {
+  id: string | null;
+  method: string | null;
+} {
   try {
     const msg = JSON.parse(raw);
     return {
@@ -270,7 +273,11 @@ function takeRpcOutcome(ws: ServerWebSocket<unknown>, id: string | null) {
   return outcome;
 }
 
-function shouldLogRpc(method: string | null, elapsedMs: number, failed: boolean) {
+function shouldLogRpc(
+  method: string | null,
+  elapsedMs: number,
+  failed: boolean,
+) {
   if (!method) return failed;
   if (failed) return true;
   if (method === "bridge.ping" || method === "bridge.status") return false;
@@ -302,13 +309,7 @@ function logRpc(
 function summarizeHerdrEvent(event: any): string {
   const type = String(event?.event ?? event?.type ?? "unknown");
   const data = event?.data && typeof event.data === "object" ? event.data : {};
-  const ids = [
-    "workspace_id",
-    "tab_id",
-    "pane_id",
-    "agent_id",
-    "terminal_id",
-  ]
+  const ids = ["workspace_id", "tab_id", "pane_id", "agent_id", "terminal_id"]
     .map((key) => {
       const value = data[key] ?? event?.[key];
       return typeof value === "string" && value ? `${key}=${value}` : "";
@@ -422,7 +423,11 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   try {
     req = JSON.parse(raw);
   } catch {
-    safeSend(ws, JSON.stringify({ error: { message: "bad json" } }), "bad-json");
+    safeSend(
+      ws,
+      JSON.stringify({ error: { message: "bad json" } }),
+      "bad-json",
+    );
     return;
   }
   const { id, method, params } = req;
@@ -438,11 +443,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   const sendError = (context: string, error: unknown) => {
     const message = (error as Error).message;
     markRpcError(ws, id, message);
-    safeSend(
-      ws,
-      JSON.stringify({ id, error: { message } }),
-      context,
-    );
+    safeSend(ws, JSON.stringify({ id, error: { message } }), context);
   };
   if (method === "bridge.ping") {
     safeSend(ws, JSON.stringify({ id, result: { ok: true } }), "bridge-ping");
@@ -495,15 +496,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "agent_history.get") {
     try {
-      const result = await readAgentMessageHistory(params ?? {}, (name, callParams) =>
-        herdr.call(name, callParams),
+      const result = await readAgentMessageHistory(
+        params ?? {},
+        (name, callParams) => herdr.call(name, callParams),
         agentSessionFiles,
       );
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "agent-history-get",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "agent-history-get");
     } catch (e) {
       sendError("agent-history-get-error", e);
     }
@@ -511,15 +509,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "agent_session.get") {
     try {
-      const result = await readAgentSessionSummary(params ?? {}, (name, callParams) =>
-        herdr.call(name, callParams),
+      const result = await readAgentSessionSummary(
+        params ?? {},
+        (name, callParams) => herdr.call(name, callParams),
         agentSessionFiles,
       );
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "agent-session-get",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "agent-session-get");
     } catch (e) {
       sendError("agent-session-get-error", e);
     }
@@ -528,11 +523,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "file.list") {
     try {
       const result = await listWorkspaceFiles(params ?? {});
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "file-list",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "file-list");
     } catch (e) {
       sendError("file-list-error", e);
     }
@@ -550,11 +541,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "file.read") {
     try {
       const result = await readWorkspaceFile(params ?? {});
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "file-read",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "file-read");
     } catch (e) {
       sendError("file-read-error", e);
     }
@@ -563,11 +550,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "git.diff_summary") {
     try {
       const result = await readGitDiffSummary(params ?? {});
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "git-diff-summary",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "git-diff-summary");
     } catch (e) {
       sendError("git-diff-summary-error", e);
     }
@@ -576,11 +559,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "git.diff_file") {
     try {
       const result = await readGitDiffFile(params ?? {});
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "git-diff-file",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "git-diff-file");
     } catch (e) {
       sendError("git-diff-file-error", e);
     }
@@ -590,11 +569,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     try {
       const result = await runGitPull(params ?? {});
       invalidateGitStatus(result.root);
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "git-pull",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "git-pull");
     } catch (e) {
       sendError("git-pull-error", e);
     }
@@ -642,10 +617,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
               baseSync.root,
           }
         : { cwd: baseSync.root };
-      const setupHook = await runWorktreeSetupHook(
-        result,
-        hookSourceWorkspace,
-      );
+      const setupHook = await runWorktreeSetupHook(result, hookSourceWorkspace);
       safeSend(
         ws,
         JSON.stringify({
@@ -697,7 +669,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       const result = await worktreeRemovalCoordinator.run(
         workspaceId,
         async () => {
-          const removeHookContext = await worktreeRemoveHookContext(params ?? {});
+          const removeHookContext = await worktreeRemoveHookContext(
+            params ?? {},
+          );
           const checkoutState = removeHookContext
             ? await worktreeRemovalRuntime
                 .inspectCheckout(removeHookContext.checkoutPath)
@@ -711,7 +685,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
                   sourceCheckoutPath: removeHookContext.sourceCheckoutPath,
                   repoSettingsKey: removeHookContext.repoSettingsKey,
                 })
-              : ({ event: "worktree.before_remove", status: "skipped" } as const);
+              : ({
+                  event: "worktree.before_remove",
+                  status: "skipped",
+                } as const);
           if (beforeRemoveHook.status === "failed") {
             markRpcError(
               ws,
@@ -755,11 +732,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           };
         },
       );
-      safeSend(
-        ws,
-        JSON.stringify({ id, result }),
-        "worktree-remove",
-      );
+      safeSend(ws, JSON.stringify({ id, result }), "worktree-remove");
     } catch (e) {
       sendError("worktree-remove-error", e);
     }
@@ -841,7 +814,10 @@ async function main() {
       if (url.pathname === "/api/upload-image" && req.method === "POST") {
         return handleImageUpload(req);
       }
-      if (url.pathname === "/api/agent-session/download" && req.method === "GET") {
+      if (
+        url.pathname === "/api/agent-session/download" &&
+        req.method === "GET"
+      ) {
         return downloadAgentSessionFile(
           {
             pane_id: url.searchParams.get("pane_id"),
@@ -883,7 +859,10 @@ async function main() {
           );
           return Response.json(result);
         } catch (e) {
-          return Response.json({ error: (e as Error).message }, { status: 400 });
+          return Response.json(
+            { error: (e as Error).message },
+            { status: 400 },
+          );
         }
       }
       if (url.pathname === "/api/file/delete" && req.method === "POST") {
@@ -894,7 +873,10 @@ async function main() {
           });
           return Response.json(result);
         } catch (e) {
-          return Response.json({ error: (e as Error).message }, { status: 400 });
+          return Response.json(
+            { error: (e as Error).message },
+            { status: 400 },
+          );
         }
       }
       // Everything else: serve the built frontend (embedded or on-disk).
@@ -910,7 +892,11 @@ async function main() {
           `clients=${clients.size}`,
         );
         terminalBridge.browserClientCountChanged(clients.size);
-        safeSend(ws, JSON.stringify({ hello: true, socket: socketPath }), "hello");
+        safeSend(
+          ws,
+          JSON.stringify({ hello: true, socket: socketPath }),
+          "hello",
+        );
       },
       message(ws, message) {
         const text = typeof message === "string" ? message : message.toString();
@@ -952,7 +938,9 @@ async function main() {
   // Start background Git work only after the HTTP listener is bound. A failed
   // startup must never mutate repositories as a side effect.
   workspaceAutoSync.start();
-  console.log(`[bridge] listening on http://${config.host}:${config.port}  (ws /ws)`);
+  console.log(
+    `[bridge] listening on http://${config.host}:${config.port}  (ws /ws)`,
+  );
   if (config.authRequired) {
     if (config.generatedAuthTokenPath) {
       console.log(
@@ -973,10 +961,7 @@ async function main() {
   console.log(`[bridge] browser URL: ${browserUrl}`);
   if (isAnyHost(config.host)) {
     const lanUrls = getLanIPs().map((ip) =>
-      withLoginToken(
-        `http://${ip}:${config.port}`,
-        config.generatedAuthToken,
-      ),
+      withLoginToken(`http://${ip}:${config.port}`, config.generatedAuthToken),
     );
     if (lanUrls.length > 0) {
       console.log("[bridge] accessible from your LAN at:");

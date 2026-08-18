@@ -24,7 +24,10 @@ function modelNameFromRecord(record: Record<string, unknown>) {
   );
 }
 
-function agentVersionFromRecords(agent: string, records: Record<string, unknown>[]) {
+function agentVersionFromRecords(
+  agent: string,
+  records: Record<string, unknown>[],
+) {
   for (const record of records) {
     const payload = isRecord(record.payload) ? record.payload : null;
     const version =
@@ -43,7 +46,10 @@ function agentVersionFromRecords(agent: string, records: Record<string, unknown>
   return agent === "kimi" ? "kimi-code" : "unknown";
 }
 
-function sessionIdFromRecords(file: SessionFile, records: Record<string, unknown>[]) {
+function sessionIdFromRecords(
+  file: SessionFile,
+  records: Record<string, unknown>[],
+) {
   if (file.sessionId) return file.sessionId;
   for (const record of records) {
     const payload = isRecord(record.payload) ? record.payload : null;
@@ -215,7 +221,8 @@ function projectCodexTrajectory(
       if (!text) return;
       steps.push({
         timestamp,
-        source: role === "user" ? "user" : role === "assistant" ? "agent" : "system",
+        source:
+          role === "user" ? "user" : role === "assistant" ? "agent" : "system",
         message: text,
         metrics: tokenUsageToMetrics(tokenUsageFrom(payload.usage)),
       });
@@ -229,7 +236,9 @@ function projectCodexTrajectory(
         extra: { record_type: type },
       });
     } else if (type.includes("output") || type.includes("result")) {
-      const content = cleanMessageText(textFromContent(payload.output ?? payload.content));
+      const content = cleanMessageText(
+        textFromContent(payload.output ?? payload.content),
+      );
       steps.push({
         timestamp,
         source: "system",
@@ -237,7 +246,8 @@ function projectCodexTrajectory(
         observation: {
           results: [
             {
-              source_call_id: stringValue(payload.call_id) || stringValue(payload.id),
+              source_call_id:
+                stringValue(payload.call_id) || stringValue(payload.id),
               content: content || stringValue(payload.status) || type,
             },
           ],
@@ -257,7 +267,9 @@ function projectCodexTrajectory(
         tool_calls: [
           {
             tool_call_id:
-              stringValue(payload.call_id) || stringValue(payload.id) || `${index}`,
+              stringValue(payload.call_id) ||
+              stringValue(payload.id) ||
+              `${index}`,
             function_name: name,
             arguments: toolArguments(payload.arguments ?? payload.input),
             extra: { record_type: type },
@@ -265,7 +277,9 @@ function projectCodexTrajectory(
         ],
       });
     } else if (type.includes("tool")) {
-      const content = cleanMessageText(textFromContent(payload.output ?? payload.content));
+      const content = cleanMessageText(
+        textFromContent(payload.output ?? payload.content),
+      );
       steps.push({
         timestamp,
         source: "system",
@@ -273,7 +287,8 @@ function projectCodexTrajectory(
         observation: {
           results: [
             {
-              source_call_id: stringValue(payload.call_id) || stringValue(payload.id),
+              source_call_id:
+                stringValue(payload.call_id) || stringValue(payload.id),
               content: content || stringValue(payload.status) || type,
             },
           ],
@@ -296,21 +311,30 @@ function projectClaudeTrajectory(
     if (type !== "user" && type !== "assistant" && type !== "system") return;
     const message = isRecord(record.message) ? record.message : record;
     const role = stringValue(message.role) || type;
-    const text = cleanMessageText(textFromContent(message.content ?? record.content));
+    const text = cleanMessageText(
+      textFromContent(message.content ?? record.content),
+    );
     const usage = tokenUsageForRecord(record).usage;
     if (!text && !usage) return;
     steps.push({
       timestamp,
-      source: role === "user" ? "user" : role === "assistant" ? "agent" : "system",
+      source:
+        role === "user" ? "user" : role === "assistant" ? "agent" : "system",
       message: text || "Token usage",
       metrics: tokenUsageToMetrics(usage),
-      extra: { record_type: type, model: modelNameFromRecord(record) || undefined },
+      extra: {
+        record_type: type,
+        model: modelNameFromRecord(record) || undefined,
+      },
     });
   });
   return createTrajectory("claude", file, records, steps);
 }
 
-function projectKimiTrajectory(file: SessionFile, records: Record<string, unknown>[]) {
+function projectKimiTrajectory(
+  file: SessionFile,
+  records: Record<string, unknown>[],
+) {
   const steps: Omit<AtifStep, "step_id">[] = [];
   const agentStepsByModelStep = new Map<string, Omit<AtifStep, "step_id">>();
   let createdAt = file.mtimeMs;
@@ -320,7 +344,9 @@ function projectKimiTrajectory(file: SessionFile, records: Record<string, unknow
     if (Number.isFinite(raw) && raw > 0) createdAt = raw;
   });
   records.forEach((record, index) => {
-    const timestamp = new Date(timestampMs(record, createdAt, index)).toISOString();
+    const timestamp = new Date(
+      timestampMs(record, createdAt, index),
+    ).toISOString();
     const type = stringValue(record.type);
     if (type === "context.append_message" && isRecord(record.message)) {
       const role = stringValue(record.message.role);
@@ -400,7 +426,8 @@ function projectKimiTrajectory(file: SessionFile, records: Record<string, unknow
           results: [
             {
               source_call_id: stringValue(event.toolCallId),
-              content: content || (result.isError ? "Tool failed" : "Tool result"),
+              content:
+                content || (result.isError ? "Tool failed" : "Tool result"),
             },
           ],
         },
@@ -417,7 +444,10 @@ function projectKimiTrajectory(file: SessionFile, records: Record<string, unknow
   return createTrajectory("kimi", file, records, steps);
 }
 
-function projectPiTrajectory(file: SessionFile, records: Record<string, unknown>[]) {
+function projectPiTrajectory(
+  file: SessionFile,
+  records: Record<string, unknown>[],
+) {
   const steps: Omit<AtifStep, "step_id">[] = [];
   let modelName = file.modelName || "";
 
@@ -539,7 +569,10 @@ function projectPiTrajectory(file: SessionFile, records: Record<string, unknown>
 
 // chat_history.jsonl is Grok's normalized completed-message stream. Projecting
 // it avoids the duplicate chunks present in the live updates transcript.
-function projectGrokTrajectory(file: SessionFile, records: Record<string, unknown>[]) {
+function projectGrokTrajectory(
+  file: SessionFile,
+  records: Record<string, unknown>[],
+) {
   const steps: Omit<AtifStep, "step_id">[] = [];
   const createdAt = file.createdAtMs ?? file.mtimeMs;
   records.forEach((record, index) => {
@@ -587,13 +620,11 @@ function projectGrokTrajectory(file: SessionFile, records: Record<string, unknow
     if (type === "assistant") {
       const text = cleanMessageText(textFromContent(record.content));
       const toolCalls = Array.isArray(record.tool_calls)
-        ? record.tool_calls
-            .filter(isRecord)
-            .map((call, callIndex) => ({
-              tool_call_id: stringValue(call.id) || `${index}:${callIndex}`,
-              function_name: stringValue(call.name) || "tool",
-              arguments: toolArguments(call.arguments),
-            }))
+        ? record.tool_calls.filter(isRecord).map((call, callIndex) => ({
+            tool_call_id: stringValue(call.id) || `${index}:${callIndex}`,
+            function_name: stringValue(call.name) || "tool",
+            arguments: toolArguments(call.arguments),
+          }))
         : [];
       if (!text && toolCalls.length === 0) return;
       steps.push({

@@ -13,9 +13,7 @@ export interface WorktreeBaseSyncResult {
   stderr: string;
 }
 
-type GitRootResolver = (
-  workspaceId: string,
-) => Promise<{ root: string }>;
+type GitRootResolver = (workspaceId: string) => Promise<{ root: string }>;
 
 function processError(
   result: { code: number; stdout: string; stderr: string },

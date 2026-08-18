@@ -37,10 +37,7 @@ export function createSettingsRpcHandler(args: {
     root: string;
   }>;
   workspaceAutoSyncIsRunning: (key: string) => boolean;
-  onWorkspaceAutoSyncSettingsChanged: (
-    key: string,
-    enabled: boolean,
-  ) => void;
+  onWorkspaceAutoSyncSettingsChanged: (key: string, enabled: boolean) => void;
   safeSend: (
     ws: ServerWebSocket<unknown>,
     payload: string,

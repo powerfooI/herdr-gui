@@ -70,9 +70,11 @@ export function createAgentSessionFileAccess(args: {
     );
     if (result.code !== 0) {
       throw new Error(
-        (result.stderr ||
+        (
+          result.stderr ||
           result.stdout.toString("utf8") ||
-          `remote session command exited ${result.code}`)
+          `remote session command exited ${result.code}`
+        )
           .trim()
           .slice(0, 1000),
       );
@@ -97,9 +99,11 @@ printf '%s\\t%s\\t%s\\n' "$size" "$mtime" "$path64"
     if (result.code === 44) return null;
     if (result.code !== 0) {
       throw new Error(
-        (result.stderr ||
+        (
+          result.stderr ||
           result.stdout.toString("utf8") ||
-          `remote session stat exited ${result.code}`)
+          `remote session stat exited ${result.code}`
+        )
           .trim()
           .slice(0, 1000),
       );
@@ -151,9 +155,11 @@ printf '%s\\t%s\\t%s\\n' "$size" "$latest_mtime" "$path64"
       if (result.code === 44) return null;
       if (result.code !== 0) {
         throw new Error(
-          (result.stderr ||
+          (
+            result.stderr ||
             result.stdout.toString("utf8") ||
-            `remote Pi session search exited ${result.code}`)
+            `remote Pi session search exited ${result.code}`
+          )
             .trim()
             .slice(0, 1000),
         );

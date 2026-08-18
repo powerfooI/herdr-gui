@@ -14,39 +14,76 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Global",
     shortcuts: [
       { keys: "Cmd/Ctrl+K", description: "Open or close the command menu" },
-      { keys: "Alt/Option+1 ... Alt/Option+9 in menu", description: "Run a numbered command menu action" },
+      {
+        keys: "Alt/Option+1 ... Alt/Option+9 in menu",
+        description: "Run a numbered command menu action",
+      },
       { keys: "Cmd+B", description: "Toggle the sidebar on desktop" },
-      { keys: "Ctrl+Tab / Ctrl+Shift+Tab", description: "Open the recent pane switcher" },
+      {
+        keys: "Ctrl+Tab / Ctrl+Shift+Tab",
+        description: "Open the recent pane switcher",
+      },
       { keys: "Cmd+T", description: "Create a tab in the focused workspace" },
       { keys: "Cmd+W", description: "Close the focused tab" },
-      { keys: "Cmd+Option+Left / Right", description: "Switch tabs in the focused workspace" },
+      {
+        keys: "Cmd+Option+Left / Right",
+        description: "Switch tabs in the focused workspace",
+      },
       { keys: "Ctrl+Shift+W", description: "Open Workspaces" },
       {
         keys: "Cmd/Ctrl + Shift + E",
         description: "Toggle the file explorer",
       },
       { keys: "Ctrl+Shift+G", description: "Open Diff Viewer" },
-      { keys: "Ctrl+1 ... Ctrl+9", description: "Switch tabs in the focused workspace" },
-      { keys: "Esc", description: "Dismiss toast notifications, update banners, menus, or dialogs" },
+      {
+        keys: "Ctrl+1 ... Ctrl+9",
+        description: "Switch tabs in the focused workspace",
+      },
+      {
+        keys: "Esc",
+        description:
+          "Dismiss toast notifications, update banners, menus, or dialogs",
+      },
     ],
   },
   {
     title: "Terminal",
     shortcuts: [
-      { keys: "PageUp / PageDown", description: "Scroll terminal history by one page" },
+      {
+        keys: "PageUp / PageDown",
+        description: "Scroll terminal history by one page",
+      },
       {
         keys: "Alt/Option+PageUp / PageDown",
         description: "Scroll terminal history by half a page",
       },
-      { keys: "Shift+Enter", description: "Send a multiline Enter sequence to the agent" },
+      {
+        keys: "Shift+Enter",
+        description: "Send a multiline Enter sequence to the agent",
+      },
       { keys: "Alt+Enter", description: "Send an Alt-modified Enter sequence" },
-      { keys: "Cmd+Left / Cmd+Up", description: "Move to the beginning of the current input line" },
-      { keys: "Cmd+Right / Cmd+Down", description: "Move to the end of the current input line" },
-      { keys: "Cmd+Backspace", description: "Delete from cursor to the beginning of the line" },
+      {
+        keys: "Cmd+Left / Cmd+Up",
+        description: "Move to the beginning of the current input line",
+      },
+      {
+        keys: "Cmd+Right / Cmd+Down",
+        description: "Move to the end of the current input line",
+      },
+      {
+        keys: "Cmd+Backspace",
+        description: "Delete from cursor to the beginning of the line",
+      },
       { keys: "Cmd+V", description: "Paste text or images on Apple platforms" },
-      { keys: "Ctrl+V", description: "Paste text or images on non-Apple platforms" },
+      {
+        keys: "Ctrl+V",
+        description: "Paste text or images on non-Apple platforms",
+      },
       { keys: "Cmd/Ctrl+Click link", description: "Open HTTP and HTTPS links" },
-      { keys: "Cmd/Ctrl+Click /path", description: "Preview workspace file paths from terminal output" },
+      {
+        keys: "Cmd/Ctrl+Click /path",
+        description: "Preview workspace file paths from terminal output",
+      },
       {
         keys: "Cmd/Ctrl + Shift + H",
         description: "Toggle agent message history for the active terminal",
@@ -65,11 +102,27 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Mobile Terminal",
     shortcuts: [
-      { keys: "Shortcut panel", description: "Send configured terminal keys from up to two aligned rows" },
-      { keys: "PgUp / PgDn", description: "Scroll terminal history by one page" },
-      { keys: "A-PgUp / A-PgDn", description: "Scroll terminal history by half a page" },
-      { keys: "Side buttons", description: "Run up to four configured actions at the terminal edge" },
-      { keys: "Menu", description: "Customize the 2-by-8 panel and four side buttons" },
+      {
+        keys: "Shortcut panel",
+        description:
+          "Send configured terminal keys from up to two aligned rows",
+      },
+      {
+        keys: "PgUp / PgDn",
+        description: "Scroll terminal history by one page",
+      },
+      {
+        keys: "A-PgUp / A-PgDn",
+        description: "Scroll terminal history by half a page",
+      },
+      {
+        keys: "Side buttons",
+        description: "Run up to four configured actions at the terminal edge",
+      },
+      {
+        keys: "Menu",
+        description: "Customize the 2-by-8 panel and four side buttons",
+      },
     ],
   },
 ];
@@ -122,7 +175,12 @@ export function ShortcutLookupDialog({
       >
         <div className="modal-head">
           <h2>Shortcut Lookup</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>
@@ -133,7 +191,10 @@ export function ShortcutLookupDialog({
               <h3>{group.title}</h3>
               <dl>
                 {group.shortcuts.map((shortcut) => (
-                  <div className="shortcut-row" key={`${group.title}-${shortcut.keys}`}>
+                  <div
+                    className="shortcut-row"
+                    key={`${group.title}-${shortcut.keys}`}
+                  >
                     <dt>
                       <kbd>{shortcut.keys}</kbd>
                     </dt>

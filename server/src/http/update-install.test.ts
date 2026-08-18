@@ -16,7 +16,9 @@ import { createUpdateHandlers, resolveUpdateTarget } from "./update";
 function createUpdateFixture({ badDigest = false } = {}) {
   const target = resolveUpdateTarget(process.platform, process.arch);
   if (!target) {
-    throw new Error(`unsupported test platform: ${process.platform}-${process.arch}`);
+    throw new Error(
+      `unsupported test platform: ${process.platform}-${process.arch}`,
+    );
   }
 
   const root = mkdtempSync(join(tmpdir(), "herdr-gui-update-test-"));
@@ -132,7 +134,9 @@ describe("automatic update installation", () => {
       expect(
         Bun.spawnSync([fixture.installPath, "--version"], {
           stdout: "pipe",
-        }).stdout.toString().trim(),
+        })
+          .stdout.toString()
+          .trim(),
       ).toBe("herdr-gui 9.8.7");
     } finally {
       fixture.cleanup();
@@ -168,7 +172,9 @@ describe("automatic update installation", () => {
         error: "downloaded archive checksum does not match update manifest",
       });
       expect(exitScheduled).toBe(false);
-      expect(readFileSync(fixture.installPath, "utf8")).toBe("old executable\n");
+      expect(readFileSync(fixture.installPath, "utf8")).toBe(
+        "old executable\n",
+      );
       expect(existsSync(`${fixture.installPath}.previous`)).toBe(false);
     } finally {
       fixture.cleanup();

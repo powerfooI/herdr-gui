@@ -116,7 +116,9 @@ export function createWorktreeParentStore({
     return (
       response?.workspaces?.find(
         (workspace: any) => checkoutPath(workspace) === path,
-      ) ?? directWorkspace ?? null
+      ) ??
+      directWorkspace ??
+      null
     );
   }
 

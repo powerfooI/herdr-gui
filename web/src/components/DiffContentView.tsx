@@ -1,4 +1,11 @@
-import { ChevronDown, ChevronRight, ChevronUp, FolderOpen, Search, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FolderOpen,
+  Search,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { html as diffToHtml } from "diff2html";
 import "diff2html/bundles/css/diff2html.min.css";
@@ -246,17 +253,18 @@ export function DiffContentView({
           file: diffFile,
           imagePreview,
           error: fileErrors[key] ?? null,
-          html: diffFile?.diff && !imagePreview
-            ? diffToHtml(diffFile.diff, {
-                drawFileList: false,
-                matching: "lines",
-                outputFormat:
-                  effectiveViewMode === "split"
-                    ? "side-by-side"
-                    : "line-by-line",
-                renderNothingWhenEmpty: false,
-              })
-            : "",
+          html:
+            diffFile?.diff && !imagePreview
+              ? diffToHtml(diffFile.diff, {
+                  drawFileList: false,
+                  matching: "lines",
+                  outputFormat:
+                    effectiveViewMode === "split"
+                      ? "side-by-side"
+                      : "line-by-line",
+                  renderNothingWhenEmpty: false,
+                })
+              : "",
         };
       }),
     [effectiveViewMode, fileErrors, filesByKey, visibleEntries],
@@ -345,8 +353,9 @@ export function DiffContentView({
     if (!activeEntryKey || !diffRef.current) return;
     requestAnimationFrame(() => {
       const target = Array.from(
-        diffRef.current?.querySelectorAll<HTMLElement>("[data-diff-entry-key]") ??
-          [],
+        diffRef.current?.querySelectorAll<HTMLElement>(
+          "[data-diff-entry-key]",
+        ) ?? [],
       ).find((element) => element.dataset.diffEntryKey === activeEntryKey);
       target?.scrollIntoView({ block: "start" });
     });
@@ -436,7 +445,8 @@ export function DiffContentView({
       focusSearch();
     };
     window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
   }, [focusSearch]);
 
   return (
@@ -641,11 +651,15 @@ export function DiffContentView({
                     ) : null}
                     {loadingFile ? (
                       <div className="diff-content-state">
-                        {sectionLoading ? <span className="file-loading-spinner" /> : null}
+                        {sectionLoading ? (
+                          <span className="file-loading-spinner" />
+                        ) : null}
                         Loading diff
                       </div>
                     ) : null}
-                    {section.file && !section.file.diff && !section.imagePreview ? (
+                    {section.file &&
+                    !section.file.diff &&
+                    !section.imagePreview ? (
                       <div className="diff-content-state">
                         No textual diff available.
                       </div>
@@ -657,7 +671,9 @@ export function DiffContentView({
                       />
                     ) : null}
                     {section.file?.truncated ? (
-                      <div className="diff-truncated">Diff truncated at 512 KB.</div>
+                      <div className="diff-truncated">
+                        Diff truncated at 512 KB.
+                      </div>
                     ) : null}
                     {section.html ? (
                       <div

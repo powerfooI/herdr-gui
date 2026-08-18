@@ -161,13 +161,17 @@ export function AutoSyncRepositoriesDialog({
                           ) : null}
                         </div>
                         {config.last_message ? (
-                          <p title={config.last_message}>{config.last_message}</p>
+                          <p title={config.last_message}>
+                            {config.last_message}
+                          </p>
                         ) : null}
                       </div>
                       <button
                         type="button"
                         role="switch"
-                        aria-label={"Automatic updates for " + configName(config)}
+                        aria-label={
+                          "Automatic updates for " + configName(config)
+                        }
                         aria-checked={config.enabled}
                         className={
                           "settings-switch" + (config.enabled ? " is-on" : "")

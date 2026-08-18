@@ -5,16 +5,23 @@ type CodePreviewDeps = Awaited<ReturnType<typeof importCodePreviewDeps>>;
 let depsPromise: Promise<CodePreviewDeps> | null = null;
 
 async function importCodePreviewDeps() {
-  const [codemirror, state, view, searchModule, language, highlight, jsonModule] =
-    await Promise.all([
-      import("codemirror"),
-      import("@codemirror/state"),
-      import("@codemirror/view"),
-      import("@codemirror/search"),
-      import("@codemirror/language"),
-      import("@lezer/highlight"),
-      import("@codemirror/lang-json"),
-    ]);
+  const [
+    codemirror,
+    state,
+    view,
+    searchModule,
+    language,
+    highlight,
+    jsonModule,
+  ] = await Promise.all([
+    import("codemirror"),
+    import("@codemirror/state"),
+    import("@codemirror/view"),
+    import("@codemirror/search"),
+    import("@codemirror/language"),
+    import("@lezer/highlight"),
+    import("@codemirror/lang-json"),
+  ]);
   const t = highlight.tags;
   const highlightStyle = language.HighlightStyle.define([
     { tag: t.comment, color: "var(--syntax-comment)", fontStyle: "italic" },
@@ -24,7 +31,10 @@ async function importCodePreviewDeps() {
     { tag: [t.propertyName, t.attributeName], color: "var(--syntax-property)" },
     { tag: [t.variableName], color: "var(--syntax-variable)" },
     { tag: [t.operator, t.compareOperator], color: "var(--syntax-operator)" },
-    { tag: [t.punctuation, t.separator, t.bracket], color: "var(--syntax-punctuation)" },
+    {
+      tag: [t.punctuation, t.separator, t.bracket],
+      color: "var(--syntax-punctuation)",
+    },
   ]);
   return {
     basicSetup: codemirror.basicSetup,
@@ -106,16 +116,19 @@ export function CodePreview({
                 padding: "0 10px 0 12px",
               },
               ".cm-activeLineGutter, .cm-activeLine": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                backgroundColor:
+                  "color-mix(in srgb, var(--accent) 10%, transparent)",
               },
               ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 32%, transparent) !important",
+                backgroundColor:
+                  "color-mix(in srgb, var(--accent) 32%, transparent) !important",
               },
-              ".cm-panels, .cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom": {
-                backgroundColor: "var(--panel)",
-                color: "var(--text)",
-                borderColor: "var(--border-soft)",
-              },
+              ".cm-panels, .cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom":
+                {
+                  backgroundColor: "var(--panel)",
+                  color: "var(--text)",
+                  borderColor: "var(--border-soft)",
+                },
               ".cm-panel.cm-search": {
                 display: "flex",
                 alignItems: "center",
@@ -168,9 +181,10 @@ export function CodePreview({
                 padding: "0",
                 accentColor: "var(--accent)",
               },
-              ".cm-panel.cm-search [name=replace], .cm-panel.cm-search [name=replaceAll]": {
-                display: "none",
-              },
+              ".cm-panel.cm-search [name=replace], .cm-panel.cm-search [name=replaceAll]":
+                {
+                  display: "none",
+                },
               ".cm-panel.cm-search button[name=close]": {
                 marginLeft: "auto",
                 width: "28px",
@@ -182,11 +196,14 @@ export function CodePreview({
                 lineHeight: "1",
               },
               ".cm-searchMatch": {
-                backgroundColor: "color-mix(in srgb, var(--yellow) 36%, transparent)",
-                outline: "1px solid color-mix(in srgb, var(--yellow) 45%, transparent)",
+                backgroundColor:
+                  "color-mix(in srgb, var(--yellow) 36%, transparent)",
+                outline:
+                  "1px solid color-mix(in srgb, var(--yellow) 45%, transparent)",
               },
               ".cm-searchMatch-selected": {
-                backgroundColor: "color-mix(in srgb, var(--yellow) 58%, transparent)",
+                backgroundColor:
+                  "color-mix(in srgb, var(--yellow) 58%, transparent)",
                 color: "var(--text-strong)",
                 outline: "1px solid var(--yellow)",
               },
@@ -224,11 +241,5 @@ export function CodePreview({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [searchable]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="code-preview"
-      tabIndex={0}
-    />
-  );
+  return <div ref={containerRef} className="code-preview" tabIndex={0} />;
 }

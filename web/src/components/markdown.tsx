@@ -93,7 +93,10 @@ export function sanitizeMarkdownHtml(html: string) {
         element.removeAttribute(attr.name);
         continue;
       }
-      if ((name === "href" || name === "src") && !isSafeMarkdownUrl(attr.value)) {
+      if (
+        (name === "href" || name === "src") &&
+        !isSafeMarkdownUrl(attr.value)
+      ) {
         element.removeAttribute(attr.name);
       }
     }
@@ -107,7 +110,10 @@ export function sanitizeMarkdownHtml(html: string) {
   return doc.body.innerHTML;
 }
 
-export function renderMarkdown(text: string, options: { breaks?: boolean } = {}) {
+export function renderMarkdown(
+  text: string,
+  options: { breaks?: boolean } = {},
+) {
   const html = marked.parse(text, {
     async: false,
     // Chat messages are not authored as strict markdown documents, so callers

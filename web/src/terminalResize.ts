@@ -89,15 +89,11 @@ export function terminalRelayViewportSize(
   const paneChromeRows = splitLayout ? 2 : 0;
   const terminalAreaCols = Math.max(
     1,
-    Math.round(
-      ((size.cols + paneChromeCols) * area.width) / pane.rect.width,
-    ),
+    Math.round(((size.cols + paneChromeCols) * area.width) / pane.rect.width),
   );
   const terminalAreaRows = Math.max(
     1,
-    Math.round(
-      ((size.rows + paneChromeRows) * area.height) / pane.rect.height,
-    ),
+    Math.round(((size.rows + paneChromeRows) * area.height) / pane.rect.height),
   );
   return {
     cols: Math.min(65_535, terminalAreaCols + Math.max(0, area.x)),
@@ -214,11 +210,14 @@ export class TerminalAttachFrameWatchdog {
   arm(attempt: number, delayMs: number, onTimeout: () => void): boolean {
     if (attempt !== this.attempt || this.frameAttempt === attempt) return false;
     this.clearTimer();
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      if (attempt !== this.attempt || this.frameAttempt === attempt) return;
-      onTimeout();
-    }, Math.max(0, delayMs));
+    this.timer = setTimeout(
+      () => {
+        this.timer = null;
+        if (attempt !== this.attempt || this.frameAttempt === attempt) return;
+        onTimeout();
+      },
+      Math.max(0, delayMs),
+    );
     return true;
   }
 
@@ -249,7 +248,9 @@ const ATTACH_WATCHDOG_RTT_FACTOR = 3;
  * do not trigger futile detach/re-attach storms.
  */
 export function terminalAttachWatchdogMs(attachRttMs: number): number {
-  const scaled = Math.round(Math.max(0, attachRttMs) * ATTACH_WATCHDOG_RTT_FACTOR);
+  const scaled = Math.round(
+    Math.max(0, attachRttMs) * ATTACH_WATCHDOG_RTT_FACTOR,
+  );
   return Math.min(
     ATTACH_WATCHDOG_MAX_MS,
     Math.max(ATTACH_WATCHDOG_MIN_MS, scaled),

@@ -66,7 +66,9 @@ export function lifecycleGitSummary(status?: GitStatusSummary): string {
   return parts.join(" · ");
 }
 
-export function lifecycleOpenedWorkspaceId(result: unknown): string | undefined {
+export function lifecycleOpenedWorkspaceId(
+  result: unknown,
+): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const workspace = (result as { workspace?: unknown }).workspace;
   if (!workspace || typeof workspace !== "object") return undefined;
@@ -130,8 +132,7 @@ function workspaceForCheckout(
           normalizedPath,
     )
     .sort(
-      (a, b) =>
-        Number(b.focused) - Number(a.focused) || a.number - b.number,
+      (a, b) => Number(b.focused) - Number(a.focused) || a.number - b.number,
     )[0];
 }
 
@@ -194,8 +195,7 @@ export function buildWorktreeLifecycleRows(
     return (
       lifecycleWorktreeTitle(a.worktree).localeCompare(
         lifecycleWorktreeTitle(b.worktree),
-      ) ||
-      a.worktree.path.localeCompare(b.worktree.path)
+      ) || a.worktree.path.localeCompare(b.worktree.path)
     );
   });
 }

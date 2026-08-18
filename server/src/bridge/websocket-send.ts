@@ -28,9 +28,7 @@ interface WebSocketCloseOptions {
 export class WebSocketCleanupTracker<Socket extends object, Snapshot> {
   private readonly snapshots = new WeakMap<Socket, Snapshot>();
 
-  constructor(
-    private readonly performCleanup: (socket: Socket) => Snapshot,
-  ) {}
+  constructor(private readonly performCleanup: (socket: Socket) => Snapshot) {}
 
   cleanup(socket: Socket): Snapshot {
     if (this.snapshots.has(socket)) {

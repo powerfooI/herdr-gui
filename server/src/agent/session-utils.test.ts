@@ -12,7 +12,9 @@ describe("agent session utility helpers", () => {
     expect(normalizeAgentName("Claude-Code")).toBe("claude");
     expect(normalizeAgentName("Kimi Code")).toBe("kimi");
     expect(normalizeAgentName("Grok Build")).toBe("grok");
-    expect(integrationInstallCommand("codex")).toBe("herdr integration install codex");
+    expect(integrationInstallCommand("codex")).toBe(
+      "herdr integration install codex",
+    );
   });
 
   test("extracts text while ignoring tool and thinking payloads", () => {

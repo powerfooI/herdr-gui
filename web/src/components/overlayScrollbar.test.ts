@@ -27,9 +27,9 @@ describe("overlay scrollbar exclusions", () => {
   });
 
   test("keeps ordinary application scroll regions eligible", () => {
-    expect(
-      overlayScrollbarExcludedElement({ closest: () => null }),
-    ).toBe(false);
+    expect(overlayScrollbarExcludedElement({ closest: () => null })).toBe(
+      false,
+    );
   });
 });
 

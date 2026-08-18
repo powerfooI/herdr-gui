@@ -18,7 +18,11 @@ describe("agent session file access", () => {
         commands.push(argv.join(" "));
         const command = argv.at(-1) ?? "";
         if (command.includes("head -c")) {
-          return { code: 0, stdout: Buffer.from('{"type":"session"}\n'), stderr: "" };
+          return {
+            code: 0,
+            stdout: Buffer.from('{"type":"session"}\n'),
+            stderr: "",
+          };
         }
         if (command.includes("cat ")) {
           return {
@@ -37,12 +41,14 @@ describe("agent session file access", () => {
       mtimeMs: 1_784_872_800_000,
     });
     expect(await files.readText(remotePath)).toContain('"type":"message"');
-    expect(new TextDecoder().decode(await files.readPrefix(remotePath, 20))).toBe(
-      '{"type":"session"}\n',
-    );
+    expect(
+      new TextDecoder().decode(await files.readPrefix(remotePath, 20)),
+    ).toBe('{"type":"session"}\n');
     expect(
       new TextDecoder().decode(
-        await new Response(await files.readDownloadBody(remotePath)).arrayBuffer(),
+        await new Response(
+          await files.readDownloadBody(remotePath),
+        ).arrayBuffer(),
       ),
     ).toContain('"type":"message"');
     expect(

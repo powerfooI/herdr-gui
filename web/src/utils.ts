@@ -4,7 +4,9 @@ export function shortId(id: string): string {
   return i === -1 ? id : id.slice(i + 1);
 }
 
-export function cn(...classes: Array<string | false | null | undefined>): string {
+export function cn(
+  ...classes: Array<string | false | null | undefined>
+): string {
   return classes.filter(Boolean).join(" ");
 }
 
@@ -127,10 +129,7 @@ function applySgr(params: string, s: TermStyle) {
 }
 
 function escHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function styleToCss(s: TermStyle): string {

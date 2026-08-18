@@ -14,7 +14,9 @@ const tempRoots: string[] = [];
 const originalGrokHome = process.env.GROK_HOME;
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true })));
+  await Promise.all(
+    tempRoots.splice(0).map((path) => rm(path, { recursive: true })),
+  );
   if (originalGrokHome === undefined) {
     delete process.env.GROK_HOME;
   } else {
@@ -50,7 +52,12 @@ describe("Grok Build sessions", () => {
     const cwd = "/workspace/repo";
     await createSession(root, cwd, "older", "2026-07-01T00:00:00.000Z");
     await createSession(root, cwd, "newer", "2026-07-02T00:00:00.000Z");
-    await createSession(root, "/workspace/other", "other", "2026-07-03T00:00:00.000Z");
+    await createSession(
+      root,
+      "/workspace/other",
+      "other",
+      "2026-07-03T00:00:00.000Z",
+    );
 
     const found = await findGrokSessionForCwd(cwd, root);
 
@@ -62,7 +69,12 @@ describe("Grok Build sessions", () => {
   test("resolves a known session id without an integration-provided path", async () => {
     const root = await mkdtemp(join(tmpdir(), "herdr-grok-"));
     tempRoots.push(root);
-    await createSession(root, "/workspace/repo", "session-1", "2026-07-01T00:00:00Z");
+    await createSession(
+      root,
+      "/workspace/repo",
+      "session-1",
+      "2026-07-01T00:00:00Z",
+    );
 
     const found = await findGrokSessionById("session-1", "", root);
 

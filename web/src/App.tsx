@@ -62,10 +62,7 @@ import {
   type PaneJumpEntry,
 } from "./paneJump";
 import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
-import {
-  normalizeAccentColor,
-  type AccentColor,
-} from "./appearance";
+import { normalizeAccentColor, type AccentColor } from "./appearance";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -157,7 +154,10 @@ function SidebarViewSwitcher({
   onOpenDiff: () => void;
 }) {
   return (
-    <nav className={`view-switcher ${className}`} aria-label="Application views">
+    <nav
+      className={`view-switcher ${className}`}
+      aria-label="Application views"
+    >
       <button
         type="button"
         className={active && activity === "workspaces" ? "is-active" : ""}
@@ -190,9 +190,7 @@ function SidebarViewSwitcher({
 }
 
 function normalizeSidebarWidth(value: number): number {
-  return Number.isFinite(value) &&
-    value >= MIN_SIDEBAR &&
-    value <= MAX_SIDEBAR
+  return Number.isFinite(value) && value >= MIN_SIDEBAR && value <= MAX_SIDEBAR
     ? value
     : DEFAULT_SIDEBAR;
 }
@@ -210,9 +208,7 @@ function loadAccentColor(): AccentColor {
 }
 
 function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
-  const current = localStorage.getItem(
-    MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
-  );
+  const current = localStorage.getItem(MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY);
   if (current !== null) return parseMobileTerminalShortcutRows(current);
   const legacy = localStorage.getItem(
     LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -242,9 +238,11 @@ function loadOptionalString(key: string) {
   return localStorage.getItem(key) || undefined;
 }
 
-function loadStoredFilePreview():
-  | { workspaceId: string; path: string; name: string }
-  | null {
+function loadStoredFilePreview(): {
+  workspaceId: string;
+  path: string;
+  name: string;
+} | null {
   try {
     const raw = localStorage.getItem(FILE_PREVIEW_KEY);
     if (!raw) return null;
@@ -261,7 +259,7 @@ function loadStoredFilePreview():
       name:
         typeof value.name === "string" && value.name
           ? value.name
-          : value.path.split("/").filter(Boolean).pop() ?? value.path,
+          : (value.path.split("/").filter(Boolean).pop() ?? value.path),
     };
   } catch {
     return null;
@@ -298,7 +296,10 @@ function useVisualViewportCssVars() {
         window.innerHeight - height - offsetTop,
       );
       const keyboardOpen = keyboardInset > 24;
-      root.style.setProperty("--app-viewport-height", `${Math.round(height)}px`);
+      root.style.setProperty(
+        "--app-viewport-height",
+        `${Math.round(height)}px`,
+      );
       root.style.setProperty(
         "--app-height",
         keyboardOpen
@@ -375,7 +376,10 @@ function rectPercent(value: number, start: number, size: number) {
   return ((value - start) / size) * 100;
 }
 
-function paneTitle(paneId: string, panes: ReturnType<typeof store.get>["panes"]) {
+function paneTitle(
+  paneId: string,
+  panes: ReturnType<typeof store.get>["panes"],
+) {
   const pane = panes.find((p) => p.pane_id === paneId);
   if (pane?.agent) return pane.agent;
   const cwd = pane?.foreground_cwd ?? pane?.cwd;
@@ -404,7 +408,11 @@ function PaneJumpOverlay({
   if (entries.length === 0) return null;
   return (
     <div className="pane-jump-backdrop">
-      <div className="pane-jump-popover" role="listbox" aria-label="Recent panes">
+      <div
+        className="pane-jump-popover"
+        role="listbox"
+        aria-label="Recent panes"
+      >
         <div className="pane-jump-head">
           <strong>Switch Pane</strong>
           <span>Hold Ctrl, use Tab / Up / Down, release Ctrl</span>
@@ -449,7 +457,9 @@ function PaneJumpOverlay({
                 <span className="pane-jump-subtitle">
                   {entry.agent ? (
                     <>
-                      <span className="pane-jump-agent-name">{entry.agent}</span>
+                      <span className="pane-jump-agent-name">
+                        {entry.agent}
+                      </span>
                       {entry.subtitle ? " · " : ""}
                     </>
                   ) : null}
@@ -475,7 +485,10 @@ function overlapLength(
   bStart: number,
   bSize: number,
 ) {
-  return Math.max(0, Math.min(aStart + aSize, bStart + bSize) - Math.max(aStart, bStart));
+  return Math.max(
+    0,
+    Math.min(aStart + aSize, bStart + bSize) - Math.max(aStart, bStart),
+  );
 }
 
 function bestPaneNearSplit(
@@ -507,9 +520,23 @@ function bestPaneNearSplit(
             : pane.rect.y;
       const perpendicularOverlap =
         split.direction === "right"
-          ? overlapLength(pane.rect.y, pane.rect.height, split.rect.y, split.rect.height)
-          : overlapLength(pane.rect.x, pane.rect.width, split.rect.x, split.rect.width);
-      return { pane, edgeDistance: Math.abs(edge - boundary), perpendicularOverlap };
+          ? overlapLength(
+              pane.rect.y,
+              pane.rect.height,
+              split.rect.y,
+              split.rect.height,
+            )
+          : overlapLength(
+              pane.rect.x,
+              pane.rect.width,
+              split.rect.x,
+              split.rect.width,
+            );
+      return {
+        pane,
+        edgeDistance: Math.abs(edge - boundary),
+        perpendicularOverlap,
+      };
     })
     .filter(
       ({ pane, edgeDistance, perpendicularOverlap }) =>
@@ -562,14 +589,26 @@ function resizeTargetForSplit(
 ): { paneId: string; direction: PaneResizeDirection } | null {
   if (split.direction === "right") {
     const side = dragSign > 0 ? "before" : "after";
-    const pane = bestPaneNearSplit(layout.panes, split, side, pointerPerpendicular);
+    const pane = bestPaneNearSplit(
+      layout.panes,
+      split,
+      side,
+      pointerPerpendicular,
+    );
     return pane
       ? { paneId: pane.pane_id, direction: dragSign > 0 ? "right" : "left" }
       : null;
   }
   const side = dragSign > 0 ? "before" : "after";
-  const pane = bestPaneNearSplit(layout.panes, split, side, pointerPerpendicular);
-  return pane ? { paneId: pane.pane_id, direction: dragSign > 0 ? "down" : "up" } : null;
+  const pane = bestPaneNearSplit(
+    layout.panes,
+    split,
+    side,
+    pointerPerpendicular,
+  );
+  return pane
+    ? { paneId: pane.pane_id, direction: dragSign > 0 ? "down" : "up" }
+    : null;
 }
 
 // Render the active tab's Herdr pane layout; single-pane and zoomed tabs keep
@@ -596,7 +635,8 @@ function TerminalPaneLayout({
   const fallbackPaneId = visiblePanes[0]?.pane_id ?? null;
   const activePaneId =
     visiblePanes.find((lp) => lp.pane_id === s.selectedPaneId)?.pane_id ??
-    visiblePanes.find((lp) => lp.pane_id === layout?.focused_pane_id)?.pane_id ??
+    visiblePanes.find((lp) => lp.pane_id === layout?.focused_pane_id)
+      ?.pane_id ??
     fallbackPaneId;
 
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
@@ -616,7 +656,9 @@ function TerminalPaneLayout({
       visiblePanes.findIndex((lp) => lp.pane_id === activePaneId),
     );
     const previousPane =
-      visiblePanes[(activeIndex - 1 + visiblePanes.length) % visiblePanes.length];
+      visiblePanes[
+        (activeIndex - 1 + visiblePanes.length) % visiblePanes.length
+      ];
     const nextPane = visiblePanes[(activeIndex + 1) % visiblePanes.length];
     const blurActiveInput = () => {
       if (document.activeElement instanceof HTMLElement) {
@@ -682,8 +724,10 @@ function TerminalPaneLayout({
     const horizontal = split.direction === "right";
     const startAxis = horizontal ? e.clientX : e.clientY;
     const pointerPerpendicular = horizontal
-      ? area.y + ((e.clientY - bounds.top) / Math.max(1, bounds.height)) * areaHeight
-      : area.x + ((e.clientX - bounds.left) / Math.max(1, bounds.width)) * areaWidth;
+      ? area.y +
+        ((e.clientY - bounds.top) / Math.max(1, bounds.height)) * areaHeight
+      : area.x +
+        ((e.clientX - bounds.left) / Math.max(1, bounds.width)) * areaWidth;
     const splitPixelSize = horizontal
       ? (split.rect.width / areaWidth) * bounds.width
       : (split.rect.height / areaHeight) * bounds.height;
@@ -709,9 +753,17 @@ function TerminalPaneLayout({
       const deltaPx = endAxis - startAxis;
       if (Math.abs(deltaPx) < 4) return;
       const dragSign = deltaPx > 0 ? 1 : -1;
-      const target = resizeTargetForSplit(layout, split, dragSign, pointerPerpendicular);
+      const target = resizeTargetForSplit(
+        layout,
+        split,
+        dragSign,
+        pointerPerpendicular,
+      );
       if (!target) return;
-      const amount = Math.min(0.5, Math.abs(deltaPx) / Math.max(1, splitPixelSize));
+      const amount = Math.min(
+        0.5,
+        Math.abs(deltaPx) / Math.max(1, splitPixelSize),
+      );
       void store.resizePane(target.paneId, target.direction, amount);
     };
     const cancel = () => {
@@ -840,7 +892,8 @@ export default function App() {
   const restoredFilePreviewKeyRef = useRef<string | null>(null);
   const focusedWorkspaceId = s.workspaces.find((w) => w.focused)?.workspace_id;
   const activePaneId =
-    s.selectedPaneId && s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
+    s.selectedPaneId &&
+    s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
       ? s.selectedPaneId
       : s.layout?.focused_pane_id;
   const activePane = activePaneId
@@ -888,7 +941,9 @@ export default function App() {
   );
   const openFileExplorer = useCallback(
     (workspaceId?: string) => {
-      const focusedWorkspaceId = store.get().workspaces.find((w) => w.focused)?.workspace_id;
+      const focusedWorkspaceId = store
+        .get()
+        .workspaces.find((w) => w.focused)?.workspace_id;
       const targetWorkspaceId = workspaceId ?? focusedWorkspaceId;
       if (targetWorkspaceId !== fileExplorerWorkspaceId) {
         localStorage.removeItem(FILE_PREVIEW_KEY);
@@ -943,13 +998,18 @@ export default function App() {
     },
     [mobile],
   );
-  const openDiffViewer = useCallback((workspaceId?: string) => {
-    const focusedWorkspaceId = store.get().workspaces.find((w) => w.focused)?.workspace_id;
-    setDiffViewerWorkspaceId(workspaceId ?? focusedWorkspaceId);
-    setSidebarActivity("diff");
-    setSidebarHidden(false);
-    restoreMobileViewForActivity("diff");
-  }, [restoreMobileViewForActivity]);
+  const openDiffViewer = useCallback(
+    (workspaceId?: string) => {
+      const focusedWorkspaceId = store
+        .get()
+        .workspaces.find((w) => w.focused)?.workspace_id;
+      setDiffViewerWorkspaceId(workspaceId ?? focusedWorkspaceId);
+      setSidebarActivity("diff");
+      setSidebarHidden(false);
+      restoreMobileViewForActivity("diff");
+    },
+    [restoreMobileViewForActivity],
+  );
   const openWorkspaces = useCallback(() => {
     setSidebarActivity("workspaces");
     setSidebarHidden(false);
@@ -961,7 +1021,9 @@ export default function App() {
       openWorkspaces();
       return;
     }
-    const focusedWorkspaceId = store.get().workspaces.find((w) => w.focused)?.workspace_id;
+    const focusedWorkspaceId = store
+      .get()
+      .workspaces.find((w) => w.focused)?.workspace_id;
     if (focusedWorkspaceId !== fileExplorerWorkspaceId) {
       localStorage.removeItem(FILE_PREVIEW_KEY);
       restoredFilePreviewKeyRef.current = null;
@@ -1000,7 +1062,8 @@ export default function App() {
         activeDiff.files[diffKey]?.workspace_id ??
         activeDiff.file?.workspace_id ??
         diffViewerWorkspaceId ??
-        store.get().workspaces.find((workspace) => workspace.focused)?.workspace_id;
+        store.get().workspaces.find((workspace) => workspace.focused)
+          ?.workspace_id;
       if (!workspaceId) return;
       const name = entry.path.split("/").filter(Boolean).pop() ?? entry.path;
       openFileExplorerFile(workspaceId, {
@@ -1020,7 +1083,10 @@ export default function App() {
     ],
   );
   const handleFilePreviewChange = useCallback(
-    (selection: ActiveFilePreviewSelection, meta?: FilePreviewSelectionMeta) => {
+    (
+      selection: ActiveFilePreviewSelection,
+      meta?: FilePreviewSelectionMeta,
+    ) => {
       setActiveFilePreview(selection);
       if (mobile && selection.entry && meta?.userInitiated) {
         setMobileView("session");
@@ -1053,8 +1119,7 @@ export default function App() {
             store.notify({
               kind: "error",
               message: "Terminal copy failed",
-              detail:
-                error instanceof Error ? error.message : String(error),
+              detail: error instanceof Error ? error.message : String(error),
             }),
         );
         return;
@@ -1093,8 +1158,7 @@ export default function App() {
   const selectPaneJumpIndex = useCallback(
     (index: number) => {
       const length = paneJumpOptions.length;
-      const next =
-        length > 0 ? ((index % length) + length) % length : 0;
+      const next = length > 0 ? ((index % length) + length) % length : 0;
       paneJumpIndexRef.current = next;
       setPaneJumpIndex(next);
     },
@@ -1117,7 +1181,9 @@ export default function App() {
     [selectPaneJumpIndex],
   );
   const defaultPaneJumpIndex = useCallback(() => {
-    const previousPaneIndex = paneJumpOptions.findIndex((entry) => !entry.current);
+    const previousPaneIndex = paneJumpOptions.findIndex(
+      (entry) => !entry.current,
+    );
     return previousPaneIndex >= 0 ? previousPaneIndex : 0;
   }, [paneJumpOptions]);
 
@@ -1166,10 +1232,17 @@ export default function App() {
     if (sidebarActivity !== "files") return;
     const stored = loadStoredFilePreview();
     if (!stored) return;
-    if (fileExplorerWorkspaceId && fileExplorerWorkspaceId !== stored.workspaceId) {
+    if (
+      fileExplorerWorkspaceId &&
+      fileExplorerWorkspaceId !== stored.workspaceId
+    ) {
       return;
     }
-    if (!s.workspaces.some((workspace) => workspace.workspace_id === stored.workspaceId)) {
+    if (
+      !s.workspaces.some(
+        (workspace) => workspace.workspace_id === stored.workspaceId,
+      )
+    ) {
       return;
     }
     const restoreKey = `${stored.workspaceId}:${stored.path}`;
@@ -1183,7 +1256,12 @@ export default function App() {
       mtime_ms: 0,
       hidden: stored.name.startsWith("."),
     });
-  }, [fileExplorerWorkspaceId, openFileExplorerFile, s.workspaces, sidebarActivity]);
+  }, [
+    fileExplorerWorkspaceId,
+    openFileExplorerFile,
+    s.workspaces,
+    sidebarActivity,
+  ]);
   useEffect(() => {
     if (!focusedWorkspaceId) return;
     if (sidebarActivity !== "files") {
@@ -1223,10 +1301,7 @@ export default function App() {
         }
       }
       const paneJumpShortcut =
-        e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        e.key === "Tab";
+        e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab";
       if (paneJumpShortcut) {
         if (isEditableElement(e.target)) return;
         if (paneJumpOptions.length === 0) return;
@@ -1281,9 +1356,7 @@ export default function App() {
         }
 
         const tabs = current.tabs
-          .filter(
-            (tab) => tab.workspace_id === focusedWorkspace.workspace_id,
-          )
+          .filter((tab) => tab.workspace_id === focusedWorkspace.workspace_id)
           .sort((a, b) => a.number - b.number);
         const tabIds = new Set(tabs.map((tab) => tab.tab_id));
         const activeTabId = [
@@ -1434,14 +1507,18 @@ export default function App() {
   }, [sidebarActivity]);
   useEffect(() => {
     if (fileExplorerWorkspaceId) {
-      localStorage.setItem(FILE_EXPLORER_WORKSPACE_KEY, fileExplorerWorkspaceId);
+      localStorage.setItem(
+        FILE_EXPLORER_WORKSPACE_KEY,
+        fileExplorerWorkspaceId,
+      );
     } else {
       localStorage.removeItem(FILE_EXPLORER_WORKSPACE_KEY);
     }
   }, [fileExplorerWorkspaceId]);
   useEffect(() => {
     const entry = activeFilePreview.entry;
-    const workspaceId = activeFilePreview.preview?.workspace_id ?? fileExplorerWorkspaceId;
+    const workspaceId =
+      activeFilePreview.preview?.workspace_id ?? fileExplorerWorkspaceId;
     if (entry?.path && workspaceId) {
       localStorage.setItem(
         FILE_PREVIEW_KEY,
@@ -1753,9 +1830,7 @@ export default function App() {
           <div className="sidebar-content">
             {sidebarActivity === "workspaces" ? (
               <>
-                <WorkspaceTree
-                  onSelect={() => setMobileView("session")}
-                />
+                <WorkspaceTree onSelect={() => setMobileView("session")} />
                 <AgentPanel onSelect={() => setMobileView("session")} />
               </>
             ) : sidebarActivity === "files" ? (
@@ -1774,7 +1849,11 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className="resizer" onPointerDown={startResize} title="拖动调整宽度" />
+        <div
+          className="resizer"
+          onPointerDown={startResize}
+          title="拖动调整宽度"
+        />
         <main
           className={`main ${
             sidebarActivity === "diff" || sidebarActivity === "files"

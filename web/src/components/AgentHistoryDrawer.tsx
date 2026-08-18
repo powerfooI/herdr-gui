@@ -58,8 +58,10 @@ function formatRelativeTime(timestamp: string) {
   const absoluteSeconds = Math.abs(seconds);
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   if (absoluteSeconds < 60) return formatter.format(seconds, "second");
-  if (absoluteSeconds < 3600) return formatter.format(Math.round(seconds / 60), "minute");
-  if (absoluteSeconds < 86400) return formatter.format(Math.round(seconds / 3600), "hour");
+  if (absoluteSeconds < 3600)
+    return formatter.format(Math.round(seconds / 60), "minute");
+  if (absoluteSeconds < 86400)
+    return formatter.format(Math.round(seconds / 3600), "hour");
   return formatter.format(Math.round(seconds / 86400), "day");
 }
 
@@ -166,14 +168,15 @@ export function AgentHistoryDrawer({
     )?.label ?? pane.workspace_id;
   const [history, setHistory] = useState<AgentHistory | null>(null);
   const [session, setSession] = useState<AgentSessionSummary | null>(null);
-  const [drawerTab, setDrawerTab] = useState<"messages" | "details">("messages");
+  const [drawerTab, setDrawerTab] = useState<"messages" | "details">(
+    "messages",
+  );
   const [showAssistantMessages, setShowAssistantMessages] = useState(
     initialShowAssistantMessages,
   );
   const [previewPane, setPreviewPane] = useState<Pane | null>(null);
-  const [previewSummary, setPreviewSummary] = useState<AgentSessionSummary | null>(
-    null,
-  );
+  const [previewSummary, setPreviewSummary] =
+    useState<AgentSessionSummary | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [expandedMessage, setExpandedMessage] =
@@ -291,10 +294,7 @@ export function AgentHistoryDrawer({
 
   // Stable identity so the message dialog's focus effect only re-runs when the
   // message itself changes, not on every drawer re-render.
-  const closeExpandedMessage = useCallback(
-    () => setExpandedMessage(null),
-    [],
-  );
+  const closeExpandedMessage = useCallback(() => setExpandedMessage(null), []);
 
   const usage = tokenUsage(session);
   const messages = history?.messages ?? [];
@@ -331,7 +331,8 @@ export function AgentHistoryDrawer({
             <div className="agent-history-title">
               <strong>Session</strong>
               <span title={workspaceLabel}>
-                {workspaceLabel} · {pane.agent ?? "Agent"} · {shortId(pane.pane_id)}
+                {workspaceLabel} · {pane.agent ?? "Agent"} ·{" "}
+                {shortId(pane.pane_id)}
               </span>
             </div>
           </div>
@@ -364,7 +365,10 @@ export function AgentHistoryDrawer({
         </div>
 
         {sessionReady ? (
-          <section className="agent-history-overview" aria-label="Session overview">
+          <section
+            className="agent-history-overview"
+            aria-label="Session overview"
+          >
             <div>
               <strong>{formatCount(session.stats.turns)}</strong>
               <span>Turns</span>
@@ -374,7 +378,9 @@ export function AgentHistoryDrawer({
               <span>Tokens</span>
             </div>
             <div>
-              <strong title={updatedAt ? formatHistoryTime(updatedAt) : undefined}>
+              <strong
+                title={updatedAt ? formatHistoryTime(updatedAt) : undefined}
+              >
                 {updatedAt ? formatRelativeTime(updatedAt) : "-"}
               </strong>
               <span>Updated</span>
@@ -409,16 +415,18 @@ export function AgentHistoryDrawer({
                 </button>
               </div>
             ) : null}
-            <button type="button" className="secondary-btn" onClick={loadHistory}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={loadHistory}
+            >
               <RefreshCw size={13} />
               Retry
             </button>
           </div>
         ) : (
           <>
-            <div
-              className="agent-history-tabs"
-            >
+            <div className="agent-history-tabs">
               <div
                 className="agent-history-tab-list"
                 role="tablist"
@@ -523,7 +531,9 @@ export function AgentHistoryDrawer({
                 />
                 <DetailRow
                   label="Records"
-                  value={sessionReady ? formatCount(session.stats.records) : "-"}
+                  value={
+                    sessionReady ? formatCount(session.stats.records) : "-"
+                  }
                 />
                 <DetailRow
                   label="File size"

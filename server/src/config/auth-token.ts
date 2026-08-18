@@ -18,9 +18,7 @@ export function defaultAuthTokenPath(homeDir = homedir()): string {
 function readAuthToken(path: string): string {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error(
-      `generated auth token path is not a regular file: ${path}`,
-    );
+    throw new Error(`generated auth token path is not a regular file: ${path}`);
   }
   const token = readFileSync(path, "utf8").trim();
   if (!AUTH_TOKEN_PATTERN.test(token)) {

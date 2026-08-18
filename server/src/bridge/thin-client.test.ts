@@ -13,10 +13,12 @@ const servers: net.Server[] = [];
 
 afterEach(async () => {
   await Promise.all(
-    servers.splice(0).map(
-      (server) =>
-        new Promise<void>((resolve) => server.close(() => resolve())),
-    ),
+    servers
+      .splice(0)
+      .map(
+        (server) =>
+          new Promise<void>((resolve) => server.close(() => resolve())),
+      ),
   );
 });
 
@@ -99,9 +101,14 @@ async function startMessageServer(
 
 describe("Herdr thin-client protocol compatibility", () => {
   test("supports the compatible floor and future protocol versions", () => {
-    expect([14, 15, 16, 17, 18, 999].map(isSupportedHerdrProtocol)).toEqual(
-      [true, true, true, true, true, true],
-    );
+    expect([14, 15, 16, 17, 18, 999].map(isSupportedHerdrProtocol)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
     expect(isSupportedHerdrProtocol(13)).toBe(false);
     expect(() => assertSupportedHerdrProtocol(13)).toThrow(
       "requires protocol 14 or newer",

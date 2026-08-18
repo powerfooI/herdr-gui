@@ -42,11 +42,7 @@ describe("terminal modified Enter keys", () => {
         }),
       );
       const expected =
-        modifiers === 1
-          ? "\x1b[13;2u"
-          : modifiers === 2
-            ? "\x1b[13;3u"
-            : null;
+        modifiers === 1 ? "\x1b[13;2u" : modifiers === 2 ? "\x1b[13;3u" : null;
       expect(sequence).toBe(expected);
     }
   });

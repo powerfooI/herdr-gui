@@ -104,11 +104,9 @@ export async function readAgentSessionSummary(
   let text: string | null = null;
   let truncated = false;
   if (includeText) {
-    const bytes = await files.readPrefix(
-      resolved.file.path,
-      previewLimit + 1,
-    );
-    truncated = bytes.length > previewLimit || (resolved.file.size ?? 0) > previewLimit;
+    const bytes = await files.readPrefix(resolved.file.path, previewLimit + 1);
+    truncated =
+      bytes.length > previewLimit || (resolved.file.size ?? 0) > previewLimit;
     text = new TextDecoder("utf-8", { fatal: false }).decode(
       truncated ? bytes.subarray(0, previewLimit) : bytes,
     );
@@ -167,7 +165,11 @@ export async function downloadAgentSessionAtif(
     });
   }
   const records = await readRecords(resolved.file, files);
-  const trajectory = projectAgentTrajectory(resolved.agent, resolved.file, records);
+  const trajectory = projectAgentTrajectory(
+    resolved.agent,
+    resolved.file,
+    records,
+  );
   return new Response(`${JSON.stringify(trajectory, null, 2)}\n`, {
     headers: {
       "content-type": "application/json; charset=utf-8",

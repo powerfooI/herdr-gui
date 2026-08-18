@@ -116,7 +116,9 @@ describe("worktree lifecycle rows", () => {
 
   test("counts all user-visible git changes", () => {
     expect(
-      lifecycleGitChangeCount(workspace("w1", "/repo", false).worktree?.git_status),
+      lifecycleGitChangeCount(
+        workspace("w1", "/repo", false).worktree?.git_status,
+      ),
     ).toBe(6);
   });
 
@@ -128,7 +130,9 @@ describe("worktree lifecycle rows", () => {
       }),
     ).toBe("teardown failed");
     expect(
-      lifecycleActionWarning({ cleanup: { warning: "checkout still present" } }),
+      lifecycleActionWarning({
+        cleanup: { warning: "checkout still present" },
+      }),
     ).toBe("checkout still present");
     expect(
       lifecycleActionError({ cleanup: { warning: "checkout still present" } }),

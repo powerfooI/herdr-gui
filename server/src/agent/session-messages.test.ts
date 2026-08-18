@@ -7,9 +7,7 @@ const file: SessionFile = {
   mtimeMs: Date.parse("2026-07-28T00:00:00.000Z"),
 };
 
-function trajectory(
-  steps: AtifTrajectory["steps"],
-): AtifTrajectory {
+function trajectory(steps: AtifTrajectory["steps"]): AtifTrajectory {
   return {
     schema_version: "ATIF-v1.7",
     agent: { name: "pi", version: "1" },

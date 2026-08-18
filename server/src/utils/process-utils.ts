@@ -4,7 +4,9 @@ export async function runProcess(
 ): Promise<{ stdout: string; stderr: string }> {
   const { code, stdout, stderr } = await runProcessWithCode(argv, input);
   if (code !== 0) {
-    throw new Error(`${argv[0]} exited ${code}: ${stderr.trim() || stdout.trim()}`);
+    throw new Error(
+      `${argv[0]} exited ${code}: ${stderr.trim() || stdout.trim()}`,
+    );
   }
   return { stdout, stderr };
 }

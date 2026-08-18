@@ -17,11 +17,7 @@ export function resolvePublicFilePath(
   const root = resolve(publicDir);
   const candidate = resolve(root, `.${pathname}`);
   const child = relative(root, candidate);
-  if (
-    child === ".." ||
-    child.startsWith(`..${sep}`) ||
-    isAbsolute(child)
-  ) {
+  if (child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
     return null;
   }
   return candidate;
@@ -31,7 +27,9 @@ export function shouldServeSpaEntry(
   method: string,
   accept: string | null,
 ): boolean {
-  return isStaticRequestMethod(method) && Boolean(accept?.includes("text/html"));
+  return (
+    isStaticRequestMethod(method) && Boolean(accept?.includes("text/html"))
+  );
 }
 
 export function isStaticRequestMethod(method: string): boolean {

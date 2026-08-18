@@ -77,7 +77,9 @@ export function AgentMessageDialog({
               type="button"
               className="agent-message-mode-toggle"
               onClick={() =>
-                setViewMode((mode) => (mode === "rendered" ? "raw" : "rendered"))
+                setViewMode((mode) =>
+                  mode === "rendered" ? "raw" : "rendered",
+                )
               }
               aria-label={
                 viewMode === "rendered"

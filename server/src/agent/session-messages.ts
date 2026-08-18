@@ -15,8 +15,10 @@ function isConversationStep(step: AtifStep) {
   // so only retain text that the agent actually presented as its response.
   if (step.metrics && step.message === "Token usage") return false;
   if (step.reasoning_content && step.message === "Reasoning") return false;
-  if (step.tool_calls?.length && /^Tool calls?:/.test(step.message)) return false;
-  if (step.extra?.error_message && step.message.startsWith("Error:")) return false;
+  if (step.tool_calls?.length && /^Tool calls?:/.test(step.message))
+    return false;
+  if (step.extra?.error_message && step.message.startsWith("Error:"))
+    return false;
   return true;
 }
 

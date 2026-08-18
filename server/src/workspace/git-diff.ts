@@ -234,7 +234,8 @@ async function collectStats({
     shQuote,
     runProcessWithCodeTimeout,
   });
-  if (staged.code === 0 || staged.code === 1) mergeStats("staged", staged.stdout);
+  if (staged.code === 0 || staged.code === 1)
+    mergeStats("staged", staged.stdout);
 
   const unstaged = await runGitShellCommand({
     root,
@@ -247,7 +248,9 @@ async function collectStats({
     mergeStats("unstaged", unstaged.stdout, "conflicted");
   }
 
-  const untrackedEntries = entries.filter((entry) => entry.kind === "untracked");
+  const untrackedEntries = entries.filter(
+    (entry) => entry.kind === "untracked",
+  );
   let cursor = 0;
   const worker = async () => {
     while (cursor < untrackedEntries.length) {
@@ -336,7 +339,12 @@ export async function readDiffSummary({
   const mode = diffMode(params);
   const base =
     mode === "branch-main"
-      ? await resolveMainBase({ root, host, shQuote, runProcessWithCodeTimeout })
+      ? await resolveMainBase({
+          root,
+          host,
+          shQuote,
+          runProcessWithCodeTimeout,
+        })
       : undefined;
   const result =
     mode === "branch-main"
@@ -356,9 +364,11 @@ export async function readDiffSummary({
         });
   if (result.code !== 0) {
     throw new Error(
-      (result.stderr ||
+      (
+        result.stderr ||
         result.stdout ||
-        `git ${mode === "branch-main" ? "diff" : "status"} exited ${result.code}`)
+        `git ${mode === "branch-main" ? "diff" : "status"} exited ${result.code}`
+      )
         .trim()
         .slice(0, 1000),
     );
@@ -388,11 +398,17 @@ export async function readDiffSummary({
     base,
     entries: entriesWithStats,
     counts: {
-      staged: entriesWithStats.filter((entry) => entry.kind === "staged").length,
-      unstaged: entriesWithStats.filter((entry) => entry.kind === "unstaged").length,
-      untracked: entriesWithStats.filter((entry) => entry.kind === "untracked").length,
-      conflicted: entriesWithStats.filter((entry) => entry.kind === "conflicted").length,
-      branch: entriesWithStats.filter((entry) => entry.kind === "branch").length,
+      staged: entriesWithStats.filter((entry) => entry.kind === "staged")
+        .length,
+      unstaged: entriesWithStats.filter((entry) => entry.kind === "unstaged")
+        .length,
+      untracked: entriesWithStats.filter((entry) => entry.kind === "untracked")
+        .length,
+      conflicted: entriesWithStats.filter(
+        (entry) => entry.kind === "conflicted",
+      ).length,
+      branch: entriesWithStats.filter((entry) => entry.kind === "branch")
+        .length,
     },
   };
 }
@@ -417,7 +433,12 @@ export async function readDiffFile({
   const mode = diffMode(params);
   const base =
     mode === "branch-main"
-      ? await resolveMainBase({ root, host, shQuote, runProcessWithCodeTimeout })
+      ? await resolveMainBase({
+          root,
+          host,
+          shQuote,
+          runProcessWithCodeTimeout,
+        })
       : undefined;
   const kind =
     mode === "branch-main"
@@ -445,7 +466,9 @@ export async function readDiffFile({
     runProcessWithCodeTimeout,
   });
   const diffExitOk =
-    kind === "untracked" ? result.code === 0 || result.code === 1 : result.code === 0;
+    kind === "untracked"
+      ? result.code === 0 || result.code === 1
+      : result.code === 0;
   if (!diffExitOk) {
     throw new Error(
       (result.stderr || result.stdout || `git diff exited ${result.code}`)
@@ -459,7 +482,9 @@ export async function readDiffFile({
     root,
     path,
     kind,
-    diff: truncated ? result.stdout.slice(0, GIT_DIFF_MAX_BYTES) : result.stdout,
+    diff: truncated
+      ? result.stdout.slice(0, GIT_DIFF_MAX_BYTES)
+      : result.stdout,
     truncated,
   };
 }

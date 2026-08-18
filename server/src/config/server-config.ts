@@ -3,10 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
-import {
-  defaultAuthTokenPath,
-  loadOrCreateAuthToken,
-} from "./auth-token";
+import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
 type CliArgs = Partial<{
   host: string;
@@ -155,7 +152,8 @@ Options (flags override env vars):
     publicDir: resolvePublicDir(args),
     sshHost,
     session,
-    openBrowserRequested: args.open === true || process.env.OPEN_BROWSER === "1",
+    openBrowserRequested:
+      args.open === true || process.env.OPEN_BROWSER === "1",
     hasExplicitSocketPath,
     hasExplicitClientSocketPath,
   };

@@ -59,7 +59,12 @@ export function TextInputDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>
@@ -150,7 +155,12 @@ export function ConfirmDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>
@@ -229,7 +239,12 @@ export function MessageDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>

@@ -91,7 +91,10 @@ export function WorkspaceAutoSyncDialog({
     if (!workspaceId) return;
     setSaving(true);
     setError("");
-    const result = await store.setWorkspaceAutoSyncEnabled(workspaceId, enabled);
+    const result = await store.setWorkspaceAutoSyncEnabled(
+      workspaceId,
+      enabled,
+    );
     if (result) await load(false);
     setSaving(false);
   };
@@ -116,10 +119,10 @@ export function WorkspaceAutoSyncDialog({
 
         <p className="auto-sync-description">
           Every {info?.interval_minutes ?? 10} minutes, fetch{" "}
-          <code>origin/main</code> and merge it into this workspace&apos;s current
-          branch. A dirty workspace is skipped, and conflicting merges are
-          aborted automatically. Updates run only while this workspace is open
-          in the current herdr-gui connection.
+          <code>origin/main</code> and merge it into this workspace&apos;s
+          current branch. A dirty workspace is skipped, and conflicting merges
+          are aborted automatically. Updates run only while this workspace is
+          open in the current herdr-gui connection.
         </p>
 
         {loading ? (
@@ -132,7 +135,10 @@ export function WorkspaceAutoSyncDialog({
             {error ? <p className="modal-error">{error}</p> : null}
 
             <div className="auto-sync-summary">
-              <SummaryRow label="Workspace" value={info?.workspace_label ?? "-"} />
+              <SummaryRow
+                label="Workspace"
+                value={info?.workspace_label ?? "-"}
+              />
               <SummaryRow label="Checkout" value={info?.checkout_path ?? "-"} />
               <SummaryRow label="Branch" value={info?.last_branch ?? "-"} />
               <SummaryRow
@@ -154,9 +160,7 @@ export function WorkspaceAutoSyncDialog({
                 type="button"
                 role="switch"
                 aria-checked={info?.enabled ?? false}
-                className={
-                  "settings-switch" + (info?.enabled ? " is-on" : "")
-                }
+                className={"settings-switch" + (info?.enabled ? " is-on" : "")}
                 disabled={!info || saving}
                 onClick={() => void setEnabled(!(info?.enabled ?? false))}
               >

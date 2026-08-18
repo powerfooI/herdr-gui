@@ -49,7 +49,7 @@ export function findTerminalFileLinkCandidates(
   FILE_PATH_CANDIDATE_RE.lastIndex = 0;
   for (const match of text.matchAll(FILE_PATH_CANDIDATE_RE)) {
     const start = match.index ?? 0;
-    const previous = start > 0 ? text[start - 1] ?? "" : "";
+    const previous = start > 0 ? (text[start - 1] ?? "") : "";
     if (previous && !PATH_BOUNDARY_RE.test(previous)) continue;
     const path = match[0]
       .replace(TRAILING_PROSE_RE, "")
@@ -133,7 +133,10 @@ export class TerminalFileResolutionCache {
             .map((file) => [file.candidate, file.path]),
         );
         for (const candidate of missing) {
-          this.remember(this.key(workspaceId, candidate), byCandidate.get(candidate) ?? null);
+          this.remember(
+            this.key(workspaceId, candidate),
+            byCandidate.get(candidate) ?? null,
+          );
         }
         return byCandidate;
       });

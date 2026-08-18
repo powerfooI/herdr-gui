@@ -20,10 +20,7 @@ import {
 } from "lucide-react";
 import packageJson from "../../package.json";
 import type { Theme } from "../App";
-import {
-  ACCENT_OPTIONS,
-  type AccentColor,
-} from "../appearance";
+import { ACCENT_OPTIONS, type AccentColor } from "../appearance";
 import { store, useStore } from "../store";
 import {
   mobileTerminalShortcutCount,
@@ -60,9 +57,7 @@ type ConfigMenuProps = {
   mobileTerminalSideShortcuts: MobileTerminalSideShortcuts;
   onThemeChange: (theme: Theme) => void;
   onAccentColorChange: (accentColor: AccentColor) => void;
-  onMobileTerminalShortcutsChange: (
-    rows: MobileTerminalShortcutRows,
-  ) => void;
+  onMobileTerminalShortcutsChange: (rows: MobileTerminalShortcutRows) => void;
   onMobileTerminalSideShortcutsChange: (
     shortcuts: MobileTerminalSideShortcuts,
   ) => void;
@@ -437,7 +432,11 @@ export function ConfigMenu({
                     }
                   }}
                 >
-                  {s.connectionPaused ? <Play size={14} /> : <Pause size={14} />}
+                  {s.connectionPaused ? (
+                    <Play size={14} />
+                  ) : (
+                    <Pause size={14} />
+                  )}
                   {s.connectionPaused ? "Resume client" : "Pause client"}
                 </button>
                 <button

@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  ChevronsUpDown,
-  Plus,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { Check, ChevronsUpDown, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW,
   MAX_MOBILE_TERMINAL_SIDE_SHORTCUTS,
@@ -45,7 +39,9 @@ type SelectedSlot =
       slotIndex: number;
     };
 
-function cloneRows(rows: MobileTerminalShortcutRows): MobileTerminalShortcutRows {
+function cloneRows(
+  rows: MobileTerminalShortcutRows,
+): MobileTerminalShortcutRows {
   return rows.map((row) =>
     Array.from(
       { length: MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW },
@@ -149,7 +145,11 @@ function ShortcutKeySelect({
                       tabIndex={current ? 0 : -1}
                       className="mobile-shortcut-key-option"
                       value={option.id}
-                      keywords={[option.label, option.defaultButtonLabel, group]}
+                      keywords={[
+                        option.label,
+                        option.defaultButtonLabel,
+                        group,
+                      ]}
                       data-current={current ? "true" : "false"}
                       aria-label={`${option.label}${current ? ", selected" : ""}`}
                       key={option.id}
@@ -269,8 +269,7 @@ export function MobileTerminalShortcutsDialog({
       return;
     }
     setDraft((current) => {
-      const shortcut =
-        current[selectedSlot.rowIndex][selectedSlot.slotIndex];
+      const shortcut = current[selectedSlot.rowIndex][selectedSlot.slotIndex];
       if (!shortcut) return current;
       const next = cloneRows(current);
       next[selectedSlot.rowIndex][selectedSlot.slotIndex] = update(shortcut);
@@ -324,18 +323,27 @@ export function MobileTerminalShortcutsDialog({
               panel and up to four right-side buttons.
             </p>
           </div>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>
 
         <div className="mobile-shortcut-slot-board" aria-label="Shortcut slots">
           {draft.map((row, rowIndex) => (
-            <section className="mobile-shortcut-slot-row" key={`row-${rowIndex}`}>
+            <section
+              className="mobile-shortcut-slot-row"
+              key={`row-${rowIndex}`}
+            >
               <div className="mobile-shortcut-slot-row-label">
                 <strong>Row {rowIndex + 1}</strong>
                 <span>
-                  {row.filter(Boolean).length} / {MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW}
+                  {row.filter(Boolean).length} /{" "}
+                  {MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW}
                 </span>
               </div>
               <div className="mobile-shortcut-slot-grid">
@@ -505,7 +513,7 @@ export function MobileTerminalShortcutsDialog({
                         label:
                           !current.label.trim() ||
                           current.label === selectedOption?.defaultButtonLabel
-                            ? nextOption?.defaultButtonLabel ?? current.label
+                            ? (nextOption?.defaultButtonLabel ?? current.label)
                             : current.label,
                       }));
                     }}

@@ -71,7 +71,8 @@ export function createSshTunnelManager(args: {
     const host = args.config.sshHost;
     if (!host) return;
 
-    const forwards: Array<{ local: string; remote: string; label: string }> = [];
+    const forwards: Array<{ local: string; remote: string; label: string }> =
+      [];
     if (!args.config.hasExplicitSocketPath) {
       forwards.push({
         local: args.config.socketPath,

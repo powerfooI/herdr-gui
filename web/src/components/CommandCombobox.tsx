@@ -89,10 +89,18 @@ function agentName(pane: Pane) {
 }
 
 export function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/[-_:/]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[-_:/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export function commandFilter(value: string, search: string, keywords?: string[]) {
+export function commandFilter(
+  value: string,
+  search: string,
+  keywords?: string[],
+) {
   const query = normalizeSearchText(search);
   if (!query) return 1;
 
@@ -113,12 +121,19 @@ export function commandFilter(value: string, search: string, keywords?: string[]
 }
 
 function actionSearchValue(action: ActionDefinition) {
-  return [action.title, action.detail, action.shortcut].filter(Boolean).join(" ");
+  return [action.title, action.detail, action.shortcut]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function actionDisplaySignature(action: ActionDefinition) {
   return normalizeSearchText(
-    [action.title, action.detail, action.shortcut, action.danger ? "danger" : ""]
+    [
+      action.title,
+      action.detail,
+      action.shortcut,
+      action.danger ? "danger" : "",
+    ]
       .filter(Boolean)
       .join(" "),
   );
@@ -563,7 +578,11 @@ export function CommandCombobox({
       icon: <PanelTop size={15} />,
       title: `Focus workspace: ${workspaceName(workspace)}`,
       detail: workspace.workspace_id,
-      keywords: ["switch workspace", "open workspace", workspaceName(workspace)],
+      keywords: [
+        "switch workspace",
+        "open workspace",
+        workspaceName(workspace),
+      ],
       run: () => store.focusWorkspace(workspace.workspace_id),
     })),
   ];
@@ -719,7 +738,11 @@ export function CommandCombobox({
           icon: <ArrowRight size={15} />,
           title: "Focus pane right",
           detail: shortId(activePane.pane_id),
-          keywords: ["switch pane right", "select pane right", "move pane right"],
+          keywords: [
+            "switch pane right",
+            "select pane right",
+            "move pane right",
+          ],
           run: () => store.focusPaneDirection(activePane.pane_id, "right"),
         },
         {
@@ -759,7 +782,12 @@ export function CommandCombobox({
           icon: <Maximize2 size={15} />,
           title: "Toggle pane zoom",
           detail: shortId(activePane.pane_id),
-          keywords: ["maximize pane", "unmaximize pane", "zoom pane", "full pane"],
+          keywords: [
+            "maximize pane",
+            "unmaximize pane",
+            "zoom pane",
+            "full pane",
+          ],
           run: () => store.zoomPane(activePane.pane_id),
         },
         {
@@ -776,17 +804,15 @@ export function CommandCombobox({
 
   const agentActions: ActionDefinition[] = [];
   if (activeAgent) {
-    agentActions.push(
-      {
-        key: "close-active-agent-pane",
-        icon: <X size={15} />,
-        title: "Close active agent pane",
-        detail: agentName(activeAgent),
-        keywords: ["close agent", "delete agent", "remove agent", "close pane"],
-        danger: true,
-        run: () => setPendingClosePane(activeAgent),
-      },
-    );
+    agentActions.push({
+      key: "close-active-agent-pane",
+      icon: <X size={15} />,
+      title: "Close active agent pane",
+      detail: agentName(activeAgent),
+      keywords: ["close agent", "delete agent", "remove agent", "close pane"],
+      danger: true,
+      run: () => setPendingClosePane(activeAgent),
+    });
   }
   for (const pane of agents) {
     agentActions.push({
@@ -794,7 +820,12 @@ export function CommandCombobox({
       icon: <AgentIcon agent={pane.agent} compact />,
       title: `Focus agent: ${agentName(pane)}`,
       detail: pane.agent_status,
-      keywords: ["switch agent", "open agent", "select agent", pane.agent ?? ""],
+      keywords: [
+        "switch agent",
+        "open agent",
+        "select agent",
+        pane.agent ?? "",
+      ],
       run: () => store.focusPane(pane.pane_id),
     });
   }

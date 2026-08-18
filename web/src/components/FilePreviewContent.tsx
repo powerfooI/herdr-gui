@@ -1,9 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { Extension } from "@codemirror/state";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import type { FileExplorerEntry, FilePreview } from "../types";
@@ -22,7 +17,9 @@ export type FilePreviewSelectionMeta = {
 
 type AppTheme = "dark" | "light";
 
-type CodeMirrorPreviewDeps = Awaited<ReturnType<typeof importCodeMirrorPreviewDeps>>;
+type CodeMirrorPreviewDeps = Awaited<
+  ReturnType<typeof importCodeMirrorPreviewDeps>
+>;
 
 let codeMirrorPreviewDepsPromise: Promise<CodeMirrorPreviewDeps> | null = null;
 
@@ -99,17 +96,48 @@ async function importCodeMirrorPreviewDeps() {
   const t = highlight.tags;
   const filePreviewHighlightStyle = language.HighlightStyle.define([
     { tag: t.comment, color: "var(--syntax-comment)", fontStyle: "italic" },
-    { tag: [t.meta, t.documentMeta, t.processingInstruction], color: "var(--syntax-meta)" },
-    { tag: [t.keyword, t.controlKeyword, t.moduleKeyword], color: "var(--syntax-keyword)" },
-    { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syntax-string)" },
+    {
+      tag: [t.meta, t.documentMeta, t.processingInstruction],
+      color: "var(--syntax-meta)",
+    },
+    {
+      tag: [t.keyword, t.controlKeyword, t.moduleKeyword],
+      color: "var(--syntax-keyword)",
+    },
+    {
+      tag: [t.string, t.special(t.string), t.regexp],
+      color: "var(--syntax-string)",
+    },
     { tag: [t.number, t.bool, t.null, t.atom], color: "var(--syntax-number)" },
-    { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syntax-function)" },
-    { tag: [t.className, t.typeName, t.definition(t.typeName)], color: "var(--syntax-type)" },
-    { tag: [t.propertyName, t.attributeName, t.labelName], color: "var(--syntax-property)" },
-    { tag: [t.variableName, t.namespace, t.macroName], color: "var(--syntax-variable)" },
-    { tag: [t.operator, t.operatorKeyword, t.compareOperator], color: "var(--syntax-operator)" },
-    { tag: [t.punctuation, t.separator, t.bracket], color: "var(--syntax-punctuation)" },
-    { tag: [t.heading, t.strong], color: "var(--text-strong)", fontWeight: "700" },
+    {
+      tag: [t.function(t.variableName), t.function(t.propertyName)],
+      color: "var(--syntax-function)",
+    },
+    {
+      tag: [t.className, t.typeName, t.definition(t.typeName)],
+      color: "var(--syntax-type)",
+    },
+    {
+      tag: [t.propertyName, t.attributeName, t.labelName],
+      color: "var(--syntax-property)",
+    },
+    {
+      tag: [t.variableName, t.namespace, t.macroName],
+      color: "var(--syntax-variable)",
+    },
+    {
+      tag: [t.operator, t.operatorKeyword, t.compareOperator],
+      color: "var(--syntax-operator)",
+    },
+    {
+      tag: [t.punctuation, t.separator, t.bracket],
+      color: "var(--syntax-punctuation)",
+    },
+    {
+      tag: [t.heading, t.strong],
+      color: "var(--text-strong)",
+      fontWeight: "700",
+    },
     { tag: t.emphasis, fontStyle: "italic" },
     { tag: t.link, color: "var(--blue)", textDecoration: "underline" },
   ]);
@@ -184,7 +212,9 @@ function useDocumentTheme() {
   const [theme, setTheme] = useState<AppTheme>(() => currentDocumentTheme());
 
   useEffect(() => {
-    const observer = new MutationObserver(() => setTheme(currentDocumentTheme()));
+    const observer = new MutationObserver(() =>
+      setTheme(currentDocumentTheme()),
+    );
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme"],
@@ -243,7 +273,8 @@ export function FilePreviewContent({
       openPreviewSearch(editorViewRef.current);
     };
     window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
   }, [hasPreviewText, renderMarkdownPreview]);
 
   return (
@@ -290,7 +321,9 @@ export function FilePreviewContent({
           Loading preview
         </div>
       ) : null}
-      {error ? <div className="file-preview-state is-error">{error}</div> : null}
+      {error ? (
+        <div className="file-preview-state is-error">{error}</div>
+      ) : null}
       {!loading && !error && preview?.image_data_url ? (
         <div className="file-preview-image-wrap">
           <img
@@ -301,7 +334,9 @@ export function FilePreviewContent({
         </div>
       ) : null}
       {!loading && !error && preview?.binary && !preview.image_data_url ? (
-        <div className="file-preview-state">Binary file cannot be previewed.</div>
+        <div className="file-preview-state">
+          Binary file cannot be previewed.
+        </div>
       ) : null}
       {!loading && !error && preview?.truncated ? (
         <div className="file-preview-banner">Preview truncated at 512 KB.</div>
@@ -320,7 +355,6 @@ export function FilePreviewContent({
     </section>
   );
 }
-
 
 function CodeMirrorPreview({
   text,
@@ -358,132 +392,150 @@ function CodeMirrorPreview({
             deps.EditorView.editable.of(false),
             languageCompartment.of([]),
             deps.syntaxHighlighting(deps.filePreviewHighlightStyle),
-            deps.EditorView.theme({
-              "&": {
-                height: "100%",
-                backgroundColor: "var(--viewer-code-bg)",
-                color: "var(--text-code)",
+            deps.EditorView.theme(
+              {
+                "&": {
+                  height: "100%",
+                  backgroundColor: "var(--viewer-code-bg)",
+                  color: "var(--text-code)",
+                },
+                ".cm-scroller": {
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                  fontSize: "12px",
+                  lineHeight: "1.55",
+                },
+                ".cm-content": {
+                  caretColor: "var(--accent)",
+                  padding: "10px 0",
+                },
+                ".cm-content ::selection": {
+                  backgroundColor:
+                    "color-mix(in srgb, var(--accent) 32%, transparent) !important",
+                  color: "inherit",
+                },
+                ".cm-line": {
+                  padding: "0 12px",
+                },
+                ".cm-gutters": {
+                  backgroundColor: "var(--viewer-code-bg)",
+                  color: "var(--muted)",
+                  borderRight: "1px solid var(--border-soft)",
+                },
+                ".cm-lineNumbers .cm-gutterElement": {
+                  padding: "0 10px 0 12px",
+                  minWidth: "42px",
+                },
+                ".cm-activeLineGutter, .cm-activeLine": {
+                  backgroundColor:
+                    "color-mix(in srgb, var(--accent) 10%, transparent)",
+                },
+                ".cm-selectionBackground, &.cm-focused .cm-selectionBackground":
+                  {
+                    backgroundColor:
+                      "color-mix(in srgb, var(--accent) 32%, transparent) !important",
+                  },
+                ".cm-cursor": {
+                  borderLeftColor: "var(--accent)",
+                },
+                ".cm-panels, .cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom":
+                  {
+                    backgroundColor: "var(--viewer-header-bg)",
+                    color: "var(--text)",
+                    borderColor: "var(--border-soft)",
+                  },
+                ".cm-panel.cm-search": {
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 10px",
+                  backgroundColor: "var(--viewer-header-bg)",
+                  color: "var(--text)",
+                },
+                ".cm-panel.cm-search .cm-textfield, .cm-panel.cm-search input":
+                  {
+                    height: "30px",
+                    padding: "0 8px",
+                    backgroundColor: "var(--viewer-code-bg)",
+                    color: "var(--text)",
+                    border: "1px solid var(--viewer-border)",
+                    borderRadius: "7px",
+                    outline: "none",
+                  },
+                ".cm-panel.cm-search .cm-textfield:focus, .cm-panel.cm-search input:focus":
+                  {
+                    borderColor: "var(--accent)",
+                    boxShadow: "0 0 0 2px var(--accent-soft)",
+                  },
+                ".cm-panel.cm-search .cm-button, .cm-panel.cm-search button": {
+                  height: "30px",
+                  padding: "0 10px",
+                  backgroundColor: "var(--viewer-panel-bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--viewer-border)",
+                  borderRadius: "7px",
+                  backgroundImage: "none",
+                  font: "inherit",
+                },
+                ".cm-panel.cm-search .cm-button:hover, .cm-panel.cm-search button:hover":
+                  {
+                    backgroundColor: "var(--viewer-header-bg)",
+                  },
+                ".cm-panel.cm-search .cm-button:disabled, .cm-panel.cm-search button:disabled":
+                  {
+                    opacity: "0.48",
+                  },
+                ".cm-panel.cm-search label": {
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  color: "var(--text)",
+                },
+                ".cm-panel.cm-search input[type=checkbox]": {
+                  width: "16px",
+                  height: "16px",
+                  margin: "0",
+                  padding: "0",
+                  accentColor: "var(--accent)",
+                },
+                ".cm-searchMatch": {
+                  backgroundColor:
+                    "color-mix(in srgb, var(--yellow) 36%, transparent)",
+                  outline:
+                    "1px solid color-mix(in srgb, var(--yellow) 45%, transparent)",
+                },
+                ".cm-searchMatch-selected": {
+                  backgroundColor:
+                    "color-mix(in srgb, var(--yellow) 58%, transparent)",
+                  color: "var(--text-strong)",
+                  outline: "1px solid var(--yellow)",
+                },
+                ".cm-matchingBracket": {
+                  backgroundColor:
+                    "color-mix(in srgb, var(--accent) 18%, transparent)",
+                  color: "var(--text-strong)",
+                  outline:
+                    "1px solid color-mix(in srgb, var(--accent) 38%, transparent)",
+                },
+                ".cm-nonmatchingBracket": {
+                  backgroundColor: "var(--danger-soft)",
+                  color: "var(--danger-text)",
+                  outline: "1px solid var(--danger-border)",
+                },
+                ".cm-foldPlaceholder": {
+                  backgroundColor: "var(--viewer-panel-bg)",
+                  color: "var(--muted)",
+                  border: "1px solid var(--viewer-border)",
+                },
+                ".cm-tooltip, .cm-tooltip.cm-tooltip-autocomplete": {
+                  border: "1px solid var(--viewer-border)",
+                  backgroundColor: "var(--viewer-panel-bg)",
+                  color: "var(--text)",
+                },
               },
-              ".cm-scroller": {
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                fontSize: "12px",
-                lineHeight: "1.55",
-              },
-              ".cm-content": {
-                caretColor: "var(--accent)",
-                padding: "10px 0",
-              },
-              ".cm-content ::selection": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 32%, transparent) !important",
-                color: "inherit",
-              },
-              ".cm-line": {
-                padding: "0 12px",
-              },
-              ".cm-gutters": {
-                backgroundColor: "var(--viewer-code-bg)",
-                color: "var(--muted)",
-                borderRight: "1px solid var(--border-soft)",
-              },
-              ".cm-lineNumbers .cm-gutterElement": {
-                padding: "0 10px 0 12px",
-                minWidth: "42px",
-              },
-              ".cm-activeLineGutter, .cm-activeLine": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)",
-              },
-              ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 32%, transparent) !important",
-              },
-              ".cm-cursor": {
-                borderLeftColor: "var(--accent)",
-              },
-              ".cm-panels, .cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom": {
-                backgroundColor: "var(--viewer-header-bg)",
-                color: "var(--text)",
-                borderColor: "var(--border-soft)",
-              },
-              ".cm-panel.cm-search": {
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 10px",
-                backgroundColor: "var(--viewer-header-bg)",
-                color: "var(--text)",
-              },
-              ".cm-panel.cm-search .cm-textfield, .cm-panel.cm-search input": {
-                height: "30px",
-                padding: "0 8px",
-                backgroundColor: "var(--viewer-code-bg)",
-                color: "var(--text)",
-                border: "1px solid var(--viewer-border)",
-                borderRadius: "7px",
-                outline: "none",
-              },
-              ".cm-panel.cm-search .cm-textfield:focus, .cm-panel.cm-search input:focus": {
-                borderColor: "var(--accent)",
-                boxShadow: "0 0 0 2px var(--accent-soft)",
-              },
-              ".cm-panel.cm-search .cm-button, .cm-panel.cm-search button": {
-                height: "30px",
-                padding: "0 10px",
-                backgroundColor: "var(--viewer-panel-bg)",
-                color: "var(--text)",
-                border: "1px solid var(--viewer-border)",
-                borderRadius: "7px",
-                backgroundImage: "none",
-                font: "inherit",
-              },
-              ".cm-panel.cm-search .cm-button:hover, .cm-panel.cm-search button:hover": {
-                backgroundColor: "var(--viewer-header-bg)",
-              },
-              ".cm-panel.cm-search .cm-button:disabled, .cm-panel.cm-search button:disabled": {
-                opacity: "0.48",
-              },
-              ".cm-panel.cm-search label": {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                color: "var(--text)",
-              },
-              ".cm-panel.cm-search input[type=checkbox]": {
-                width: "16px",
-                height: "16px",
-                margin: "0",
-                padding: "0",
-                accentColor: "var(--accent)",
-              },
-              ".cm-searchMatch": {
-                backgroundColor: "color-mix(in srgb, var(--yellow) 36%, transparent)",
-                outline: "1px solid color-mix(in srgb, var(--yellow) 45%, transparent)",
-              },
-              ".cm-searchMatch-selected": {
-                backgroundColor: "color-mix(in srgb, var(--yellow) 58%, transparent)",
-                color: "var(--text-strong)",
-                outline: "1px solid var(--yellow)",
-              },
-              ".cm-matchingBracket": {
-                backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
-                color: "var(--text-strong)",
-                outline: "1px solid color-mix(in srgb, var(--accent) 38%, transparent)",
-              },
-              ".cm-nonmatchingBracket": {
-                backgroundColor: "var(--danger-soft)",
-                color: "var(--danger-text)",
-                outline: "1px solid var(--danger-border)",
-              },
-              ".cm-foldPlaceholder": {
-                backgroundColor: "var(--viewer-panel-bg)",
-                color: "var(--muted)",
-                border: "1px solid var(--viewer-border)",
-              },
-              ".cm-tooltip, .cm-tooltip.cm-tooltip-autocomplete": {
-                border: "1px solid var(--viewer-border)",
-                backgroundColor: "var(--viewer-panel-bg)",
-                color: "var(--text)",
-              },
-            }, { dark: theme === "dark" }),
+              { dark: theme === "dark" },
+            ),
           ],
         }),
       });

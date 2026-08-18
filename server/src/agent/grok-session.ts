@@ -178,7 +178,9 @@ export async function describeGrokSessionPath(path: string) {
 export function grokUserMessageText(record: Record<string, unknown>) {
   if (record.type !== "user" || stringValue(record.synthetic_reason)) return "";
   const content = textFromContent(record.content);
-  const queries = Array.from(content.matchAll(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/gi))
+  const queries = Array.from(
+    content.matchAll(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/gi),
+  )
     .map((match) => cleanMessageText(match[1] ?? ""))
     .filter(Boolean);
   if (queries.length > 0) return queries.join("\n\n");

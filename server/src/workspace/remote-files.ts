@@ -277,7 +277,8 @@ export function parseRemoteFileDownload(
 ): FileDownloadResult {
   const lines = stdout.split(/\r?\n/);
   const meta = lines.shift() ?? "";
-  const [kind, rawSize, rawRelative, rawName, rawContentType] = meta.split("\t");
+  const [kind, rawSize, rawRelative, rawName, rawContentType] =
+    meta.split("\t");
   if (kind !== "META") {
     throw new Error(
       (stdout || "invalid file download response").trim().slice(0, 1000),

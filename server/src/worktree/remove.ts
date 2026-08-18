@@ -404,7 +404,10 @@ fi
   };
 
   const preserveCheckout = async (path: string): Promise<string> => {
-    const suffix = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+    const suffix = new Date()
+      .toISOString()
+      .replace(/[-:TZ.]/g, "")
+      .slice(0, 14);
     const destination = join(
       dirname(path),
       `${basename(path)}.recovered-${suffix}-${randomBytes(3).toString("hex")}`,
@@ -424,9 +427,7 @@ fi
       PROCESS_SCAN_TIMEOUT_MS,
     );
     if (result.code !== 0) {
-      throw new Error(
-        result.stderr.trim() || `mv exited ${result.code}`,
-      );
+      throw new Error(result.stderr.trim() || `mv exited ${result.code}`);
     }
     return destination;
   };

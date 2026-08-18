@@ -61,7 +61,9 @@ export function createFileHandlers({
   }
 
   async function getWorkspace(workspaceId: string) {
-    const result = await herdr.call("workspace.get", { workspace_id: workspaceId });
+    const result = await herdr.call("workspace.get", {
+      workspace_id: workspaceId,
+    });
     return (result as any)?.workspace ?? result;
   }
 
@@ -296,7 +298,8 @@ export function createFileHandlers({
           ]
         : ["git", "-C", candidate, "rev-parse", "--show-toplevel"];
       const result = await runProcessWithCodeTimeout(argv, GIT_DIFF_TIMEOUT_MS);
-      if (result.code === 0 && result.stdout.trim()) return result.stdout.trim();
+      if (result.code === 0 && result.stdout.trim())
+        return result.stdout.trim();
       lastError = (
         result.stderr ||
         result.stdout ||
@@ -318,8 +321,8 @@ export function createFileHandlers({
       ? (paneResult as any).panes
       : [];
     const pane =
-      panes.find((item: any) =>
-        item?.workspace_id === workspaceId && item?.focused,
+      panes.find(
+        (item: any) => item?.workspace_id === workspaceId && item?.focused,
       ) ?? panes.find((item: any) => item?.workspace_id === workspaceId);
     for (const candidate of [pane?.cwd, pane?.foreground_cwd]) {
       const root = await resolveCandidate(candidate);

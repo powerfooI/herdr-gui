@@ -98,9 +98,9 @@ describe("worktree hook notices", () => {
 describe("notice dismissal policy", () => {
   test("uses 15 seconds for an ordinary toast", () => {
     expect(DEFAULT_NOTICE_AUTO_DISMISS_MS).toBe(15_000);
-    expect(
-      noticeAutoDismissDelay({ kind: "info", message: "Saved" }),
-    ).toBe(15_000);
+    expect(noticeAutoDismissDelay({ kind: "info", message: "Saved" })).toBe(
+      15_000,
+    );
   });
 
   test("honors explicit durations and keeps loading notices visible", () => {
@@ -246,7 +246,8 @@ describe("worktree removal notices", () => {
     ).toEqual({
       kind: "success",
       message: "Worktree removed",
-      detail: "The checkout was already absent; stale Herdr state was reconciled.",
+      detail:
+        "The checkout was already absent; stale Herdr state was reconciled.",
     });
   });
 

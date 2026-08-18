@@ -292,7 +292,9 @@ export class Bridge {
     return () => this.terminalHandlers.delete(cb);
   }
 
-  onTerminalClipboard(cb: (clipboard: TerminalClipboardPush) => void): () => void {
+  onTerminalClipboard(
+    cb: (clipboard: TerminalClipboardPush) => void,
+  ): () => void {
     this.terminalClipboardHandlers.add(cb);
     return () => this.terminalClipboardHandlers.delete(cb);
   }

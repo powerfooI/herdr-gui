@@ -37,13 +37,9 @@ describe("tab shortcuts", () => {
 
   test("rejects extra or non-Command modifiers", () => {
     expect(
-      tabShortcutAction(
-        keyEvent({ key: "t", metaKey: true, shiftKey: true }),
-      ),
+      tabShortcutAction(keyEvent({ key: "t", metaKey: true, shiftKey: true })),
     ).toBeNull();
-    expect(
-      tabShortcutAction(keyEvent({ key: "w", ctrlKey: true })),
-    ).toBeNull();
+    expect(tabShortcutAction(keyEvent({ key: "w", ctrlKey: true }))).toBeNull();
     expect(
       tabShortcutAction(
         keyEvent({ key: "ArrowLeft", metaKey: true, ctrlKey: true }),

@@ -174,7 +174,12 @@ export function WorktreeOpenDialog({
       >
         <div className="modal-head">
           <h2>Open Worktree</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>
@@ -186,7 +191,9 @@ export function WorktreeOpenDialog({
           </div>
         ) : null}
 
-        {loading ? <p className="modal-body-text">Loading worktrees...</p> : null}
+        {loading ? (
+          <p className="modal-body-text">Loading worktrees...</p>
+        ) : null}
         {error ? <p className="modal-error">{error}</p> : null}
 
         {list?.worktrees.length ? (
@@ -211,7 +218,9 @@ export function WorktreeOpenDialog({
                 onClick={() => openWorktree(worktree)}
               >
                 <span className="worktree-option-main">
-                  <span className="worktree-option-title">{worktreeTitle(worktree)}</span>
+                  <span className="worktree-option-title">
+                    {worktreeTitle(worktree)}
+                  </span>
                   <span className="worktree-option-path">{worktree.path}</span>
                 </span>
                 <span className="worktree-option-tags">
@@ -220,7 +229,9 @@ export function WorktreeOpenDialog({
                   ) : (
                     <span className="badge">main</span>
                   )}
-                  {worktree.is_prunable ? <span className="badge">prunable</span> : null}
+                  {worktree.is_prunable ? (
+                    <span className="badge">prunable</span>
+                  ) : null}
                   <span className="badge">
                     {worktree.open_workspace_id ? "Focus" : "Open"}
                   </span>
@@ -230,7 +241,9 @@ export function WorktreeOpenDialog({
           </div>
         ) : !loading && !error ? (
           <p className="modal-body-text">
-            {list?.worktrees.length ? "No matching worktrees." : "No worktrees found."}
+            {list?.worktrees.length
+              ? "No matching worktrees."
+              : "No worktrees found."}
           </p>
         ) : null}
 
@@ -249,7 +262,10 @@ export function WorktreeOpenDialog({
           <button type="button" className="ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" disabled={!manualTarget.trim() || !actionSource}>
+          <button
+            type="submit"
+            disabled={!manualTarget.trim() || !actionSource}
+          >
             Open
           </button>
         </div>

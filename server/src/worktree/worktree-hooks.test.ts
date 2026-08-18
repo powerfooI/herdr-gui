@@ -56,7 +56,7 @@ describe("worktree hook runner", () => {
         JSON.stringify({
           worktree: {
             setup:
-              "printf '%s|%s|%s' \"$PASEO_HOOK\" \"$PASEO_CHECKOUT_PATH\" \"$PASEO_SOURCE_CHECKOUT_PATH\"",
+              'printf \'%s|%s|%s\' "$PASEO_HOOK" "$PASEO_CHECKOUT_PATH" "$PASEO_SOURCE_CHECKOUT_PATH"',
           },
         }),
       );

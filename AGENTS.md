@@ -21,6 +21,8 @@ committed.
   archives and checksums in `dist/`.
 - `bun run package:linux-arm64`, `package:darwin-x64`, and
   `package:darwin-arm64`: package the other supported release targets.
+- `bun run format`: format supported files with the pinned root Biome config.
+- `bun run format:check`: verify that all supported files are formatted.
 - `bun run lint`: lint all TypeScript and React code.
 - `bun run test`: run the Bun unit test suite.
 - `cd web && bun run typecheck`: run frontend TypeScript checks.
@@ -29,14 +31,17 @@ committed.
 ## Coding Style & Naming Conventions
 
 Use TypeScript, React function components, and the existing CSS class naming
-style. Prefer small, focused components in `web/src/components`. Keep manual
-edits ASCII unless the file already uses non-ASCII text. Use existing store and
-bridge helpers before adding new abstractions.
+style. Format supported files with the root `biome.json`; do not rely on a
+global or editor fallback formatter. Prefer small, focused components in
+`web/src/components`. Keep manual edits ASCII unless the file already uses
+non-ASCII text. Use existing store and bridge helpers before adding new
+abstractions.
 
 ## Testing Guidelines
 
 Unit tests live beside their modules as `*.test.ts` and use `bun:test`. Run
-`bun run lint`, `bun run typecheck`, and `bun run test` before committing. For
+`bun run format:check`, `bun run lint`, `bun run typecheck`, and `bun run test`
+before committing. For
 frontend-facing work, also run `cd web && bun run build`. Release work must
 package and inspect every supported platform archive and checksum.
 

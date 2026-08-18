@@ -30,7 +30,12 @@ export function ChangelogDialog({
       >
         <div className="modal-head">
           <h2>Changelog</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         </div>

@@ -53,9 +53,10 @@ function absolutePath(root: string, entry: FileExplorerEntry) {
   return `${root.replace(/\/+$/, "")}/${entry.path}`;
 }
 
-function initialWorkspacePath(
-  workspace?: { worktree?: { checkout_path: string }; cwd?: string },
-) {
+function initialWorkspacePath(workspace?: {
+  worktree?: { checkout_path: string };
+  cwd?: string;
+}) {
   return workspace?.worktree?.checkout_path ?? workspace?.cwd ?? "";
 }
 
@@ -125,9 +126,7 @@ function writeExplorerCache(
   explorerCache.set(key, {
     ...current,
     ...patch,
-    children: patch.children
-      ? { ...patch.children }
-      : { ...current.children },
+    children: patch.children ? { ...patch.children } : { ...current.children },
     expanded: patch.expanded
       ? new Set(patch.expanded)
       : new Set(current.expanded),
@@ -262,7 +261,11 @@ function buildGitStatusMaps(
 ) {
   const fileStatuses = new Map<string, FileGitStatus>();
   const directoryChangedFiles = new Map<string, Set<string>>();
-  if (!summary || !explorerRoot) return { fileStatuses, directoryStatuses: new Map<string, FileGitStatus>() };
+  if (!summary || !explorerRoot)
+    return {
+      fileStatuses,
+      directoryStatuses: new Map<string, FileGitStatus>(),
+    };
 
   const descriptions = new Map<string, string[]>();
   for (const entry of summary.entries) {
@@ -289,7 +292,8 @@ function buildGitStatusMaps(
     const parts = mappedPath.split("/").filter(Boolean);
     for (let i = 0; i < parts.length - 1; i += 1) {
       const directory = parts.slice(0, i + 1).join("/");
-      const changedFiles = directoryChangedFiles.get(directory) ?? new Set<string>();
+      const changedFiles =
+        directoryChangedFiles.get(directory) ?? new Set<string>();
       changedFiles.add(mappedPath);
       directoryChangedFiles.set(directory, changedFiles);
     }
@@ -366,7 +370,9 @@ async function uploadExplorerFile(
     payload = { error: text };
   }
   if (!response.ok) {
-    throw new Error(payload?.error || text || `upload failed ${response.status}`);
+    throw new Error(
+      payload?.error || text || `upload failed ${response.status}`,
+    );
   }
   return payload as {
     path: string;
@@ -388,7 +394,9 @@ async function deleteExplorerEntry(workspaceId: string, path: string) {
     payload = { error: text };
   }
   if (!response.ok) {
-    throw new Error(payload?.error || text || `delete failed ${response.status}`);
+    throw new Error(
+      payload?.error || text || `delete failed ${response.status}`,
+    );
   }
   return payload as {
     path: string;
@@ -615,15 +623,22 @@ function FileExplorerContent({
   const s = useStore();
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const workspace =
-    s.workspaces.find((w) => w.workspace_id === workspaceId) ?? focusedWorkspace;
+    s.workspaces.find((w) => w.workspace_id === workspaceId) ??
+    focusedWorkspace;
   const cacheWorkspaceId = workspace?.workspace_id;
   const [showHidden, setShowHidden] = useState(false);
   const [cache, setCache] = useState<FileExplorerCache>(() =>
     readExplorerCache(cacheWorkspaceId, showHidden),
   );
-  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());
-  const [uploadingPaths, setUploadingPaths] = useState<Set<string>>(() => new Set());
-  const [deletingPaths, setDeletingPaths] = useState<Set<string>>(() => new Set());
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [uploadingPaths, setUploadingPaths] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [deletingPaths, setDeletingPaths] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const [entryMenu, setEntryMenu] = useState<FileExplorerEntryMenuState | null>(
     null,
@@ -632,7 +647,9 @@ function FileExplorerContent({
     useState<FileExplorerEntry | null>(null);
   const [gitSummary, setGitSummary] = useState<GitDiffSummary | null>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
-  const [previewEntry, setPreviewEntry] = useState<FileExplorerEntry | null>(null);
+  const [previewEntry, setPreviewEntry] = useState<FileExplorerEntry | null>(
+    null,
+  );
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -757,7 +774,12 @@ function FileExplorerContent({
     setPreviewLoading(false);
     setPreviewError(null);
     if (previewPlacement === "inline") {
-      emitPreviewChange({ entry: null, preview: null, loading: false, error: null });
+      emitPreviewChange({
+        entry: null,
+        preview: null,
+        loading: false,
+        error: null,
+      });
     }
     previewRequestKeyRef.current = null;
     const pathsToRefresh = Array.from(cached.expanded);
@@ -793,8 +815,7 @@ function FileExplorerContent({
     }
     let cancelled = false;
     const workspaceId = workspace.workspace_id;
-    const entryName =
-      activePath.split("/").filter(Boolean).pop() ?? activePath;
+    const entryName = activePath.split("/").filter(Boolean).pop() ?? activePath;
     setPreviewEntry((current) =>
       current?.path === activePath
         ? current
@@ -836,7 +857,8 @@ function FileExplorerContent({
           })) as FileExplorerList;
           latest = readExplorerCache(workspaceId, showHidden);
           const expandedWithPath = new Set(latest.expanded);
-          for (const parentPath of parentPaths) expandedWithPath.add(parentPath);
+          for (const parentPath of parentPaths)
+            expandedWithPath.add(parentPath);
           writeExplorerCache(workspaceId, showHidden, {
             rootInfo: list,
             children: { ...latest.children, [path]: list.entries },
@@ -883,7 +905,9 @@ function FileExplorerContent({
       Object.values(children)
         .flat()
         .filter((entry, index, all) => {
-          const firstIndex = all.findIndex((candidate) => candidate.path === entry.path);
+          const firstIndex = all.findIndex(
+            (candidate) => candidate.path === entry.path,
+          );
           return firstIndex === index;
         }),
     [children],
@@ -1053,7 +1077,8 @@ function FileExplorerContent({
     const selectedPath = previewEntry?.path;
     const deletedSelection =
       selectedPath === entry.path ||
-      (entry.type === "directory" && selectedPath?.startsWith(`${entry.path}/`));
+      (entry.type === "directory" &&
+        selectedPath?.startsWith(`${entry.path}/`));
     const cacheKey = previewCacheKey(workspace.workspace_id, entry.path);
     previewCache.delete(cacheKey);
     if (entry.type === "directory") {
@@ -1085,7 +1110,8 @@ function FileExplorerContent({
       void loadGitStatus();
       store.notify({
         kind: "success",
-        message: entry.type === "directory" ? "Directory deleted" : "File deleted",
+        message:
+          entry.type === "directory" ? "Directory deleted" : "File deleted",
         detail: entry.path,
         autoDismissMs: 5000,
       });
@@ -1135,7 +1161,8 @@ function FileExplorerContent({
         ),
       );
       const failed = results.find(
-        (result): result is PromiseRejectedResult => result.status === "rejected",
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
       );
       if (failed) throw failed.reason;
       if (directory) {
@@ -1242,7 +1269,9 @@ function FileExplorerContent({
 
   const renderEntry = (entry: FileExplorerEntry, depth: number) => {
     const isDirectory = entry.type === "directory";
-    const uploadDirectory = isDirectory ? entry.path : parentDirectoryPath(entry.path);
+    const uploadDirectory = isDirectory
+      ? entry.path
+      : parentDirectoryPath(entry.path);
     const isExpanded = expanded.has(entry.path);
     const loading = loadingPaths.has(entry.path);
     const uploading = isDirectory && uploadingPaths.has(entry.path);
@@ -1263,7 +1292,9 @@ function FileExplorerContent({
             uploading && isDirectory ? "is-uploading" : ""
           }`}
           data-file-path={entry.path}
-          style={{ paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT }}
+          style={{
+            paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT,
+          }}
           onDragOver={(e) => handleDirectoryDragOver(e, uploadDirectory)}
           onDragLeave={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -1335,12 +1366,16 @@ function FileExplorerContent({
             </span>
           ) : null}
           {meta ? <span className="file-meta">{meta}</span> : null}
-          {loading || uploading || deleting ? <span className="row-spinner" /> : null}
+          {loading || uploading || deleting ? (
+            <span className="row-spinner" />
+          ) : null}
           <span className="file-actions">
             <button
               type="button"
               className="ghost file-action"
-              title={isDirectory ? "Download directory as tar.gz" : "Download file"}
+              title={
+                isDirectory ? "Download directory as tar.gz" : "Download file"
+              }
               onClick={(e) => {
                 e.stopPropagation();
                 downloadEntry(entry);
@@ -1361,7 +1396,9 @@ function FileExplorerContent({
             </button>
           </span>
         </div>
-        {!query && isDirectory && isExpanded ? renderDirectory(entry.path, depth + 1) : null}
+        {!query && isDirectory && isExpanded
+          ? renderDirectory(entry.path, depth + 1)
+          : null}
       </div>
     );
   };
@@ -1372,7 +1409,9 @@ function FileExplorerContent({
       return (
         <div
           className="file-row file-row-loading"
-          style={{ paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT }}
+          style={{
+            paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT,
+          }}
         >
           <span className="file-loading-spinner" />
           <span className="file-loading-text">Loading directory</span>
@@ -1384,7 +1423,9 @@ function FileExplorerContent({
       return (
         <div
           className="file-row file-row-muted"
-          style={{ paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT }}
+          style={{
+            paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT,
+          }}
         >
           Empty
         </div>
@@ -1412,7 +1453,12 @@ function FileExplorerContent({
       <div className="modal-head">
         <h2>File Explorer</h2>
         {showCloseButton ? (
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onClose}
+            aria-label="Close"
+          >
             x
           </button>
         ) : null}
@@ -1421,95 +1467,109 @@ function FileExplorerContent({
       {workspace ? (
         <div className="file-explorer-summary">
           <span>{workspaceName(workspace)}</span>
-          <code>{rootInfo?.root ?? (initialWorkspacePath(workspace) || "Loading path...")}</code>
+          <code>
+            {rootInfo?.root ??
+              (initialWorkspacePath(workspace) || "Loading path...")}
+          </code>
         </div>
       ) : (
         <p className="modal-error">No workspace is focused.</p>
       )}
 
-        <div className="file-explorer-content">
-          <div className="file-explorer-browser">
-            <div className="file-explorer-toolbar">
-              <label className="file-search">
-                <Search size={14} />
-                <input
-                  value={search}
-                  onChange={(e) => updateCache({ search: e.currentTarget.value })}
-                  placeholder="Search loaded files"
-                />
-              </label>
-              <label className="file-hidden-toggle">
-                <input
-                  type="checkbox"
-                  checked={showHidden}
-                  onChange={(e) => setShowHidden(e.currentTarget.checked)}
-                />
-                Hidden
-              </label>
-              <button
-                type="button"
-                className="ghost file-action"
-                title="Refresh"
-                disabled={!workspace}
-                onClick={() => {
-                  const pathsToRefresh = Array.from(expanded);
-                  if (!pathsToRefresh.includes("")) pathsToRefresh.unshift("");
-                  for (const path of pathsToRefresh) {
-                    void loadDirectory(path, true);
-                  }
-                  void loadGitStatus();
-                }}
-              >
-                <RefreshCw className={gitStatusLoading ? "is-spinning" : ""} size={15} />
-              </button>
-            </div>
-
-            {error ? <p className="modal-error">{error}</p> : null}
-            {rootInfo?.truncated ? (
-              <p className="modal-error">This directory is truncated at 1000 entries.</p>
-            ) : null}
-
-            <div
-              ref={fileTreeRef}
-              className={`file-tree ${dropTargetPath === "" ? "is-drop-target" : ""}`}
-              role="tree"
-              onDragOver={handleRootDragOver}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setDropTargetPath(null);
+      <div className="file-explorer-content">
+        <div className="file-explorer-browser">
+          <div className="file-explorer-toolbar">
+            <label className="file-search">
+              <Search size={14} />
+              <input
+                value={search}
+                onChange={(e) => updateCache({ search: e.currentTarget.value })}
+                placeholder="Search loaded files"
+              />
+            </label>
+            <label className="file-hidden-toggle">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(e) => setShowHidden(e.currentTarget.checked)}
+              />
+              Hidden
+            </label>
+            <button
+              type="button"
+              className="ghost file-action"
+              title="Refresh"
+              disabled={!workspace}
+              onClick={() => {
+                const pathsToRefresh = Array.from(expanded);
+                if (!pathsToRefresh.includes("")) pathsToRefresh.unshift("");
+                for (const path of pathsToRefresh) {
+                  void loadDirectory(path, true);
                 }
+                void loadGitStatus();
               }}
-              onDrop={handleRootDrop}
             >
-              {uploadingPaths.has("") ? (
-                <div className="file-upload-status">
-                  <span className="row-spinner" />
-                  Uploading to workspace root
-                </div>
-              ) : dropTargetPath === "" ? (
-                <div className="file-upload-status">
-                  <Upload size={14} />
-                  Drop files to upload to workspace root
-                </div>
-              ) : null}
-              {query
-                ? searchEntries.length
-                  ? searchEntries.map((entry) => renderEntry(entry, 0))
-                  : <div className="file-row file-row-muted">No loaded files match.</div>
-                : !children[""] && loadingPaths.has("")
-                  ? renderInitialLoading()
-                  : renderDirectory("", 0)}
-            </div>
+              <RefreshCw
+                className={gitStatusLoading ? "is-spinning" : ""}
+                size={15}
+              />
+            </button>
           </div>
-          {previewPlacement === "inline" ? (
-            <FilePreviewContent
-              entry={previewEntry}
-              preview={preview}
-              loading={previewLoading}
-              error={previewError}
-            />
+
+          {error ? <p className="modal-error">{error}</p> : null}
+          {rootInfo?.truncated ? (
+            <p className="modal-error">
+              This directory is truncated at 1000 entries.
+            </p>
           ) : null}
+
+          <div
+            ref={fileTreeRef}
+            className={`file-tree ${dropTargetPath === "" ? "is-drop-target" : ""}`}
+            role="tree"
+            onDragOver={handleRootDragOver}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setDropTargetPath(null);
+              }
+            }}
+            onDrop={handleRootDrop}
+          >
+            {uploadingPaths.has("") ? (
+              <div className="file-upload-status">
+                <span className="row-spinner" />
+                Uploading to workspace root
+              </div>
+            ) : dropTargetPath === "" ? (
+              <div className="file-upload-status">
+                <Upload size={14} />
+                Drop files to upload to workspace root
+              </div>
+            ) : null}
+            {query ? (
+              searchEntries.length ? (
+                searchEntries.map((entry) => renderEntry(entry, 0))
+              ) : (
+                <div className="file-row file-row-muted">
+                  No loaded files match.
+                </div>
+              )
+            ) : !children[""] && loadingPaths.has("") ? (
+              renderInitialLoading()
+            ) : (
+              renderDirectory("", 0)
+            )}
+          </div>
         </div>
+        {previewPlacement === "inline" ? (
+          <FilePreviewContent
+            entry={previewEntry}
+            preview={preview}
+            loading={previewLoading}
+            error={previewError}
+          />
+        ) : null}
+      </div>
       <FileExplorerEntryMenu
         state={entryMenu}
         onClose={() => setEntryMenu(null)}
@@ -1521,7 +1581,11 @@ function FileExplorerContent({
       />
       <ConfirmDialog
         open={!!pendingDeleteEntry}
-        title={pendingDeleteEntry?.type === "directory" ? "Delete Directory" : "Delete File"}
+        title={
+          pendingDeleteEntry?.type === "directory"
+            ? "Delete Directory"
+            : "Delete File"
+        }
         message={
           pendingDeleteEntry
             ? `Delete ${pendingDeleteEntry.type === "directory" ? "directory" : "file"} "${pendingDeleteEntry.path}"? This cannot be undone.`

@@ -65,9 +65,9 @@ describe("worktree parent metadata", () => {
       ],
     };
 
-    expect(
-      attachWorktreeParents(input, settings(linkedPath, "w1")),
-    ).toEqual(input);
+    expect(attachWorktreeParents(input, settings(linkedPath, "w1"))).toEqual(
+      input,
+    );
   });
 
   test("does not trust an unverified parent workspace", () => {
@@ -86,8 +86,8 @@ describe("worktree parent metadata", () => {
       ],
     };
 
-    expect(
-      attachWorktreeParents(input, settings(linkedPath, "w1")),
-    ).toEqual(input);
+    expect(attachWorktreeParents(input, settings(linkedPath, "w1"))).toEqual(
+      input,
+    );
   });
 });

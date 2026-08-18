@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  PREVIEW_IMAGE_MAX_BYTES,
-  PREVIEW_MAX_BYTES,
-} from "./file-constants";
+import { PREVIEW_IMAGE_MAX_BYTES, PREVIEW_MAX_BYTES } from "./file-constants";
 import {
   decodePreviewBuffer,
   imageMimeForPath,
@@ -28,11 +25,15 @@ describe("workspace preview helpers", () => {
   });
 
   test("decodes text previews and flags binary data", () => {
-    expect(decodePreviewBuffer(Buffer.from("hello"), false, "README.md")).toEqual({
+    expect(
+      decodePreviewBuffer(Buffer.from("hello"), false, "README.md"),
+    ).toEqual({
       text: "hello",
       binary: false,
     });
-    expect(decodePreviewBuffer(Buffer.from([0, 1, 2]), false, "data.bin")).toEqual({
+    expect(
+      decodePreviewBuffer(Buffer.from([0, 1, 2]), false, "data.bin"),
+    ).toEqual({
       text: null,
       binary: true,
       mime_type: undefined,
@@ -40,7 +41,11 @@ describe("workspace preview helpers", () => {
   });
 
   test("returns data URLs for complete image previews", () => {
-    const preview = decodePreviewBuffer(Buffer.from("png-data"), false, "a.png");
+    const preview = decodePreviewBuffer(
+      Buffer.from("png-data"),
+      false,
+      "a.png",
+    );
     expect(preview.binary).toBe(true);
     expect(preview.mime_type).toBe("image/png");
     expect(preview.image_data_url).toBe("data:image/png;base64,cG5nLWRhdGE=");
@@ -48,7 +53,9 @@ describe("workspace preview helpers", () => {
 
   test("trims incomplete UTF-8 tails for truncated text", () => {
     const buffer = Buffer.from("hello 😀");
-    const trimmed = trimIncompleteUtf8Tail(buffer.subarray(0, buffer.length - 1));
+    const trimmed = trimIncompleteUtf8Tail(
+      buffer.subarray(0, buffer.length - 1),
+    );
     expect(trimmed.toString("utf8")).toBe("hello ");
 
     const preview = decodePreviewBuffer(

@@ -43,21 +43,25 @@ describe("terminal file links", () => {
 
   test("caches positive and negative workspace resolutions", async () => {
     let calls = 0;
-    const cache = new TerminalFileResolutionCache(async (_workspaceId, paths) => {
-      calls += 1;
-      return paths
-        .filter((path) => path === "a/b/c.png")
-        .map((path) => ({ candidate: path, path }));
-    });
+    const cache = new TerminalFileResolutionCache(
+      async (_workspaceId, paths) => {
+        calls += 1;
+        return paths
+          .filter((path) => path === "a/b/c.png")
+          .map((path) => ({ candidate: path, path }));
+      },
+    );
 
     expect(
       Array.from(
-        (await cache.resolve("w1", ["a/b/c.png", "missing/file.png"])).entries(),
+        (
+          await cache.resolve("w1", ["a/b/c.png", "missing/file.png"])
+        ).entries(),
       ),
     ).toEqual([["a/b/c.png", "a/b/c.png"]]);
-    expect(await cache.resolve("w1", ["a/b/c.png", "missing/file.png"])).toEqual(
-      new Map([["a/b/c.png", "a/b/c.png"]]),
-    );
+    expect(
+      await cache.resolve("w1", ["a/b/c.png", "missing/file.png"]),
+    ).toEqual(new Map([["a/b/c.png", "a/b/c.png"]]));
     expect(calls).toBe(1);
 
     await cache.resolve("w2", ["a/b/c.png"]);
@@ -71,9 +75,7 @@ describe("terminal file links", () => {
     const cache = new TerminalFileResolutionCache(
       async (_workspaceId, paths) => {
         calls += 1;
-        return exists
-          ? paths.map((path) => ({ candidate: path, path }))
-          : [];
+        return exists ? paths.map((path) => ({ candidate: path, path })) : [];
       },
       { positiveTtlMs: 100, negativeTtlMs: 10, now: () => now },
     );

@@ -20,10 +20,7 @@ import {
   SERVICE_LABEL,
   type ServicePlatform,
 } from "./service-definitions";
-import {
-  defaultAuthTokenPath,
-  loadOrCreateAuthToken,
-} from "./auth-token";
+import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 import {
   browserUrlFor,
   getLanIPs,
@@ -31,12 +28,7 @@ import {
   withLoginToken,
 } from "./server-config";
 
-type ServiceAction =
-  | "install"
-  | "uninstall"
-  | "status"
-  | "restart"
-  | "reload";
+type ServiceAction = "install" | "uninstall" | "status" | "restart" | "reload";
 
 interface ServiceRuntime {
   platform: string;
@@ -46,10 +38,7 @@ interface ServiceRuntime {
   uid?: number;
 }
 
-type RunCommand = (
-  argv: string[],
-  options?: { quiet?: boolean },
-) => number;
+type RunCommand = (argv: string[], options?: { quiet?: boolean }) => number;
 
 interface ServiceCommandDependencies {
   runtime?: ServiceRuntime;
@@ -78,9 +67,7 @@ function parseServiceCommand(args: string[]): ParsedServiceCommand | null {
 
   const action = tail[0];
   if (
-    !["install", "uninstall", "status", "restart", "reload"].includes(
-      action,
-    )
+    !["install", "uninstall", "status", "restart", "reload"].includes(action)
   ) {
     throw new Error(`unknown service action: ${action}`);
   }
@@ -136,9 +123,7 @@ function ensureStandaloneBinary(runtime: ServiceRuntime): string {
     basename(runtime.execPath) === "bun" ||
     invoked.endsWith("src/index.ts")
   ) {
-    throw new Error(
-      "service install requires the standalone herdr-gui binary",
-    );
+    throw new Error("service install requires the standalone herdr-gui binary");
   }
   return resolve(runtime.execPath);
 }
@@ -162,8 +147,7 @@ function commandContainsArgument(command: string, argument: string): boolean {
     const before = index === 0 ? "" : command[index - 1];
     const afterIndex = index + argument.length;
     const after = afterIndex >= command.length ? "" : command[afterIndex];
-    const hasStartBoundary =
-      before === "" || /\s|["']/.test(before);
+    const hasStartBoundary = before === "" || /\s|["']/.test(before);
     const hasEndBoundary = after === "" || /\s|["']/.test(after);
     if (hasStartBoundary && hasEndBoundary) return true;
     offset = index + argument.length;
@@ -194,7 +178,7 @@ function preservedSystemdExecStart(
     // migrates it instead of treating it as a custom wrapper command.
     `"${binaryPath
       .replaceAll("\\", "\\\\")
-      .replaceAll("\"", "\\\"")
+      .replaceAll('"', '\\"')
       .replaceAll("%", "%%")}"`,
   ]);
   if (directCommands.has(command)) return undefined;
@@ -312,10 +296,7 @@ function printServiceAccess(
   if (isAnyHost(access.host)) {
     for (const ip of resolveLanIPs()) {
       log(
-        `LAN: ${withLoginToken(
-          `http://${ip}:${access.port}`,
-          access.token,
-        )}`,
+        `LAN: ${withLoginToken(`http://${ip}:${access.port}`, access.token)}`,
       );
     }
   }
@@ -344,11 +325,7 @@ function installService(
       : undefined;
   const definition =
     platform === "systemd"
-      ? renderSystemdService(
-          binaryPath,
-          paths.config,
-          customSystemdExecStart,
-        )
+      ? renderSystemdService(binaryPath, paths.config, customSystemdExecStart)
       : renderLaunchdService(binaryPath, paths);
   writeServiceDefinition(paths.definition, definition);
 
@@ -356,12 +333,7 @@ function installService(
   if (platform === "systemd") {
     code = runCommand(["systemctl", "--user", "daemon-reload"]);
     if (code === 0) {
-      code = runCommand([
-        "systemctl",
-        "--user",
-        "enable",
-        "herdr-gui.service",
-      ]);
+      code = runCommand(["systemctl", "--user", "enable", "herdr-gui.service"]);
     }
     if (code === 0) {
       // `enable --now` does not restart an already-active service after its
@@ -421,9 +393,13 @@ function uninstallService(
     );
   }
   if (platform === "systemd") {
-    const stopCode = runCommand(
-      ["systemctl", "--user", "disable", "--now", "herdr-gui.service"],
-    );
+    const stopCode = runCommand([
+      "systemctl",
+      "--user",
+      "disable",
+      "--now",
+      "herdr-gui.service",
+    ]);
     if (stopCode !== 0) return stopCode;
     rmSync(paths.definition, { force: true });
     const code = runCommand(["systemctl", "--user", "daemon-reload"]);
@@ -460,11 +436,7 @@ function runServiceAction(
       );
     }
     if (platform === "systemd") {
-      const reloadCode = runCommand([
-        "systemctl",
-        "--user",
-        "daemon-reload",
-      ]);
+      const reloadCode = runCommand(["systemctl", "--user", "daemon-reload"]);
       if (reloadCode !== 0) return reloadCode;
       return runCommand([
         "systemctl",
@@ -484,23 +456,12 @@ function runServiceAction(
       const bootoutCode = runCommand(["launchctl", "bootout", service]);
       if (bootoutCode !== 0) return bootoutCode;
     }
-    return runCommand([
-      "launchctl",
-      "bootstrap",
-      domain,
-      paths.definition,
-    ]);
+    return runCommand(["launchctl", "bootstrap", domain, paths.definition]);
   }
   if (platform === "systemd") {
     return runCommand(
       action === "status"
-        ? [
-            "systemctl",
-            "--user",
-            "--no-pager",
-            "status",
-            "herdr-gui.service",
-          ]
+        ? ["systemctl", "--user", "--no-pager", "status", "herdr-gui.service"]
         : ["systemctl", "--user", "restart", "herdr-gui.service"],
     );
   }

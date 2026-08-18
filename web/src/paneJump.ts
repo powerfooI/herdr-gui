@@ -24,13 +24,11 @@ export function paneJumpEntries(
 ): PaneJumpEntry[] {
   const paneById = new Map(snapshot.panes.map((pane) => [pane.pane_id, pane]));
   const workspaceById = new Map(
-    snapshot.workspaces.map((workspace) => [
-      workspace.workspace_id,
-      workspace,
-    ]),
+    snapshot.workspaces.map((workspace) => [workspace.workspace_id, workspace]),
   );
   const tabById = new Map(snapshot.tabs.map((tab) => [tab.tab_id, tab]));
-  const fallbackPaneIds = snapshot.layout?.panes.map((pane) => pane.pane_id) ?? [];
+  const fallbackPaneIds =
+    snapshot.layout?.panes.map((pane) => pane.pane_id) ?? [];
   const seen = new Set<string>();
   const orderedPaneIds = [...snapshot.recentPaneIds, ...fallbackPaneIds];
 

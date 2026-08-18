@@ -67,7 +67,8 @@ export function tokenUsageToMetrics(
 ): AtifMetrics | undefined {
   if (!usage) return undefined;
   const metrics: AtifMetrics = {};
-  if (usage.input_tokens !== undefined) metrics.prompt_tokens = usage.input_tokens;
+  if (usage.input_tokens !== undefined)
+    metrics.prompt_tokens = usage.input_tokens;
   if (usage.output_tokens !== undefined) {
     metrics.completion_tokens = usage.output_tokens;
   }

@@ -37,7 +37,7 @@ describe("agent session trajectory projection", () => {
           type: "function_call",
           call_id: "call-1",
           name: "read_file",
-          arguments: "{\"path\":\"README.md\"}",
+          arguments: '{"path":"README.md"}',
         },
       },
       {

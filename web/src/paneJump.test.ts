@@ -2,10 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { paneJumpEntries, paneJumpTargetId } from "./paneJump";
 import type { Pane, Tab, Workspace } from "./types";
 
-function workspace(
-  workspaceId: string,
-  label: string,
-): Workspace {
+function workspace(workspaceId: string, label: string): Workspace {
   return {
     workspace_id: workspaceId,
     number: 1,
@@ -52,7 +49,15 @@ describe("recent pane projection", () => {
   test("emphasizes the workspace and keeps agent state as metadata", () => {
     const entries = paneJumpEntries(
       {
-        layout: { panes: [{ pane_id: "p1", focused: true, rect: { x: 0, y: 0, width: 1, height: 1 } }] },
+        layout: {
+          panes: [
+            {
+              pane_id: "p1",
+              focused: true,
+              rect: { x: 0, y: 0, width: 1, height: 1 },
+            },
+          ],
+        },
         panes: [pane("p1", "w1", "t1", "codex")],
         recentPaneIds: ["p1"],
         tabs: [tab("t1", "w1")],
@@ -77,14 +82,19 @@ describe("recent pane projection", () => {
     const entries = paneJumpEntries({
       layout: {
         panes: [
-          { pane_id: "p1", focused: false, rect: { x: 0, y: 0, width: 1, height: 1 } },
-          { pane_id: "p2", focused: true, rect: { x: 1, y: 0, width: 1, height: 1 } },
+          {
+            pane_id: "p1",
+            focused: false,
+            rect: { x: 0, y: 0, width: 1, height: 1 },
+          },
+          {
+            pane_id: "p2",
+            focused: true,
+            rect: { x: 1, y: 0, width: 1, height: 1 },
+          },
         ],
       },
-      panes: [
-        pane("p1", "w1", "t1"),
-        pane("p2", "w2", "t2"),
-      ],
+      panes: [pane("p1", "w1", "t1"), pane("p2", "w2", "t2")],
       recentPaneIds: ["p2", "p2"],
       tabs: [tab("t1", "w1"), tab("t2", "w2")],
       workspaces: [workspace("w1", "one"), workspace("w2", "two")],

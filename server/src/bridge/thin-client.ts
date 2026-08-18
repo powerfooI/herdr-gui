@@ -112,7 +112,9 @@ export class ThinClient extends EventEmitter {
           protocolVersion,
         );
       });
-      sock.on("data", (c) => this.onData(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+      sock.on("data", (c) =>
+        this.onData(Buffer.isBuffer(c) ? c : Buffer.from(c)),
+      );
       sock.on("error", (e) => {
         this.rejectWelcome(e);
         this.emit("error", e);
@@ -320,12 +322,14 @@ function readFrameData(r: BinReader): FrameData {
   }
   const width = r.varint();
   const height = r.varint();
-  const cursor = r.option((): CursorState => ({
-    x: r.varint(),
-    y: r.varint(),
-    visible: r.bool(),
-    shape: r.u8(),
-  }));
+  const cursor = r.option(
+    (): CursorState => ({
+      x: r.varint(),
+      y: r.varint(),
+      visible: r.bool(),
+      shape: r.u8(),
+    }),
+  );
   const linkCount = r.varint();
   const hyperlinks: string[] = new Array(linkCount);
   for (let i = 0; i < linkCount; i++) hyperlinks[i] = r.string();

@@ -77,7 +77,8 @@ function stepMetricText(steps: AgentSessionTrajectoryStep[]) {
 }
 
 function meaningfulMessage(step: AgentSessionTrajectoryStep) {
-  if (!step.message || (step.metrics && step.message === "Token usage")) return "";
+  if (!step.message || (step.metrics && step.message === "Token usage"))
+    return "";
   return step.message;
 }
 
@@ -212,7 +213,9 @@ export function AgentSessionPreviewDialog({
               <button
                 type="button"
                 className="agent-history-icon"
-                onClick={() => void navigator.clipboard?.writeText(summary.path)}
+                onClick={() =>
+                  void navigator.clipboard?.writeText(summary.path)
+                }
                 aria-label="Copy session file path"
                 title="Copy path"
               >
@@ -363,7 +366,9 @@ const SessionTurn = memo(function SessionTurn({
           <strong>
             {turn.number === null ? "Session setup" : `Turn ${turn.number}`}
           </strong>
-          {firstTimestamp ? <time>{formatStepTime(firstTimestamp)}</time> : null}
+          {firstTimestamp ? (
+            <time>{formatStepTime(firstTimestamp)}</time>
+          ) : null}
         </div>
         <span>
           {turn.steps.length} {turn.steps.length === 1 ? "event" : "events"}

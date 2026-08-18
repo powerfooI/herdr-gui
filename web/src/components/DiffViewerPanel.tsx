@@ -1,5 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, File, FileDiff, Folder, RefreshCw } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  File,
+  FileDiff,
+  Folder,
+  RefreshCw,
+} from "lucide-react";
 import { bridge } from "../api";
 import type {
   GitDiffEntry,
@@ -74,7 +88,9 @@ function readStoredSelection(
 ): GitDiffEntry | null {
   if (!workspaceId) return null;
   try {
-    const raw = localStorage.getItem(diffSelectionStorageKey(workspaceId, scope));
+    const raw = localStorage.getItem(
+      diffSelectionStorageKey(workspaceId, scope),
+    );
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<GitDiffEntry>;
     if (
@@ -402,7 +418,8 @@ export function DiffViewerPanel({
   const s = useStore();
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const workspace =
-    s.workspaces.find((w) => w.workspace_id === workspaceId) ?? focusedWorkspace;
+    s.workspaces.find((w) => w.workspace_id === workspaceId) ??
+    focusedWorkspace;
   const cacheWorkspaceId = workspace?.workspace_id;
   const [diffScope, setDiffScope] = useState<DiffScope>(() => loadDiffScope());
   const [cache, setCache] = useState<DiffCache>(() =>
@@ -410,7 +427,9 @@ export function DiffViewerPanel({
   );
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [fileLoadingKey, setFileLoadingKey] = useState<string | null>(null);
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set([""]));
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
+    () => new Set([""]),
+  );
   const activeContextRef = useRef(diffCacheKey(cacheWorkspaceId, diffScope));
 
   useEffect(() => {
@@ -453,7 +472,8 @@ export function DiffViewerPanel({
           (summaryLoading || (!!key && fileLoadingKey === key && !files[key])),
         error: patch.error ?? source.error,
         entries:
-          patch.entries ?? treeOrderedDiffEntries(source.summary?.entries ?? []),
+          patch.entries ??
+          treeOrderedDiffEntries(source.summary?.entries ?? []),
         files,
         fileErrors: patch.fileErrors ?? source.fileErrors,
         summaryLoading: patch.summaryLoading ?? summaryLoading,
@@ -509,7 +529,10 @@ export function DiffViewerPanel({
     writeStoredSelection(workspaceId, scope, entry);
     const cachedFile = cache.files[key];
     if (cachedFile) {
-      onSelectionChange?.(diffSelection(cache, { entry, file: cachedFile }), meta);
+      onSelectionChange?.(
+        diffSelection(cache, { entry, file: cachedFile }),
+        meta,
+      );
       return;
     }
     setFileLoadingKey(key);
@@ -572,6 +595,10 @@ export function DiffViewerPanel({
     }
   };
 
+  const selectedDiffEntryKey = cache.selected
+    ? diffEntryKey(cache.selected)
+    : "";
+
   useEffect(() => {
     localStorage.setItem(DIFF_SCOPE_KEY, diffScope);
   }, [diffScope]);
@@ -602,12 +629,17 @@ export function DiffViewerPanel({
     if (cache.selected) void loadFile(cache.selected);
     else {
       onSelectionChange?.(
-        diffSelection(cache, { entry: null, file: null, loading: false, error: null }),
+        diffSelection(cache, {
+          entry: null,
+          file: null,
+          loading: false,
+          error: null,
+        }),
       );
     }
     // Load the selected file whenever summary refresh changes selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheWorkspaceId, diffScope, cache.selected ? diffEntryKey(cache.selected) : ""]);
+  }, [cacheWorkspaceId, diffScope, selectedDiffEntryKey]);
 
   useEffect(() => {
     if (!cacheWorkspaceId || !cache.summary?.entries.length) return;
@@ -678,7 +710,9 @@ export function DiffViewerPanel({
           <button
             type="button"
             className="diff-tree-row diff-tree-folder"
-            style={{ paddingLeft: DIFF_TREE_BASE_INDENT + depth * DIFF_TREE_INDENT }}
+            style={{
+              paddingLeft: DIFF_TREE_BASE_INDENT + depth * DIFF_TREE_INDENT,
+            }}
             key={child.path}
             onClick={() => toggleDir(child.path)}
           >
@@ -694,14 +728,18 @@ export function DiffViewerPanel({
       }
 
       const primary = child.entries[0];
-      const selected = child.entries.some((entry) => diffEntryKey(entry) === selectedKey);
+      const selected = child.entries.some(
+        (entry) => diffEntryKey(entry) === selectedKey,
+      );
       const stats = diffStatsForEntries(child.entries);
       items.push(
         <button
           type="button"
           key={child.path}
           className={`diff-tree-row diff-tree-file ${selected ? "is-selected" : ""}`}
-          style={{ paddingLeft: DIFF_TREE_BASE_INDENT + depth * DIFF_TREE_INDENT }}
+          style={{
+            paddingLeft: DIFF_TREE_BASE_INDENT + depth * DIFF_TREE_INDENT,
+          }}
           onClick={() => void loadFile(primary, { userInitiated: true })}
         >
           <span className="diff-tree-twisty" />
@@ -709,7 +747,10 @@ export function DiffViewerPanel({
           <span className="diff-tree-name">{child.name}</span>
           <span className="diff-tree-badges">
             {child.entries.map((entry) => (
-              <span className={`diff-kind diff-kind-${entry.kind}`} key={diffEntryKey(entry)}>
+              <span
+                className={`diff-kind diff-kind-${entry.kind}`}
+                key={diffEntryKey(entry)}
+              >
                 {kindLabel(entry.kind)}
               </span>
             ))}
@@ -765,7 +806,12 @@ export function DiffViewerPanel({
             {workspaceName(workspace)}
             {cache.summary?.base ? ` · base ${cache.summary.base}` : ""}
           </span>
-          <code>{cache.summary?.root ?? workspace.worktree?.checkout_path ?? workspace.cwd ?? ""}</code>
+          <code>
+            {cache.summary?.root ??
+              workspace.worktree?.checkout_path ??
+              workspace.cwd ??
+              ""}
+          </code>
         </div>
       ) : (
         <p className="modal-error">No workspace is focused.</p>
@@ -785,7 +831,9 @@ export function DiffViewerPanel({
           </div>
         )}
       </div>
-      {fileLoadingKey ? <div className="diff-loading-inline">Loading diff...</div> : null}
+      {fileLoadingKey ? (
+        <div className="diff-loading-inline">Loading diff...</div>
+      ) : null}
     </aside>
   );
 }

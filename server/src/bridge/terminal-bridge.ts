@@ -542,11 +542,7 @@ export function createTerminalBridge(args: {
           );
         }
         if (relaySize && relayRevision !== null) {
-          await syncClipboardRelayAfterAttach(
-            shared,
-            relaySize,
-            relayRevision,
-          );
+          await syncClipboardRelayAfterAttach(shared, relaySize, relayRevision);
         }
         console.log(
           "[bridge] terminal attached",

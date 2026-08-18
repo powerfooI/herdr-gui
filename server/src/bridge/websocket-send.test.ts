@@ -63,7 +63,7 @@ describe("browser WebSocket cleanup", () => {
   test("preserves the first cleanup snapshot until close handling completes", () => {
     const socket = {};
     let cleanupCount = 0;
-    const cleanup = new WebSocketCleanupTracker(socketToCleanup => {
+    const cleanup = new WebSocketCleanupTracker((socketToCleanup) => {
       expect(socketToCleanup).toBe(socket);
       cleanupCount += 1;
       return { client: "c1", viewedTerminals: ["term_1"] };
@@ -119,9 +119,7 @@ describe("browser WebSocket sending", () => {
     expect(outcome).toEqual({
       cleanupCount: 1,
       result: false,
-      warnings: [
-        "[bridge] websocket send dropped during workspace event",
-      ],
+      warnings: ["[bridge] websocket send dropped during workspace event"],
     });
     expect(sent).toEqual(["payload"]);
     expect(closes).toEqual([[undefined, undefined]]);

@@ -1,9 +1,13 @@
-import { lstat, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
 import {
-  DOWNLOAD_TIMEOUT_MS,
-  LIST_LIMIT,
-} from "./file-constants";
+  lstat,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { DOWNLOAD_TIMEOUT_MS, LIST_LIMIT } from "./file-constants";
 import {
   assertInsideRoot,
   entrySort,
@@ -100,7 +104,9 @@ export async function readLocalFile(
     : relativePreviewPath(rootReal, targetReal);
   const previewLimit = previewLimitForPath(displayPath, info.size);
   const raw = Buffer.from(
-    await Bun.file(targetReal).slice(0, previewLimit + 1).arrayBuffer(),
+    await Bun.file(targetReal)
+      .slice(0, previewLimit + 1)
+      .arrayBuffer(),
   );
   const truncated = info.size > previewLimit || raw.length > previewLimit;
   const bytes = truncated ? raw.subarray(0, previewLimit) : raw;
@@ -132,7 +138,15 @@ export async function downloadLocalFile(
   if (info.isDirectory()) {
     const archiveName = `${basename(targetReal) || "download"}.tar.gz`;
     const result = await runBinaryProcessWithTimeout(
-      ["tar", "-czf", "-", "-C", dirname(targetReal), "--", basename(targetReal)],
+      [
+        "tar",
+        "-czf",
+        "-",
+        "-C",
+        dirname(targetReal),
+        "--",
+        basename(targetReal),
+      ],
       DOWNLOAD_TIMEOUT_MS,
     );
     if (result.code !== 0) {
@@ -206,6 +220,10 @@ export async function deleteLocalFile(
   });
   return {
     path: relativePreviewPath(rootReal, targetPath),
-    type: info.isDirectory() ? "directory" : info.isSymbolicLink() ? "symlink" : "file",
+    type: info.isDirectory()
+      ? "directory"
+      : info.isSymbolicLink()
+        ? "symlink"
+        : "file",
   };
 }

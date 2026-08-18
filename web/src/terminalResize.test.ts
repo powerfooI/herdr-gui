@@ -141,9 +141,7 @@ describe("terminal relay viewport", () => {
         { cols: 142, rows: 44 },
         {
           area: { x: 26, y: 1, width: 54, height: 23 },
-          panes: [
-            { pane_id: "pane_1", rect: { width: 54, height: 23 } },
-          ],
+          panes: [{ pane_id: "pane_1", rect: { width: 54, height: 23 } }],
         },
         "pane_1",
       ),

@@ -23,9 +23,7 @@ describe("terminal HTTP links", () => {
       "，",
     ]) {
       expect(
-        sanitizeTerminalHttpUrl(
-          "https://baidu.com" + punctuation + "后续文本",
-        ),
+        sanitizeTerminalHttpUrl("https://baidu.com" + punctuation + "后续文本"),
       ).toBe("https://baidu.com");
     }
   });

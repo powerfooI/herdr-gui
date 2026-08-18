@@ -129,11 +129,7 @@ export function createAuthHandlers(args: {
   }
 
   function handleTokenLogin(req: Request): Response | null {
-    if (
-      !args.authRequired ||
-      !args.urlLoginToken ||
-      req.method !== "GET"
-    ) {
+    if (!args.authRequired || !args.urlLoginToken || req.method !== "GET") {
       return null;
     }
     const url = new URL(req.url);
@@ -142,9 +138,7 @@ export function createAuthHandlers(args: {
     url.searchParams.delete("token");
 
     const valid = secretsEqual(suppliedToken, args.urlLoginToken);
-    const location = valid
-      ? `${url.pathname}${url.search}`
-      : "/login";
+    const location = valid ? `${url.pathname}${url.search}` : "/login";
     return new Response(null, {
       status: 303,
       headers: {

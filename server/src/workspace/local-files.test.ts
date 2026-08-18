@@ -34,7 +34,9 @@ describe("local workspace file operations", () => {
       ]);
 
       const hiddenOn = await listLocalFiles(root, "", true);
-      expect(hiddenOn.entries.some((entry) => entry.name === ".env")).toBe(true);
+      expect(hiddenOn.entries.some((entry) => entry.name === ".env")).toBe(
+        true,
+      );
     });
   });
 
@@ -79,14 +81,24 @@ describe("local workspace file operations", () => {
 
   test("uploads, overwrites, downloads, and deletes files", async () => {
     await withTempDir(async (root) => {
-      const first = await uploadLocalFile(root, "", "notes.txt", Buffer.from("one"));
+      const first = await uploadLocalFile(
+        root,
+        "",
+        "notes.txt",
+        Buffer.from("one"),
+      );
       expect(first).toEqual({
         path: "notes.txt",
         size: 3,
         overwritten: false,
       });
 
-      const second = await uploadLocalFile(root, "", "notes.txt", Buffer.from("two"));
+      const second = await uploadLocalFile(
+        root,
+        "",
+        "notes.txt",
+        Buffer.from("two"),
+      );
       expect(second.overwritten).toBe(true);
 
       const download = await downloadLocalFile(root, "notes.txt");
@@ -110,9 +122,9 @@ describe("local workspace file operations", () => {
       await expect(listLocalFiles(root, "..", false)).rejects.toThrow(
         "file explorer path escaped the workspace checkout",
       );
-      await expect(uploadLocalFile(root, "..", "x", Buffer.from(""))).rejects.toThrow(
-        "file explorer path escaped the workspace checkout",
-      );
+      await expect(
+        uploadLocalFile(root, "..", "x", Buffer.from("")),
+      ).rejects.toThrow("file explorer path escaped the workspace checkout");
     });
   });
 });
