@@ -1,11 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.3.5 - 2026-08-18
+
+### Added
+
+- View full agent messages as sanitized rendered Markdown or raw text.
+- Collapse individual file sections in the Diff Viewer.
+
+### Changed
+
+- Present Session Inspector activity chronologically as collapsible steps with
+  concise previews.
+- Run numbered command-menu actions with `Alt+1` through `Alt+9` to avoid
+  browser-reserved Command-number shortcuts.
+- Improve mobile and no-wrap Diff Viewer layouts, keeping file headers and
+  navigation controls visible while code scrolls.
 
 ### Fixed
 
 - Keep browser WebSocket connections open when Bun queues outbound data under
-  backpressure, while retaining the 8 MiB slow-client protection.
+  backpressure, while retaining the 8 MiB slow-client protection and accurate
+  disconnect cleanup.
+- Restore text selection after releasing a pane divider outside the window.
 
 ## 0.3.4 - 2026-08-17
 
