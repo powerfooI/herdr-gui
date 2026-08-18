@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   sendWebSocketMessage,
   WS_BACKPRESSURE_LIMIT_BYTES,
+  WebSocketCleanupTracker,
 } from "./websocket-send";
 
 function createWebSocket({
@@ -17,13 +18,16 @@ function createWebSocket({
 } = {}) {
   const sent: string[] = [];
   const closes: Array<[number | undefined, string | undefined]> = [];
+  const closeArgumentCounts: number[] = [];
   const queuedAmounts = [...(bufferedAmounts ?? [bufferedAmount])];
   let lastBufferedAmount = bufferedAmount;
   return {
+    closeArgumentCounts,
     closes,
     sent,
     ws: {
       close(code?: number, reason?: string) {
+        closeArgumentCounts.push(arguments.length);
         closes.push([code, reason]);
       },
       getBufferedAmount() {
@@ -54,6 +58,26 @@ function sendWithObservability(
   });
   return { cleanupCount, result, warnings };
 }
+
+describe("browser WebSocket cleanup", () => {
+  test("preserves the first cleanup snapshot until close handling completes", () => {
+    const socket = {};
+    let cleanupCount = 0;
+    const cleanup = new WebSocketCleanupTracker(socketToCleanup => {
+      expect(socketToCleanup).toBe(socket);
+      cleanupCount += 1;
+      return { client: "c1", viewedTerminals: ["term_1"] };
+    });
+
+    const firstSnapshot = cleanup.cleanup(socket);
+    expect(cleanup.cleanup(socket)).toBe(firstSnapshot);
+    expect(cleanup.complete(socket)).toBe(firstSnapshot);
+    expect(cleanupCount).toBe(1);
+
+    expect(cleanup.cleanup(socket)).not.toBe(firstSnapshot);
+    expect(cleanupCount).toBe(2);
+  });
+});
 
 describe("browser WebSocket sending", () => {
   test("keeps the connection open when Bun queues a message under backpressure", () => {
@@ -87,7 +111,9 @@ describe("browser WebSocket sending", () => {
   });
 
   test("cleans up when Bun drops a message because of a connection issue", () => {
-    const { closes, sent, ws } = createWebSocket({ sendResult: 0 });
+    const { closeArgumentCounts, closes, sent, ws } = createWebSocket({
+      sendResult: 0,
+    });
     const outcome = sendWithObservability(ws, "workspace event");
 
     expect(outcome).toEqual({
@@ -99,6 +125,7 @@ describe("browser WebSocket sending", () => {
     });
     expect(sent).toEqual(["payload"]);
     expect(closes).toEqual([[undefined, undefined]]);
+    expect(closeArgumentCounts).toEqual([0]);
   });
 
   test("uses Bun's buffered amount API to close a persistently slow client", () => {

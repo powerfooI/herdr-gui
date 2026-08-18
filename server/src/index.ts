@@ -21,7 +21,10 @@ import { createSettingsRpcHandler } from "./bridge/settings-rpc";
 import { serveStatic } from "./http/static-files";
 import { createSshTunnelManager } from "./bridge/ssh-tunnel";
 import { createTerminalBridge } from "./bridge/terminal-bridge";
-import { sendWebSocketMessage } from "./bridge/websocket-send";
+import {
+  sendWebSocketMessage,
+  WebSocketCleanupTracker,
+} from "./bridge/websocket-send";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
@@ -193,6 +196,10 @@ process.on("SIGTERM", () => {
 });
 const clients = new Set<ServerWebSocket<unknown>>();
 const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
+interface WebSocketCleanupSnapshot {
+  client: string;
+  viewedTerminals: string[];
+}
 let nextClientId = 1;
 
 const rpcOutcomes = new Map<string, { status: "error"; detail?: string }>();
@@ -338,11 +345,19 @@ const terminalBridge = createTerminalBridge({
   },
 });
 
-function cleanupWs(ws: ServerWebSocket<unknown>) {
+const webSocketCleanup = new WebSocketCleanupTracker<
+  ServerWebSocket<unknown>,
+  WebSocketCleanupSnapshot
+>((ws) => {
+  const snapshot = {
+    client: clientLabel(ws),
+    viewedTerminals: terminalBridge.viewedTerminals(ws),
+  };
   clients.delete(ws);
   terminalBridge.cleanupWs(ws);
   terminalBridge.browserClientCountChanged(clients.size);
-}
+  return snapshot;
+});
 
 function safeSend(
   ws: ServerWebSocket<unknown>,
@@ -350,7 +365,9 @@ function safeSend(
   context = "message",
 ): boolean {
   return sendWebSocketMessage(ws, payload, {
-    cleanup: () => cleanupWs(ws),
+    cleanup: () => {
+      webSocketCleanup.cleanup(ws);
+    },
     context,
   });
 }
@@ -767,6 +784,7 @@ async function main() {
     port: config.port,
     hostname: config.host,
     async fetch(req, server) {
+      // pi-lens-ignore: ast-grep:unchecked-throwing-call
       const url = new URL(req.url);
 
       const tokenLoginResponse = handleTokenLogin(req);
@@ -919,14 +937,15 @@ async function main() {
           });
       },
       close(ws) {
-        const viewed = terminalBridge.viewedTerminals(ws);
+        const { client, viewedTerminals } = webSocketCleanup.complete(ws);
         console.log(
           "[bridge] client disconnected",
-          `client=${clientLabel(ws)}`,
-          `clients=${Math.max(0, clients.size - 1)}`,
-          viewed.length ? `terminals=${viewed.join(",")}` : "terminals=none",
+          `client=${client}`,
+          `clients=${clients.size}`,
+          viewedTerminals.length
+            ? `terminals=${viewedTerminals.join(",")}`
+            : "terminals=none",
         );
-        cleanupWs(ws);
       },
     },
   });

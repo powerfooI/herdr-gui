@@ -21,7 +21,10 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Cmd+W", description: "Close the focused tab" },
       { keys: "Cmd+Option+Left / Right", description: "Switch tabs in the focused workspace" },
       { keys: "Ctrl+Shift+W", description: "Open Workspaces" },
-      { keys: "Cmd/Ctrl+Shift+E", description: "Toggle the file explorer" },
+      {
+        keys: "Cmd/Ctrl + Shift + E",
+        description: "Toggle the file explorer",
+      },
       { keys: "Ctrl+Shift+G", description: "Open Diff Viewer" },
       { keys: "Ctrl+1 ... Ctrl+9", description: "Switch tabs in the focused workspace" },
       { keys: "Esc", description: "Dismiss toast notifications, update banners, menus, or dialogs" },
@@ -44,7 +47,10 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Ctrl+V", description: "Paste text or images on non-Apple platforms" },
       { keys: "Cmd/Ctrl+Click link", description: "Open HTTP and HTTPS links" },
       { keys: "Cmd/Ctrl+Click /path", description: "Preview workspace file paths from terminal output" },
-      { keys: "Cmd/Ctrl+Shift+H", description: "Toggle agent message history for the active terminal" },
+      {
+        keys: "Cmd/Ctrl + Shift + H",
+        description: "Toggle agent message history for the active terminal",
+      },
     ],
   },
   {
