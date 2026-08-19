@@ -1,4 +1,5 @@
-import { bridge } from "../api";
+import type { ConnectionClient } from "../api";
+import { connectionHttpPath } from "../connectionHttp";
 import { store } from "../store";
 import type { Pane } from "../types";
 
@@ -220,8 +221,16 @@ export function tokenUsage(summary?: AgentSessionSummary | null) {
   return summary?.stats.token_usage ?? null;
 }
 
-export function downloadSession(pane: Pane) {
-  const url = new URL("/api/agent-session/download", window.location.origin);
+export function downloadSession(pane: Pane, client: ConnectionClient) {
+  if (!client.isCurrent()) return;
+  const url = new URL(
+    connectionHttpPath(
+      client.connectionId,
+      "/agent-session/download",
+      client.serverRuntimeGeneration,
+    ),
+    window.location.origin,
+  );
   url.searchParams.set("pane_id", pane.pane_id);
   if (pane.agent) url.searchParams.set("agent", pane.agent);
   const link = document.createElement("a");
@@ -241,8 +250,20 @@ function sessionAtifFilename(path?: string) {
   return `${raw.replace(/[^\w.-]+/g, "_")}.atif.json`;
 }
 
-export function downloadSessionAtif(pane: Pane, sessionName?: string) {
-  const url = new URL("/api/agent-session/atif", window.location.origin);
+export function downloadSessionAtif(
+  pane: Pane,
+  sessionName: string | undefined,
+  client: ConnectionClient,
+) {
+  if (!client.isCurrent()) return;
+  const url = new URL(
+    connectionHttpPath(
+      client.connectionId,
+      "/agent-session/atif",
+      client.serverRuntimeGeneration,
+    ),
+    window.location.origin,
+  );
   url.searchParams.set("pane_id", pane.pane_id);
   if (pane.agent) url.searchParams.set("agent", pane.agent);
   const link = document.createElement("a");
@@ -253,12 +274,17 @@ export function downloadSessionAtif(pane: Pane, sessionName?: string) {
   link.remove();
 }
 
-export async function exportSession(pane: Pane) {
+export async function exportSessionForConnection(
+  pane: Pane,
+  client: ConnectionClient,
+) {
+  if (!client.isCurrent()) return;
   try {
-    const summary = (await bridge.call("agent_session.get", {
+    const summary = (await client.call("agent_session.get", {
       pane_id: pane.pane_id,
       agent: pane.agent,
     })) as AgentSessionSummary;
+    if (!client.isCurrent()) return;
     if (summary.status !== "ok") {
       store.notify({
         kind: "error",
@@ -269,7 +295,7 @@ export async function exportSession(pane: Pane) {
       });
       return;
     }
-    downloadSession(pane);
+    downloadSession(pane, client);
     store.notify({
       kind: "info",
       message: "Session export started",
@@ -277,6 +303,7 @@ export async function exportSession(pane: Pane) {
       autoDismissMs: 5000,
     });
   } catch (e) {
+    if (!client.isCurrent()) return;
     store.notify({
       kind: "error",
       message: "Failed to export session",

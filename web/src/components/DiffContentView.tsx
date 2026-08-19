@@ -9,8 +9,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { html as diffToHtml } from "diff2html";
 import "diff2html/bundles/css/diff2html.min.css";
-import { requestFilePreview } from "./FileExplorerDialog";
+import type { ConnectionClient } from "../api";
 import type { FilePreview, GitDiffEntry, GitDiffFile } from "../types";
+import { connectionClientScopeKey } from "../useConnectionClient";
+import { requestFilePreview } from "./FileExplorerDialog";
 
 type DiffViewMode = "split" | "unified";
 
@@ -61,8 +63,13 @@ function isBinaryDiffText(diff: string) {
   return /^Binary files\b/m.test(diff) || /^GIT binary patch\b/m.test(diff);
 }
 
-function imagePreviewKey(file: GitDiffFile) {
-  return `${file.workspace_id}:${file.path}`;
+function imagePreviewKey(client: ConnectionClient, file: GitDiffFile) {
+  return connectionClientScopeKey(
+    client,
+    "diff-image-preview",
+    file.workspace_id,
+    file.path,
+  );
 }
 
 function isEditableSearchTarget(target: EventTarget | null) {
@@ -191,6 +198,7 @@ export function DiffContentView({
   fileErrors = {},
   summaryLoading = false,
   mobile = false,
+  connectionClient,
   onOpenFile,
 }: {
   entry: GitDiffEntry | null;
@@ -202,6 +210,7 @@ export function DiffContentView({
   fileErrors?: Record<string, string>;
   summaryLoading?: boolean;
   mobile?: boolean;
+  connectionClient: ConnectionClient;
   onOpenFile?: (entry: GitDiffEntry) => void;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -222,6 +231,8 @@ export function DiffContentView({
     Record<string, ImagePreviewState>
   >({});
   const requestedImagePreviewsRef = useRef<Set<string>>(new Set());
+  const imagePreviewRequestSeqRef = useRef(0);
+  const imagePreviewRequestByKeyRef = useRef(new Map<string, number>());
   const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -278,10 +289,15 @@ export function DiffContentView({
     () =>
       renderedSections.flatMap((section) =>
         section.imagePreview && section.file
-          ? [{ key: imagePreviewKey(section.file), file: section.file }]
+          ? [
+              {
+                key: imagePreviewKey(connectionClient, section.file),
+                file: section.file,
+              },
+            ]
           : [],
       ),
-    [renderedSections],
+    [connectionClient, renderedSections],
   );
 
   useEffect(() => {
@@ -294,21 +310,43 @@ export function DiffContentView({
     localStorage.setItem(MOBILE_DIFF_WRAP_KEY, String(mobileWrap));
   }, [mobileWrap]);
   useEffect(() => {
+    requestedImagePreviewsRef.current.clear();
+    imagePreviewRequestByKeyRef.current.clear();
+    imagePreviewRequestSeqRef.current += 1;
+    setImagePreviews({});
+  }, [connectionClient]);
+  useEffect(() => {
     for (const target of imagePreviewTargets) {
       if (requestedImagePreviewsRef.current.has(target.key)) continue;
       requestedImagePreviewsRef.current.add(target.key);
+      const requestSeq = ++imagePreviewRequestSeqRef.current;
+      imagePreviewRequestByKeyRef.current.set(target.key, requestSeq);
       setImagePreviews((current) => ({
         ...current,
         [target.key]: { preview: null, loading: true, error: null },
       }));
-      void requestFilePreview(target.file.workspace_id, target.file.path)
+      void requestFilePreview(target.file.workspace_id, target.file.path, {
+        client: connectionClient,
+      })
         .then((preview) => {
+          if (
+            !connectionClient.isCurrent() ||
+            imagePreviewRequestByKeyRef.current.get(target.key) !== requestSeq
+          ) {
+            return;
+          }
           setImagePreviews((current) => ({
             ...current,
             [target.key]: { preview, loading: false, error: null },
           }));
         })
         .catch((e) => {
+          if (
+            !connectionClient.isCurrent() ||
+            imagePreviewRequestByKeyRef.current.get(target.key) !== requestSeq
+          ) {
+            return;
+          }
           setImagePreviews((current) => ({
             ...current,
             [target.key]: {
@@ -319,7 +357,7 @@ export function DiffContentView({
           }));
         });
     }
-  }, [imagePreviewTargets]);
+  }, [connectionClient, imagePreviewTargets]);
   useEffect(() => {
     if (!hasRenderedDiff || !diffRef.current) return;
     if (diffRef.current.dataset.syntaxKey === syntaxKey) return;
@@ -666,7 +704,11 @@ export function DiffContentView({
                     ) : null}
                     {section.imagePreview && section.file ? (
                       <DiffImagePreview
-                        state={imagePreviews[imagePreviewKey(section.file)]}
+                        state={
+                          imagePreviews[
+                            imagePreviewKey(connectionClient, section.file)
+                          ]
+                        }
                         path={section.entry.path}
                       />
                     ) : null}

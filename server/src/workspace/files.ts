@@ -1,4 +1,5 @@
 import type { HerdrClient } from "../bridge/herdr-client";
+import { sshCommandArgv } from "../bridge/ssh-command";
 import { checkoutPath as getCheckoutPath } from "./utils";
 import {
   downloadContentDisposition,
@@ -291,11 +292,10 @@ export function createFileHandlers({
       }
       tried.add(candidate);
       const argv = host
-        ? [
-            "ssh",
+        ? sshCommandArgv(
             host,
             `git -C ${shQuote(candidate)} rev-parse --show-toplevel`,
-          ]
+          )
         : ["git", "-C", candidate, "rev-parse", "--show-toplevel"];
       const result = await runProcessWithCodeTimeout(argv, GIT_DIFF_TIMEOUT_MS);
       if (result.code === 0 && result.stdout.trim())

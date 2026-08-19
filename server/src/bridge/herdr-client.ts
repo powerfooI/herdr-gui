@@ -1,6 +1,9 @@
 import { EventEmitter } from "node:events";
 import * as net from "node:net";
 
+const MAX_NDJSON_LINE_BYTES = 1024 * 1024;
+const SUBSCRIPTION_ACK_TIMEOUT_MS = 8000;
+
 /**
  * Minimal NDJSON client for the Herdr local socket.
  *
@@ -24,6 +27,9 @@ export class HerdrClient extends EventEmitter {
     params: Record<string, unknown> = {},
     timeoutMs = 8000,
   ): Promise<any> {
+    const requestId = `r_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
     return new Promise((resolve, reject) => {
       const s = net.createConnection({ path: this.socketPath });
       let buf = "";
@@ -39,7 +45,10 @@ export class HerdrClient extends EventEmitter {
         done = true;
         clearTimeout(timer);
         try {
-          s.end();
+          // One-shot RPCs never reuse the socket. Force closure so a peer that
+          // keeps its readable side half-open cannot retain our descriptor
+          // after a timeout or malformed response.
+          s.destroy();
         } catch {
           /* already closed */
         }
@@ -51,28 +60,53 @@ export class HerdrClient extends EventEmitter {
         finish(new Error(`${(e as any).code ?? "error"}: ${e.message}`)),
       );
       s.on("connect", () => {
-        const id = `r_${Date.now().toString(36)}_${Math.random()
-          .toString(36)
-          .slice(2, 6)}`;
-        s.write(JSON.stringify({ id, method, params }) + "\n");
+        s.write(JSON.stringify({ id: requestId, method, params }) + "\n");
       });
       s.on("data", (chunk) => {
         buf += chunk.toString("utf8");
         const i = buf.indexOf("\n");
-        if (i === -1) return;
+        if (i === -1) {
+          if (Buffer.byteLength(buf) > MAX_NDJSON_LINE_BYTES) {
+            finish(new Error("Herdr response line is too large"));
+          }
+          return;
+        }
         const line = buf.slice(0, i).trim();
-        let msg: any;
+        if (Buffer.byteLength(line) > MAX_NDJSON_LINE_BYTES) {
+          return finish(new Error("Herdr response line is too large"));
+        }
+        let msg: unknown;
         try {
           msg = JSON.parse(line);
         } catch {
-          return finish(new Error(`bad json from herdr: ${line}`));
+          return finish(new Error("bad JSON from Herdr"));
         }
-        if (msg.error) {
-          const code = msg.error.code ?? "error";
-          const message = msg.error.message ?? String(msg.error);
+        if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
+          return finish(new Error("invalid response envelope from Herdr"));
+        }
+        const envelope = msg as Record<string, unknown>;
+        const hasResult = Object.hasOwn(envelope, "result");
+        const hasError = Object.hasOwn(envelope, "error");
+        if (
+          envelope.id !== requestId ||
+          hasResult === hasError ||
+          (hasError &&
+            (!envelope.error ||
+              typeof envelope.error !== "object" ||
+              Array.isArray(envelope.error)))
+        ) {
+          return finish(new Error("invalid response envelope from Herdr"));
+        }
+        if (hasError) {
+          const error = envelope.error as Record<string, unknown>;
+          const code = typeof error.code === "string" ? error.code : "error";
+          const message =
+            typeof error.message === "string"
+              ? error.message
+              : "Herdr request failed";
           finish(new Error(`${code}: ${message}`));
         } else {
-          finish(undefined, msg.result);
+          finish(undefined, envelope.result);
         }
       });
       s.on("close", () => {
@@ -87,23 +121,54 @@ export class HerdrClient extends EventEmitter {
    * Long-lived event subscription. Returns a `close` handle and a `ready`
    * promise that resolves once the subscription is acknowledged.
    */
-  subscribe(types: string[]): {
+  subscribe(
+    types: string[],
+    ackTimeoutMs = SUBSCRIPTION_ACK_TIMEOUT_MS,
+  ): {
     close: () => void;
     ready: Promise<void>;
+    closed: Promise<void>;
   } {
     const s = net.createConnection({ path: this.socketPath });
     let buf = "";
     let acked = false;
+    let readySettled = false;
+    let closeRequested = false;
     let readyResolve!: () => void;
     let readyReject!: (e: Error) => void;
+    let closedResolve!: () => void;
     const ready = new Promise<void>((res, rej) => {
       readyResolve = res;
       readyReject = rej;
     });
+    const ackTimer = setTimeout(
+      () => {
+        if (readySettled) return;
+        readySettled = true;
+        readyReject(new Error("subscription acknowledgement timed out"));
+        s.destroy();
+      },
+      Math.max(1, ackTimeoutMs),
+    );
+    const resolveReady = () => {
+      if (readySettled) return;
+      readySettled = true;
+      clearTimeout(ackTimer);
+      readyResolve();
+    };
+    const rejectReady = (error: Error) => {
+      if (readySettled) return;
+      readySettled = true;
+      clearTimeout(ackTimer);
+      readyReject(error);
+    };
+    const closed = new Promise<void>((resolve) => {
+      closedResolve = resolve;
+    });
 
     s.on("error", (e) => {
       this.emit("error", e);
-      if (!acked) readyReject(e);
+      if (!acked) rejectReady(e);
     });
     s.on("connect", () => {
       s.write(
@@ -121,28 +186,83 @@ export class HerdrClient extends EventEmitter {
         const line = buf.slice(0, i).trim();
         buf = buf.slice(i + 1);
         if (!line) continue;
-        let msg: any;
+        if (Buffer.byteLength(line) > MAX_NDJSON_LINE_BYTES) {
+          rejectReady(new Error("Herdr subscription line is too large"));
+          s.destroy();
+          return;
+        }
+        let msg: unknown;
         try {
           msg = JSON.parse(line);
         } catch {
-          continue;
-        }
-        if (!acked) {
-          acked = true;
-          if (msg.error) {
-            readyReject(new Error(msg.error.message ?? "subscribe failed"));
-          } else {
-            readyResolve();
+          if (!acked) {
+            rejectReady(new Error("bad subscription JSON from Herdr"));
+            s.destroy();
+            return;
           }
           continue;
         }
-        // pushed event: { event, data }
-        this.emit("event", msg);
+        if (!acked) {
+          if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
+            rejectReady(new Error("invalid subscription acknowledgement"));
+            s.destroy();
+            return;
+          }
+          const envelope = msg as Record<string, unknown>;
+          const hasResult = Object.hasOwn(envelope, "result");
+          const hasError = Object.hasOwn(envelope, "error");
+          if (envelope.id !== "sub" || hasResult === hasError) {
+            rejectReady(new Error("invalid subscription acknowledgement"));
+            s.destroy();
+            return;
+          }
+          acked = true;
+          if (hasError) {
+            const error = envelope.error;
+            const message =
+              error &&
+              typeof error === "object" &&
+              !Array.isArray(error) &&
+              typeof (error as { message?: unknown }).message === "string"
+                ? (error as { message: string }).message
+                : "subscribe failed";
+            rejectReady(new Error(message));
+            s.destroy();
+          } else {
+            resolveReady();
+          }
+          continue;
+        }
+        if (
+          msg &&
+          typeof msg === "object" &&
+          !Array.isArray(msg) &&
+          typeof (msg as { event?: unknown }).event === "string"
+        ) {
+          this.emit("event", msg);
+        }
+      }
+      if (Buffer.byteLength(buf) > MAX_NDJSON_LINE_BYTES) {
+        rejectReady(new Error("Herdr subscription line is too large"));
+        s.destroy();
       }
     });
-    s.on("close", () => this.emit("subscription_closed"));
+    s.on("close", () => {
+      if (!acked) {
+        rejectReady(new Error("subscription closed before acknowledgement"));
+      }
+      clearTimeout(ackTimer);
+      closedResolve();
+      this.emit("subscription_closed");
+    });
 
-    return { close: () => s.end(), ready };
+    const close = () => {
+      if (closeRequested) return;
+      closeRequested = true;
+      s.destroy();
+    };
+
+    return { close, ready, closed };
   }
 
   ping(): Promise<any> {

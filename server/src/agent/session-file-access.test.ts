@@ -10,12 +10,12 @@ function quote(value: string) {
 
 describe("agent session file access", () => {
   test("reads reported session files through SSH", async () => {
-    const commands: string[] = [];
+    const commands: string[][] = [];
     const files = createAgentSessionFileAccess({
       sshHost: "operator@example.com",
       shQuote: quote,
       async runBinaryProcessWithTimeout(argv) {
-        commands.push(argv.join(" "));
+        commands.push(argv);
         const command = argv.at(-1) ?? "";
         if (command.includes("head -c")) {
           return {
@@ -52,8 +52,13 @@ describe("agent session file access", () => {
       ),
     ).toContain('"type":"message"');
     expect(
-      commands.every((command) =>
-        command.startsWith("ssh operator@example.com"),
+      commands.every(
+        (command) =>
+          command[0] === "ssh" &&
+          command.includes("BatchMode=yes") &&
+          command.includes("StrictHostKeyChecking=yes") &&
+          command.at(-2) === "operator@example.com" &&
+          command.at(-3) === "--",
       ),
     ).toBe(true);
   });

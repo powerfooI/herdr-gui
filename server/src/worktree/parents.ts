@@ -52,6 +52,7 @@ export function attachWorktreeParents(
   result: any,
   settings: Pick<GuiSettings, "custom">,
   host?: string,
+  connectionId?: string,
 ): any {
   if (!Array.isArray(result?.workspaces)) return result;
   const records = parentRecords(settings);
@@ -68,7 +69,8 @@ export function attachWorktreeParents(
       if (!workspace?.worktree?.is_linked_worktree) return workspace;
       const path = checkoutPath(workspace);
       if (!path) return workspace;
-      const parentWorkspaceId = records[repoSettingsKey(path, host)];
+      const parentWorkspaceId =
+        records[repoSettingsKey(path, host, connectionId)];
       const parent = parentWorkspaceId
         ? workspaceById.get(parentWorkspaceId)
         : undefined;
@@ -90,11 +92,17 @@ export function attachWorktreeParents(
 }
 
 export function createWorktreeParentStore({
+  connectionId,
   herdr,
   sshHost,
+  readSettings = readGuiSettings,
+  updateSettings = updateGuiSettings,
 }: {
+  connectionId?: string;
   herdr: HerdrCaller;
   sshHost: () => string | undefined;
+  readSettings?: typeof readGuiSettings;
+  updateSettings?: typeof updateGuiSettings;
 }) {
   async function resolveWorktreeWorkspace(result: any): Promise<any | null> {
     const directWorkspace = result?.workspace;
@@ -125,8 +133,11 @@ export function createWorktreeParentStore({
   async function rememberWorktreeParent(
     result: any,
     parentWorkspaceId: string,
+    shouldCommit: () => boolean = () => true,
   ): Promise<void> {
+    if (!shouldCommit()) return;
     const workspace = await resolveWorktreeWorkspace(result);
+    if (!shouldCommit()) return;
     const path = checkoutPath(workspace);
     if (
       !path ||
@@ -136,29 +147,39 @@ export function createWorktreeParentStore({
     ) {
       return;
     }
-    const key = repoSettingsKey(path, sshHost());
-    await updateGuiSettings((settings) =>
-      withParentRecords(settings, {
-        ...parentRecords(settings),
-        [key]: parentWorkspaceId,
-      }),
+    const key = repoSettingsKey(path, sshHost(), connectionId);
+    await updateSettings(
+      (settings) =>
+        withParentRecords(settings, {
+          ...parentRecords(settings),
+          [key]: parentWorkspaceId,
+        }),
+      shouldCommit,
     );
   }
 
-  async function forgetWorktree(path: string): Promise<void> {
-    if (!path) return;
-    const key = repoSettingsKey(path, sshHost());
-    await updateGuiSettings((settings) => {
+  async function forgetWorktree(
+    path: string,
+    shouldCommit: () => boolean = () => true,
+  ): Promise<void> {
+    if (!path || !shouldCommit()) return;
+    const key = repoSettingsKey(path, sshHost(), connectionId);
+    await updateSettings((settings) => {
       const records = parentRecords(settings);
       if (!(key in records)) return settings;
       const next = { ...records };
       delete next[key];
       return withParentRecords(settings, next);
-    });
+    }, shouldCommit);
   }
 
   async function enrichWorkspaceList(result: any): Promise<any> {
-    return attachWorktreeParents(result, await readGuiSettings(), sshHost());
+    return attachWorktreeParents(
+      result,
+      await readSettings(),
+      sshHost(),
+      connectionId,
+    );
   }
 
   return {

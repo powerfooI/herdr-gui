@@ -1,3 +1,4 @@
+import { sshCommandArgv } from "../bridge/ssh-command";
 import {
   repoWorktreeHooksEnabled,
   workspaceRepoSettingsKey,
@@ -46,6 +47,7 @@ export type PaseoWorktreeHookConfig = {
 };
 
 export function createWorktreeHookRunner(args: {
+  connectionId?: string;
   herdr: {
     call(method: string, params?: Record<string, unknown>): Promise<any>;
   };
@@ -56,7 +58,11 @@ export function createWorktreeHookRunner(args: {
   hooksEnabled?: (repoKey?: string | null) => Promise<boolean>;
 }) {
   function repoSettingsKey(workspace: any): string | null {
-    return workspaceRepoSettingsKey(workspace, args.sshHost());
+    return workspaceRepoSettingsKey(
+      workspace,
+      args.sshHost(),
+      args.connectionId,
+    );
   }
 
   // Read a file from the same host where Herdr is operating, local or via SSH.
@@ -64,11 +70,12 @@ export function createWorktreeHookRunner(args: {
     if (!path) return null;
     const host = args.sshHost();
     if (host) {
-      const { stdout } = await args.runProcess([
-        "ssh",
-        host,
-        `if [ -f ${args.shQuote(path)} ]; then cat ${args.shQuote(path)}; fi`,
-      ]);
+      const { stdout } = await args.runProcess(
+        sshCommandArgv(
+          host,
+          `if [ -f ${args.shQuote(path)} ]; then cat ${args.shQuote(path)}; fi`,
+        ),
+      );
       return stdout.trim() ? stdout : null;
     }
     const file = Bun.file(path);
@@ -166,7 +173,7 @@ export function createWorktreeHookRunner(args: {
       `${env} sh -c ${args.shQuote(command.trim())}`;
     const host = args.sshHost();
     const result = host
-      ? await args.runProcessWithCode(["ssh", host, script])
+      ? await args.runProcessWithCode(sshCommandArgv(host, script))
       : await args.runProcessWithCode(["sh", "-c", script]);
     const prefix = [
       `paseo ${hookArgs.hook} hook`,

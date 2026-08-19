@@ -18,8 +18,13 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import { bridge } from "../api";
+import type { ConnectionClient } from "../api";
+import { connectionHttpPath } from "../connectionHttp";
 import { store, useStore } from "../store";
+import {
+  connectionClientScopeKey,
+  useConnectionClient,
+} from "../useConnectionClient";
 import type {
   FileExplorerEntry,
   FileExplorerList,
@@ -83,8 +88,17 @@ const previewRequests = new Map<string, Promise<FilePreview>>();
 const FILE_TREE_INDENT = 10;
 const FILE_TREE_BASE_INDENT = 6;
 
-function explorerCacheKey(workspaceId?: string, showHidden = false) {
-  return `${workspaceId ?? "focused"}:${showHidden ? "hidden" : "visible"}`;
+export function explorerCacheKey(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId?: string,
+  showHidden = false,
+) {
+  return connectionClientScopeKey(
+    client,
+    "explorer",
+    workspaceId ?? "focused",
+    showHidden,
+  );
 }
 
 function emptyExplorerCache(): FileExplorerCache {
@@ -97,8 +111,12 @@ function emptyExplorerCache(): FileExplorerCache {
   };
 }
 
-function readExplorerCache(workspaceId?: string, showHidden = false) {
-  const key = explorerCacheKey(workspaceId, showHidden);
+function readExplorerCache(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId?: string,
+  showHidden = false,
+) {
+  const key = explorerCacheKey(client, workspaceId, showHidden);
   const cached = explorerCache.get(key);
   if (cached) {
     return {
@@ -117,11 +135,12 @@ function readExplorerCache(workspaceId?: string, showHidden = false) {
 }
 
 function writeExplorerCache(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
   workspaceId: string | undefined,
   showHidden: boolean,
   patch: Partial<FileExplorerCache>,
 ) {
-  const key = explorerCacheKey(workspaceId, showHidden);
+  const key = explorerCacheKey(client, workspaceId, showHidden);
   const current = explorerCache.get(key) ?? emptyExplorerCache();
   explorerCache.set(key, {
     ...current,
@@ -133,8 +152,17 @@ function writeExplorerCache(
   });
 }
 
-function previewCacheKey(workspaceId: string | undefined, path: string) {
-  return `${workspaceId ?? "focused"}:${path}`;
+export function filePreviewCacheKey(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId: string | undefined,
+  path: string,
+) {
+  return connectionClientScopeKey(
+    client,
+    "preview",
+    workspaceId ?? "focused",
+    path,
+  );
 }
 
 function parentDirectoryPaths(path: string) {
@@ -324,37 +352,53 @@ function buildGitStatusMaps(
 export function requestFilePreview(
   workspaceId: string,
   path: string,
-  options?: { refresh?: boolean },
+  options: { refresh?: boolean; client: ConnectionClient },
 ) {
-  const key = previewCacheKey(workspaceId, path);
+  const client = options.client;
+  if (!client.isCurrent()) {
+    return Promise.reject(new Error("connection changed during file preview"));
+  }
+  const key = filePreviewCacheKey(client, workspaceId, path);
   const cached = previewCache.get(key);
   if (cached && !options?.refresh) return Promise.resolve(cached);
   const running = previewRequests.get(key);
   if (running) return running;
-  const task = bridge.call("file.read", {
+  const task = client.call("file.read", {
     workspace_id: workspaceId,
     path,
   }) as Promise<FilePreview>;
-  previewRequests.set(
-    key,
-    task
-      .then((preview) => {
-        previewCache.set(key, preview);
-        return preview;
-      })
-      .finally(() => {
-        previewRequests.delete(key);
-      }),
-  );
-  return previewRequests.get(key)!;
+  const scopedTask = task
+    .then((preview) => {
+      if (!client.isCurrent()) {
+        throw new Error("connection changed during file preview");
+      }
+      previewCache.set(key, preview);
+      return preview;
+    })
+    .finally(() => {
+      previewRequests.delete(key);
+    });
+  previewRequests.set(key, scopedTask);
+  return scopedTask;
 }
 
 async function uploadExplorerFile(
+  client: ConnectionClient,
   workspaceId: string,
   directory: string,
   file: File,
 ) {
-  const url = new URL("/api/file/upload", window.location.origin);
+  if (!client.isCurrent()) throw new Error("connection changed during upload");
+  const url = new URL(
+    connectionHttpPath(
+      client.connectionId,
+      "/file/upload",
+      client.serverRuntimeGeneration,
+    ),
+    window.location.origin,
+  );
+  if (url.origin !== window.location.origin)
+    throw new Error("invalid upload origin");
   url.searchParams.set("workspace_id", workspaceId);
   url.searchParams.set("directory", directory);
   url.searchParams.set("filename", file.name);
@@ -363,6 +407,7 @@ async function uploadExplorerFile(
     body: file,
   });
   const text = await response.text();
+  if (!client.isCurrent()) throw new Error("connection changed during upload");
   let payload: any;
   try {
     payload = text ? JSON.parse(text) : {};
@@ -381,12 +426,27 @@ async function uploadExplorerFile(
   };
 }
 
-async function deleteExplorerEntry(workspaceId: string, path: string) {
-  const url = new URL("/api/file/delete", window.location.origin);
+async function deleteExplorerEntry(
+  client: ConnectionClient,
+  workspaceId: string,
+  path: string,
+) {
+  if (!client.isCurrent()) throw new Error("connection changed during delete");
+  const url = new URL(
+    connectionHttpPath(
+      client.connectionId,
+      "/file/delete",
+      client.serverRuntimeGeneration,
+    ),
+    window.location.origin,
+  );
+  if (url.origin !== window.location.origin)
+    throw new Error("invalid delete origin");
   url.searchParams.set("workspace_id", workspaceId);
   url.searchParams.set("path", path);
   const response = await fetch(url, { method: "POST" });
   const text = await response.text();
+  if (!client.isCurrent()) throw new Error("connection changed during delete");
   let payload: any;
   try {
     payload = text ? JSON.parse(text) : {};
@@ -404,26 +464,30 @@ async function deleteExplorerEntry(workspaceId: string, path: string) {
   };
 }
 
-export function prefetchFileExplorerWorkspace(workspaceId?: string) {
-  if (!workspaceId) return Promise.resolve();
+export function prefetchFileExplorerWorkspace(
+  workspaceId: string | undefined,
+  client: ConnectionClient,
+) {
+  if (!workspaceId || !client.isCurrent()) return Promise.resolve();
   const showHidden = false;
-  const key = explorerCacheKey(workspaceId, showHidden);
+  const key = explorerCacheKey(client, workspaceId, showHidden);
   const running = explorerPrefetches.get(key);
   if (running) return running;
 
   const task = (async () => {
-    const cached = readExplorerCache(workspaceId, showHidden);
+    const cached = readExplorerCache(client, workspaceId, showHidden);
     const paths = Array.from(cached.expanded);
     if (!paths.includes("")) paths.unshift("");
 
     for (const path of paths) {
-      const list = (await bridge.call("file.list", {
+      const list = (await client.call("file.list", {
         workspace_id: workspaceId,
         path,
         show_hidden: showHidden,
       })) as FileExplorerList;
-      const latest = readExplorerCache(workspaceId, showHidden);
-      writeExplorerCache(workspaceId, showHidden, {
+      if (!client.isCurrent()) return;
+      const latest = readExplorerCache(client, workspaceId, showHidden);
+      writeExplorerCache(client, workspaceId, showHidden, {
         rootInfo: list,
         children: { ...latest.children, [path]: list.entries },
         expanded: latest.expanded,
@@ -621,6 +685,7 @@ function FileExplorerContent({
   ) => void;
 }) {
   const s = useStore();
+  const connectionClient = useConnectionClient();
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const workspace =
     s.workspaces.find((w) => w.workspace_id === workspaceId) ??
@@ -628,7 +693,7 @@ function FileExplorerContent({
   const cacheWorkspaceId = workspace?.workspace_id;
   const [showHidden, setShowHidden] = useState(false);
   const [cache, setCache] = useState<FileExplorerCache>(() =>
-    readExplorerCache(cacheWorkspaceId, showHidden),
+    readExplorerCache(connectionClient, cacheWorkspaceId, showHidden),
   );
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(
     () => new Set(),
@@ -683,7 +748,7 @@ function FileExplorerContent({
           ? new Set(patch.expanded)
           : new Set(current.expanded),
       };
-      writeExplorerCache(cacheWorkspaceId, showHidden, next);
+      writeExplorerCache(connectionClient, cacheWorkspaceId, showHidden, next);
       return next;
     });
   };
@@ -695,16 +760,17 @@ function FileExplorerContent({
   };
 
   const loadDirectory = async (path: string, force = false) => {
-    if (!workspace?.workspace_id) return;
+    if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     if (!force && children[path]) return;
     setLoadingPaths((current) => new Set(current).add(path));
     updateCache({ error: null });
     try {
-      const list = (await bridge.call("file.list", {
+      const list = (await connectionClient.call("file.list", {
         workspace_id: workspace.workspace_id,
         path,
         show_hidden: showHidden,
       })) as FileExplorerList;
+      if (!connectionClient.isCurrent()) return;
       setCache((current) => {
         const next = {
           ...current,
@@ -713,44 +779,68 @@ function FileExplorerContent({
           expanded: new Set(current.expanded),
           error: null,
         };
-        writeExplorerCache(cacheWorkspaceId, showHidden, next);
+        writeExplorerCache(
+          connectionClient,
+          cacheWorkspaceId,
+          showHidden,
+          next,
+        );
         return next;
       });
     } catch (e) {
-      updateCache({ error: (e as Error).message });
+      if (connectionClient.isCurrent()) {
+        updateCache({ error: (e as Error).message });
+      }
     } finally {
-      setLoadingPaths((current) => {
-        const next = new Set(current);
-        next.delete(path);
-        return next;
-      });
+      if (connectionClient.isCurrent()) {
+        setLoadingPaths((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      }
     }
   };
 
   const loadGitStatus = async () => {
+    if (!connectionClient.isCurrent()) return;
     if (!workspace?.workspace_id) {
       gitStatusRequestKeyRef.current = null;
       setGitSummary(null);
       setGitStatusLoading(false);
       return;
     }
-    const requestKey = workspace.workspace_id;
+    const workspaceId = workspace.workspace_id;
+    const requestKey = connectionClientScopeKey(
+      connectionClient,
+      "git-status",
+      workspaceId,
+    );
     gitStatusRequestKeyRef.current = requestKey;
     setGitStatusLoading(true);
     try {
-      const summary = (await bridge.call("git.diff_summary", {
-        workspace_id: requestKey,
+      const summary = (await connectionClient.call("git.diff_summary", {
+        workspace_id: workspaceId,
         mode: "working",
       })) as GitDiffSummary;
-      if (gitStatusRequestKeyRef.current === requestKey) {
+      if (
+        connectionClient.isCurrent() &&
+        gitStatusRequestKeyRef.current === requestKey
+      ) {
         setGitSummary(summary);
       }
     } catch {
-      if (gitStatusRequestKeyRef.current === requestKey) {
+      if (
+        connectionClient.isCurrent() &&
+        gitStatusRequestKeyRef.current === requestKey
+      ) {
         setGitSummary(null);
       }
     } finally {
-      if (gitStatusRequestKeyRef.current === requestKey) {
+      if (
+        connectionClient.isCurrent() &&
+        gitStatusRequestKeyRef.current === requestKey
+      ) {
         setGitStatusLoading(false);
       }
     }
@@ -758,7 +848,11 @@ function FileExplorerContent({
 
   useEffect(() => {
     if (!open) return;
-    const cached = readExplorerCache(cacheWorkspaceId, showHidden);
+    const cached = readExplorerCache(
+      connectionClient,
+      cacheWorkspaceId,
+      showHidden,
+    );
     setCache(cached);
     setLoadingPaths(new Set());
     setUploadingPaths(new Set());
@@ -773,14 +867,12 @@ function FileExplorerContent({
     setPreview(null);
     setPreviewLoading(false);
     setPreviewError(null);
-    if (previewPlacement === "inline") {
-      emitPreviewChange({
-        entry: null,
-        preview: null,
-        loading: false,
-        error: null,
-      });
-    }
+    emitPreviewChange({
+      entry: null,
+      preview: null,
+      loading: false,
+      error: null,
+    });
     previewRequestKeyRef.current = null;
     const pathsToRefresh = Array.from(cached.expanded);
     if (!pathsToRefresh.includes("")) pathsToRefresh.unshift("");
@@ -802,7 +894,7 @@ function FileExplorerContent({
     };
     // Reopen against a fresh workspace/show-hidden snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheWorkspaceId, open, showHidden, showCloseButton]);
+  }, [cacheWorkspaceId, connectionClient, open, showHidden, showCloseButton]);
 
   useEffect(() => {
     if (
@@ -831,10 +923,10 @@ function FileExplorerContent({
 
     const expandActivePath = async () => {
       const parentPaths = parentDirectoryPaths(activePath);
-      let latest = readExplorerCache(workspaceId, showHidden);
+      let latest = readExplorerCache(connectionClient, workspaceId, showHidden);
       const nextExpanded = new Set(latest.expanded);
       for (const path of parentPaths) nextExpanded.add(path);
-      writeExplorerCache(workspaceId, showHidden, {
+      writeExplorerCache(connectionClient, workspaceId, showHidden, {
         expanded: nextExpanded,
       });
       if (!cancelled) {
@@ -845,21 +937,22 @@ function FileExplorerContent({
       }
 
       for (const path of parentPaths) {
-        if (cancelled) return;
-        latest = readExplorerCache(workspaceId, showHidden);
+        if (cancelled || !connectionClient.isCurrent()) return;
+        latest = readExplorerCache(connectionClient, workspaceId, showHidden);
         if (latest.children[path]) continue;
         setLoadingPaths((current) => new Set(current).add(path));
         try {
-          const list = (await bridge.call("file.list", {
+          const list = (await connectionClient.call("file.list", {
             workspace_id: workspaceId,
             path,
             show_hidden: showHidden,
           })) as FileExplorerList;
-          latest = readExplorerCache(workspaceId, showHidden);
+          if (!connectionClient.isCurrent() || cancelled) return;
+          latest = readExplorerCache(connectionClient, workspaceId, showHidden);
           const expandedWithPath = new Set(latest.expanded);
           for (const parentPath of parentPaths)
             expandedWithPath.add(parentPath);
-          writeExplorerCache(workspaceId, showHidden, {
+          writeExplorerCache(connectionClient, workspaceId, showHidden, {
             rootInfo: list,
             children: { ...latest.children, [path]: list.entries },
             expanded: expandedWithPath,
@@ -875,14 +968,14 @@ function FileExplorerContent({
             }));
           }
         } catch (e) {
-          if (!cancelled) {
+          if (!cancelled && connectionClient.isCurrent()) {
             setCache((current) => ({
               ...current,
               error: (e as Error).message,
             }));
           }
         } finally {
-          if (!cancelled) {
+          if (!cancelled && connectionClient.isCurrent()) {
             setLoadingPaths((current) => {
               const next = new Set(current);
               next.delete(path);
@@ -897,7 +990,14 @@ function FileExplorerContent({
     return () => {
       cancelled = true;
     };
-  }, [activePath, cacheWorkspaceId, open, showHidden, workspace?.workspace_id]);
+  }, [
+    activePath,
+    cacheWorkspaceId,
+    connectionClient,
+    open,
+    showHidden,
+    workspace?.workspace_id,
+  ]);
 
   const query = search.trim().toLowerCase();
   const loadedEntries = useMemo(
@@ -944,7 +1044,7 @@ function FileExplorerContent({
   const loadPreview = async (entry: FileExplorerEntry) => {
     if (!workspace?.workspace_id || entry.type === "directory") return;
     const workspaceId = workspace.workspace_id;
-    const key = previewCacheKey(workspaceId, entry.path);
+    const key = filePreviewCacheKey(connectionClient, workspaceId, entry.path);
     previewRequestKeyRef.current = key;
     setPreviewEntry(entry);
     setPreviewError(null);
@@ -967,8 +1067,12 @@ function FileExplorerContent({
     try {
       const next = await requestFilePreview(workspaceId, entry.path, {
         refresh: Boolean(cached),
+        client: connectionClient,
       });
-      if (previewRequestKeyRef.current === key) {
+      if (
+        connectionClient.isCurrent() &&
+        previewRequestKeyRef.current === key
+      ) {
         setPreview(next);
         emitPreviewChange(
           { entry, preview: next, loading: false, error: null },
@@ -976,7 +1080,11 @@ function FileExplorerContent({
         );
       }
     } catch (e) {
-      if (previewRequestKeyRef.current === key && !cached) {
+      if (
+        connectionClient.isCurrent() &&
+        previewRequestKeyRef.current === key &&
+        !cached
+      ) {
         const message = (e as Error).message;
         setPreviewError(message);
         emitPreviewChange(
@@ -985,7 +1093,12 @@ function FileExplorerContent({
         );
       }
     } finally {
-      if (previewRequestKeyRef.current === key) setPreviewLoading(false);
+      if (
+        connectionClient.isCurrent() &&
+        previewRequestKeyRef.current === key
+      ) {
+        setPreviewLoading(false);
+      }
     }
   };
 
@@ -994,6 +1107,7 @@ function FileExplorerContent({
     const value = root ? absolutePath(root, entry) : entry.path;
     try {
       await navigator.clipboard.writeText(value);
+      if (!connectionClient.isCurrent()) return;
       store.notify({
         kind: "success",
         message: "Path copied",
@@ -1001,6 +1115,7 @@ function FileExplorerContent({
         autoDismissMs: 5000,
       });
     } catch (e) {
+      if (!connectionClient.isCurrent()) return;
       store.notify({
         kind: "error",
         message: "Failed to copy path",
@@ -1011,7 +1126,15 @@ function FileExplorerContent({
 
   const downloadEntry = (entry: FileExplorerEntry) => {
     if (!workspace?.workspace_id) return;
-    const url = new URL("/api/file/download", window.location.origin);
+    if (!connectionClient.isCurrent()) return;
+    const url = new URL(
+      connectionHttpPath(
+        connectionClient.connectionId,
+        "/file/download",
+        connectionClient.serverRuntimeGeneration,
+      ),
+      window.location.origin,
+    );
     url.searchParams.set("workspace_id", workspace.workspace_id);
     url.searchParams.set("path", entry.path);
     const link = document.createElement("a");
@@ -1024,6 +1147,7 @@ function FileExplorerContent({
     document.body.appendChild(link);
     link.click();
     link.remove();
+    if (!connectionClient.isCurrent()) return;
     store.notify({
       kind: "info",
       message: "Download started",
@@ -1067,7 +1191,7 @@ function FileExplorerContent({
         expanded: nextExpanded,
         error: null,
       };
-      writeExplorerCache(cacheWorkspaceId, showHidden, next);
+      writeExplorerCache(connectionClient, cacheWorkspaceId, showHidden, next);
       return next;
     });
   };
@@ -1079,7 +1203,11 @@ function FileExplorerContent({
       selectedPath === entry.path ||
       (entry.type === "directory" &&
         selectedPath?.startsWith(`${entry.path}/`));
-    const cacheKey = previewCacheKey(workspace.workspace_id, entry.path);
+    const cacheKey = filePreviewCacheKey(
+      connectionClient,
+      workspace.workspace_id,
+      entry.path,
+    );
     previewCache.delete(cacheKey);
     if (entry.type === "directory") {
       const childCacheKeyPrefix = `${cacheKey}/`;
@@ -1099,14 +1227,20 @@ function FileExplorerContent({
   };
 
   const deleteEntry = async (entry: FileExplorerEntry) => {
-    if (!workspace?.workspace_id) return;
+    if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     markDeletePath(entry.path, true);
     updateCache({ error: null });
     try {
-      await deleteExplorerEntry(workspace.workspace_id, entry.path);
+      await deleteExplorerEntry(
+        connectionClient,
+        workspace.workspace_id,
+        entry.path,
+      );
+      if (!connectionClient.isCurrent()) return;
       removeEntryFromCache(entry);
       clearDeletedPreview(entry);
       await loadDirectory(parentDirectoryPath(entry.path), true);
+      if (!connectionClient.isCurrent()) return;
       void loadGitStatus();
       store.notify({
         kind: "success",
@@ -1116,20 +1250,23 @@ function FileExplorerContent({
         autoDismissMs: 5000,
       });
     } catch (e) {
+      if (!connectionClient.isCurrent()) return;
       store.notify({
         kind: "error",
         message: "Delete failed",
         detail: (e as Error).message,
       });
     } finally {
-      markDeletePath(entry.path, false);
+      if (connectionClient.isCurrent()) markDeletePath(entry.path, false);
     }
   };
 
   const invalidateUploadedPreviews = (paths: string[]) => {
     if (!workspace?.workspace_id || !paths.length) return;
     for (const path of paths) {
-      previewCache.delete(previewCacheKey(workspace.workspace_id, path));
+      previewCache.delete(
+        filePreviewCacheKey(connectionClient, workspace.workspace_id, path),
+      );
     }
     if (previewEntry && paths.includes(previewEntry.path)) {
       void loadPreview(previewEntry);
@@ -1149,7 +1286,7 @@ function FileExplorerContent({
   };
 
   const uploadDroppedFiles = async (directory: string, files: FileList) => {
-    if (!workspace?.workspace_id) return;
+    if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     const uploadFiles = Array.from(files).filter((file) => file.name);
     if (!uploadFiles.length) return;
     markUploadPath(directory, true);
@@ -1157,9 +1294,15 @@ function FileExplorerContent({
     try {
       const results = await Promise.allSettled(
         uploadFiles.map((file) =>
-          uploadExplorerFile(workspace.workspace_id, directory, file),
+          uploadExplorerFile(
+            connectionClient,
+            workspace.workspace_id,
+            directory,
+            file,
+          ),
         ),
       );
+      if (!connectionClient.isCurrent()) return;
       const failed = results.find(
         (result): result is PromiseRejectedResult =>
           result.status === "rejected",
@@ -1169,6 +1312,7 @@ function FileExplorerContent({
         updateCache({ expanded: new Set(expanded).add(directory) });
       }
       await loadDirectory(directory, true);
+      if (!connectionClient.isCurrent()) return;
       invalidateUploadedPreviews(
         results.flatMap((result) =>
           result.status === "fulfilled" ? [result.value.path] : [],
@@ -1186,14 +1330,17 @@ function FileExplorerContent({
         autoDismissMs: 5000,
       });
     } catch (e) {
+      if (!connectionClient.isCurrent()) return;
       store.notify({
         kind: "error",
         message: "Upload failed",
         detail: (e as Error).message,
       });
     } finally {
-      markUploadPath(directory, false);
-      setDropTargetPath(null);
+      if (connectionClient.isCurrent()) {
+        markUploadPath(directory, false);
+        setDropTargetPath(null);
+      }
     }
   };
 

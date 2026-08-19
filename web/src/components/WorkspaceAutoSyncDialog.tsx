@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { bridge } from "../api";
 import { store } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import { focusDialogElement } from "./dialogFocus";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -28,6 +28,7 @@ export function WorkspaceAutoSyncDialog({
   workspaceId?: string;
   onClose: () => void;
 }) {
+  const connectionClient = useConnectionClient();
   const [info, setInfo] = useState<WorkspaceAutoSyncInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,27 +42,35 @@ export function WorkspaceAutoSyncDialog({
       const requestId = ++loadRequest.current;
       if (showLoading) setLoading(true);
       try {
-        const result = await bridge.call("settings.workspace_auto_sync.get", {
-          workspace_id: workspaceId,
-        });
-        if (requestId === loadRequest.current) {
+        const result = await connectionClient.call(
+          "settings.workspace_auto_sync.get",
+          { workspace_id: workspaceId },
+        );
+        if (connectionClient.isCurrent() && requestId === loadRequest.current) {
           setInfo(result as WorkspaceAutoSyncInfo);
           setError("");
         }
       } catch (loadError) {
-        if (requestId === loadRequest.current) {
+        if (connectionClient.isCurrent() && requestId === loadRequest.current) {
           setError((loadError as Error).message);
         }
       } finally {
-        if (showLoading && requestId === loadRequest.current) setLoading(false);
+        if (
+          showLoading &&
+          connectionClient.isCurrent() &&
+          requestId === loadRequest.current
+        ) {
+          setLoading(false);
+        }
       }
     },
-    [workspaceId],
+    [connectionClient, workspaceId],
   );
 
   useEffect(() => {
     if (!open || !workspaceId) return;
     setInfo(null);
+    setSaving(false);
     setError("");
     void load(true);
     const timer = window.setInterval(() => void load(false), 3_000);
@@ -88,15 +97,15 @@ export function WorkspaceAutoSyncDialog({
   if (!open) return null;
 
   const setEnabled = async (enabled: boolean) => {
-    if (!workspaceId) return;
+    if (!workspaceId || !connectionClient.isCurrent()) return;
     setSaving(true);
     setError("");
     const result = await store.setWorkspaceAutoSyncEnabled(
       workspaceId,
       enabled,
     );
-    if (result) await load(false);
-    setSaving(false);
+    if (result && connectionClient.isCurrent()) await load(false);
+    if (connectionClient.isCurrent()) setSaving(false);
   };
 
   return (

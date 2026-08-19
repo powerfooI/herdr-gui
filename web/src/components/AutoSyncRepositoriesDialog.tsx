@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { bridge } from "../api";
 import { store } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import { focusDialogElement } from "./dialogFocus";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -30,6 +30,7 @@ export function AutoSyncRepositoriesDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const connectionClient = useConnectionClient();
   const [data, setData] = useState<AutoSyncConfigList | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set());
@@ -37,29 +38,45 @@ export function AutoSyncRepositoriesDialog({
   const requestSequence = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async (showLoading: boolean) => {
-    const requestId = ++requestSequence.current;
-    if (showLoading) setLoading(true);
-    try {
-      const result = await bridge.call("settings.workspace_auto_sync.list");
-      if (requestId === requestSequence.current) {
-        setData(result as AutoSyncConfigList);
-        setError("");
+  const load = useCallback(
+    async (showLoading: boolean) => {
+      const requestId = ++requestSequence.current;
+      if (showLoading) setLoading(true);
+      try {
+        const result = await connectionClient.call(
+          "settings.workspace_auto_sync.list",
+        );
+        if (
+          connectionClient.isCurrent() &&
+          requestId === requestSequence.current
+        ) {
+          setData(result as AutoSyncConfigList);
+          setError("");
+        }
+      } catch (loadError) {
+        if (
+          connectionClient.isCurrent() &&
+          requestId === requestSequence.current
+        ) {
+          setError((loadError as Error).message);
+        }
+      } finally {
+        if (
+          showLoading &&
+          connectionClient.isCurrent() &&
+          requestId === requestSequence.current
+        ) {
+          setLoading(false);
+        }
       }
-    } catch (loadError) {
-      if (requestId === requestSequence.current) {
-        setError((loadError as Error).message);
-      }
-    } finally {
-      if (showLoading && requestId === requestSequence.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [connectionClient],
+  );
 
   useEffect(() => {
     if (!open) return;
     setData(null);
+    setSavingKeys(new Set());
     setError("");
     void load(true);
     const timer = window.setInterval(() => void load(false), 5_000);
@@ -86,12 +103,14 @@ export function AutoSyncRepositoriesDialog({
   if (!open) return null;
 
   const setEnabled = async (config: AutoSyncConfig, enabled: boolean) => {
+    if (!connectionClient.isCurrent()) return;
     setSavingKeys((current) => new Set(current).add(config.key));
     const result = await store.setWorkspaceAutoSyncConfigEnabled(
       config.key,
       enabled,
     );
-    if (result) await load(false);
+    if (result && connectionClient.isCurrent()) await load(false);
+    if (!connectionClient.isCurrent()) return;
     setSavingKeys((current) => {
       const next = new Set(current);
       next.delete(config.key);

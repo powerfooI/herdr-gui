@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
+import { validateSshDestination } from "../bridge/ssh-command";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
 type CliArgs = Partial<{
@@ -122,10 +123,17 @@ Options (flags override env vars):
   }
   const password = configuredPassword || generatedAuthToken || "";
 
-  const sshHost =
+  const sshHostValue =
     (typeof args["ssh-host"] === "string" && args["ssh-host"]) ||
     process.env.HERDR_SSH_HOST ||
     undefined;
+  let sshHost: string | undefined;
+  try {
+    sshHost = sshHostValue ? validateSshDestination(sshHostValue) : undefined;
+  } catch (error) {
+    console.error(`[bridge] ${(error as Error).message}`);
+    process.exit(2);
+  }
   const session =
     (typeof args.session === "string" && args.session) ||
     process.env.HERDR_SESSION ||

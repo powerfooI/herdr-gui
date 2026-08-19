@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { sshCommandArgv } from "../bridge/ssh-command";
 import {
   readGuiSettings,
   workspaceRepoSettingsKey,
@@ -31,6 +32,7 @@ const GIT_STATUS_CACHE_MS = 4000;
 const GIT_STATUS_TIMEOUT_MS = 8000;
 
 export function createStatusEnricher(args: {
+  connectionId?: string;
   sshHost: () => string | undefined;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
@@ -137,11 +139,10 @@ export function createStatusEnricher(args: {
 
     try {
       const argv = host
-        ? [
-            "ssh",
+        ? sshCommandArgv(
             host,
             `git -C ${args.shQuote(checkoutPath)} status --porcelain=v1 --branch`,
-          ]
+          )
         : ["git", "-C", checkoutPath, "status", "--porcelain=v1", "--branch"];
       const result = await args.runProcessWithCodeTimeout(
         argv,
@@ -207,7 +208,7 @@ printf '${marker}END ${index} %s\\n' "$code"
     let result: { code: number; stdout: string; stderr: string };
     try {
       result = await args.runProcessWithCodeTimeout(
-        ["ssh", host, command],
+        sshCommandArgv(host, command),
         timeoutMs,
       );
     } catch (e) {
@@ -298,7 +299,7 @@ printf '${marker}END ${index} %s\\n' "$code"
     const host = args.sshHost();
     const settings = await readGuiSettings();
     for (const workspace of worktreeWorkspaces) {
-      const key = workspaceRepoSettingsKey(workspace, host);
+      const key = workspaceRepoSettingsKey(workspace, host, args.connectionId);
       if (!key) continue;
       workspace.worktree.gui_settings_key = key;
       workspace.worktree.worktree_hooks_enabled =

@@ -1,5 +1,7 @@
 import type { HerdrClient } from "../bridge/herdr-client";
+import { sshCommandArgv } from "../bridge/ssh-command";
 import {
+  connectionSettingsPrefix,
   DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES,
   type GuiWorkspaceAutoSyncSettings,
   readGuiSettings,
@@ -33,11 +35,20 @@ function configuredCheckoutPath(
   key: string,
   entry: GuiWorkspaceAutoSyncSettings,
   host: string | undefined,
+  connectionId: string | undefined,
 ): string {
-  const prefix = host ? `ssh:${host}:` : "local:";
+  const prefix = `${connectionSettingsPrefix(connectionId)}${host ? `ssh:${host}:` : "local:"}`;
   if (!key.startsWith(prefix)) return "";
   if (entry.host !== undefined && entry.host !== host) return "";
-  if (entry.checkout_path) return entry.checkout_path;
+  if (entry.checkout_path) {
+    return workspaceAutoSyncSettingsKey(
+      entry.checkout_path,
+      host,
+      connectionId,
+    ) === key
+      ? entry.checkout_path
+      : "";
+  }
   return key.slice(prefix.length);
 }
 
@@ -63,7 +74,7 @@ export async function syncWorkspaceBranch({
   const runGit = (args: string) => {
     const command = `GIT_TERMINAL_PROMPT=0 git -C ${shQuote(root)} ${args}`;
     return runProcessWithCodeTimeout(
-      host ? ["ssh", host, command] : ["sh", "-lc", command],
+      host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
       GIT_PULL_TIMEOUT_MS,
     );
   };
@@ -203,33 +214,58 @@ export async function syncWorkspaceBranch({
 }
 
 export function createWorkspaceAutoSync(args: {
+  connectionId?: string;
+  formatError?: (error: unknown) => string;
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   shQuote: (value: string) => string;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   invalidateGitStatus: (root: string) => void;
   resolveWorkspaceGitRoot: (workspaceId: string) => Promise<{ root: string }>;
+  readSettings?: typeof readGuiSettings;
+  updateSettings?: typeof updateGuiSettings;
+  syncBranch?: typeof syncWorkspaceBranch;
 }) {
+  const readSettings = args.readSettings ?? readGuiSettings;
+  const updateSettings = args.updateSettings ?? updateGuiSettings;
+  const syncBranch = args.syncBranch ?? syncWorkspaceBranch;
+  const formatError =
+    args.formatError ??
+    ((error: unknown) =>
+      (error instanceof Error ? error.message : String(error))
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 2_000));
+  const connectionDetail = `connection=${args.connectionId ?? "legacy-default"}`;
   let timer: ReturnType<typeof setInterval> | null = null;
   let started = false;
-  let running = false;
+  let lifecycleGeneration = 0;
+  let runningTask: Promise<void> | null = null;
+  let stopTask: Promise<void> | null = null;
   let rerunRequested = false;
   const runningKeys = new Set<string>();
   const forcedKeys = new Set<string>();
 
+  function current(generation: number) {
+    return started && lifecycleGeneration === generation;
+  }
+
   async function recordResult(
+    generation: number,
     key: string,
     root: string,
     host: string | undefined,
     result: SyncResult,
   ) {
-    await updateGuiSettings((current) => {
-      const existing = current.workspace_auto_sync[key];
-      if (!existing) return current;
+    if (!current(generation)) return;
+    await updateSettings((settings) => {
+      if (!current(generation)) return settings;
+      const existing = settings.workspace_auto_sync[key];
+      if (!existing) return settings;
       return {
-        ...current,
+        ...settings,
         workspace_auto_sync: {
-          ...current.workspace_auto_sync,
+          ...settings.workspace_auto_sync,
           [key]: {
             ...existing,
             ...result,
@@ -242,21 +278,22 @@ export function createWorkspaceAutoSync(args: {
     });
   }
 
-  async function tick() {
-    if (!started || running) return;
-    running = true;
+  async function runTick(generation: number) {
     try {
-      const settings = await readGuiSettings();
+      const settings = await readSettings();
+      if (!current(generation)) return;
       const host = args.sshHost();
       const enabledEntries = Object.entries(
         settings.workspace_auto_sync,
       ).filter(
         ([key, entry]) =>
-          entry.enabled && !!configuredCheckoutPath(key, entry, host),
+          entry.enabled &&
+          !!configuredCheckoutPath(key, entry, host, args.connectionId),
       );
       if (enabledEntries.length === 0) return;
 
       const workspaceResult = await args.herdr.call("workspace.list");
+      if (!current(generation)) return;
       const workspaces = Array.isArray((workspaceResult as any)?.workspaces)
         ? (workspaceResult as any).workspaces
         : [];
@@ -268,11 +305,12 @@ export function createWorkspaceAutoSync(args: {
       const enabledRoots = enabledEntries
         .map(([key, entry]) => ({
           key,
-          root: configuredCheckoutPath(key, entry, host),
+          root: configuredCheckoutPath(key, entry, host, args.connectionId),
         }))
         .filter(({ root }) => root)
         .sort((a, b) => b.root.length - a.root.length);
       for (const workspace of workspaces) {
+        if (!current(generation)) return;
         if (workspaceByKey.size === enabledRoots.length) break;
         const candidates = [
           workspace?.worktree?.checkout_path,
@@ -293,7 +331,12 @@ export function createWorkspaceAutoSync(args: {
             const root = (
               await args.resolveWorkspaceGitRoot(workspace.workspace_id)
             ).root;
-            const key = workspaceAutoSyncSettingsKey(root, host);
+            if (!current(generation)) return;
+            const key = workspaceAutoSyncSettingsKey(
+              root,
+              host,
+              args.connectionId,
+            );
             if (key && enabledKeys.has(key) && !workspaceByKey.has(key)) {
               workspaceByKey.set(key, { workspace, root });
             }
@@ -304,8 +347,9 @@ export function createWorkspaceAutoSync(args: {
       }
 
       for (const [key] of enabledEntries) {
-        if (!started) break;
-        const entry = (await readGuiSettings()).workspace_auto_sync[key];
+        if (!current(generation)) return;
+        const entry = (await readSettings()).workspace_auto_sync[key];
+        if (!current(generation)) return;
         if (!entry?.enabled) {
           forcedKeys.delete(key);
           continue;
@@ -329,78 +373,105 @@ export function createWorkspaceAutoSync(args: {
         if (!target) continue;
         const { workspace, root } = target;
         forcedKeys.delete(key);
-
         runningKeys.add(key);
         console.log(
           "[bridge] workspace auto-sync started",
+          connectionDetail,
           `workspace=${workspace.workspace_id ?? "unknown"}`,
           `path=${root}`,
         );
         let result: SyncResult;
         try {
-          result = await syncWorkspaceBranch({
+          result = await syncBranch({
             root,
             host,
             shQuote: args.shQuote,
             runProcessWithCodeTimeout: args.runProcessWithCodeTimeout,
           });
+          if (!current(generation)) return;
           args.invalidateGitStatus(root);
         } catch (error) {
+          if (!current(generation)) return;
           result = {
             last_status: "failed",
-            last_message: (error as Error).message.slice(0, 2_000),
+            last_message: formatError(error),
           };
         } finally {
           runningKeys.delete(key);
         }
-        await recordResult(key, root, host, result);
+        await recordResult(generation, key, root, host, result);
+        if (!current(generation)) return;
         console.log(
           "[bridge] workspace auto-sync finished",
+          connectionDetail,
           `workspace=${workspace.workspace_id ?? "unknown"}`,
           `status=${result.last_status ?? "failed"}`,
-          `detail=${result.last_message ?? ""}`,
+          `detail=${formatError(result.last_message ?? "")}`,
         );
       }
     } catch (error) {
-      console.warn(
-        `[bridge] workspace auto-sync tick failed: ${(error as Error).message}`,
-      );
-    } finally {
-      running = false;
-      // A settings change can arrive while another sync is running. Re-run
-      // immediately so an enabled workspace does not wait for the next poll.
-      if (rerunRequested && started) {
+      if (current(generation)) {
+        console.warn(
+          `[bridge] workspace auto-sync tick failed ${connectionDetail}: ${formatError(error)}`,
+        );
+      }
+    }
+  }
+
+  function tick() {
+    if (!started) return Promise.resolve();
+    if (runningTask) return runningTask;
+    const generation = lifecycleGeneration;
+    const task = runTick(generation);
+    const wrapped = task.finally(() => {
+      if (runningTask !== wrapped) return;
+      runningTask = null;
+      if (current(generation) && rerunRequested) {
         rerunRequested = false;
         queueMicrotask(() => void tick());
       }
-    }
+    });
+    runningTask = wrapped;
+    return wrapped;
   }
 
   function start() {
     if (started) return;
     started = true;
+    lifecycleGeneration += 1;
+    stopTask = null;
     timer = setInterval(() => void tick(), AUTO_SYNC_POLL_MS);
     void tick();
   }
 
   function stop() {
+    if (stopTask) return stopTask;
+    if (!started && !runningTask) return Promise.resolve();
     started = false;
+    lifecycleGeneration += 1;
     if (timer) clearInterval(timer);
     timer = null;
     rerunRequested = false;
+    forcedKeys.clear();
+    const drain = runningTask ?? Promise.resolve();
+    stopTask = drain.finally(() => {
+      runningKeys.clear();
+    });
+    return stopTask;
   }
 
   function settingsChanged(key: string, enabled: boolean) {
+    if (!started) return;
     if (!enabled) {
       forcedKeys.delete(key);
       return;
     }
     forcedKeys.add(key);
-    if (running) {
+    if (runningTask) {
       rerunRequested = true;
       return;
     }
-    if (started) void tick();
+    void tick();
   }
 
   return {

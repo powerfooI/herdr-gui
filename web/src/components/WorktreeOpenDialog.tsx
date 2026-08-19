@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { bridge } from "../api";
 import { store } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import type { ExistingWorktree, WorktreeList } from "../types";
 import { resolveWorktreeOpenSource } from "../worktree";
 import { focusDialogElement } from "./dialogFocus";
@@ -39,6 +39,7 @@ export function WorktreeOpenDialog({
   sourceCwd?: string | null;
   onClose: () => void;
 }) {
+  const connectionClient = useConnectionClient();
   const [manualTarget, setManualTarget] = useState("");
   const [query, setQuery] = useState("");
   const [listState, setListState] = useState<WorktreeListState | null>(null);
@@ -60,9 +61,9 @@ export function WorktreeOpenDialog({
     setActionError(null);
     setListState({ workspaceId, loading: true, list: null, error: "" });
 
-    bridge.call("worktree.list", { workspace_id: workspaceId }).then(
+    connectionClient.call("worktree.list", { workspace_id: workspaceId }).then(
       (result) => {
-        if (cancelled) return;
+        if (cancelled || !connectionClient.isCurrent()) return;
         setListState({
           workspaceId,
           loading: false,
@@ -71,7 +72,7 @@ export function WorktreeOpenDialog({
         });
       },
       (err) => {
-        if (cancelled) return;
+        if (cancelled || !connectionClient.isCurrent()) return;
         setListState({
           workspaceId,
           loading: false,
@@ -89,7 +90,7 @@ export function WorktreeOpenDialog({
       cancelled = true;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, workspaceId]);
+  }, [connectionClient, open, workspaceId]);
 
   const currentListState =
     listState?.workspaceId === workspaceId ? listState : null;
@@ -119,6 +120,7 @@ export function WorktreeOpenDialog({
     sourceCwd,
   );
   const openTarget = (target: string) => {
+    if (!connectionClient.isCurrent()) return undefined;
     if (actionSource?.workspaceId) {
       return store.openWorktree(actionSource.workspaceId, target);
     }

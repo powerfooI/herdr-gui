@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { realpath, rename } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { sshCommandArgv } from "../bridge/ssh-command";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -298,7 +299,7 @@ export function createWorktreeRemovalRuntime({
 }): WorktreeRemovalRuntime {
   const runShell = (script: string) =>
     runProcessWithCodeTimeout(
-      host ? ["ssh", host, script] : ["sh", "-lc", script],
+      host ? sshCommandArgv(host, script) : ["sh", "-lc", script],
       PROCESS_SCAN_TIMEOUT_MS,
     );
 
@@ -373,7 +374,7 @@ fi
     if (ids.length === 0) return;
     const command = `kill -${signal} ${ids.join(" ")} 2>/dev/null || true`;
     await runProcessWithCodeTimeout(
-      host ? ["ssh", host, command] : ["sh", "-lc", command],
+      host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
       PROCESS_SCAN_TIMEOUT_MS,
     );
   };
@@ -417,13 +418,12 @@ fi
       return destination;
     }
     const result = await runProcessWithCodeTimeout(
-      [
-        "ssh",
+      sshCommandArgv(
         host,
         `mv_bin=$(command -v mv 2>/dev/null || true); ` +
           `[ -n "$mv_bin" ] || mv_bin=/bin/mv; ` +
           `"$mv_bin" ${shQuote(path)} ${shQuote(destination)}`,
-      ],
+      ),
       PROCESS_SCAN_TIMEOUT_MS,
     );
     if (result.code !== 0) {

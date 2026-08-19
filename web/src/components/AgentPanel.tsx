@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { bridge } from "../api";
 import { useStore, store } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import type { Pane } from "../types";
 import { agentClass, basename, shortId } from "../utils";
 import { ConfirmDialog } from "./ModalDialogs";
 import { AgentIcon } from "./AgentIcon";
 import { AgentSessionPreviewDialog } from "./AgentSessionPreviewDialog";
-import { type AgentSessionSummary, exportSession } from "./agentSession";
+import {
+  type AgentSessionSummary,
+  exportSessionForConnection,
+} from "./agentSession";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -34,6 +37,8 @@ function stateDotClass(status?: string): string {
 
 export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
   const s = useStore();
+  const connectionClient = useConnectionClient();
+  const previewRequest = useRef(0);
   const [menu, setMenu] = useState<AgentMenuState | null>(null);
   const [pendingClosePane, setPendingClosePane] = useState<Pane | null>(null);
   const [previewPane, setPreviewPane] = useState<Pane | null>(null);
@@ -41,6 +46,16 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
     useState<AgentSessionSummary | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    previewRequest.current += 1;
+    setMenu(null);
+    setPendingClosePane(null);
+    setPreviewPane(null);
+    setPreviewSummary(null);
+    setPreviewLoading(false);
+    setPreviewError("");
+  }, [connectionClient]);
 
   const wsLabel = (id: string) =>
     s.workspaces.find((w) => w.workspace_id === id)?.label ?? id;
@@ -64,11 +79,13 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
   );
 
   const openSessionPreview = (pane: Pane) => {
+    if (!connectionClient.isCurrent()) return;
+    const requestId = ++previewRequest.current;
     setPreviewPane(pane);
     setPreviewSummary(null);
     setPreviewError("");
     setPreviewLoading(true);
-    bridge
+    connectionClient
       .call("agent_session.get", {
         pane_id: pane.pane_id,
         agent: pane.agent,
@@ -76,9 +93,30 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
         include_trajectory: true,
         preview_limit: 1024 * 1024,
       })
-      .then((result) => setPreviewSummary(result as AgentSessionSummary))
-      .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setPreviewLoading(false));
+      .then((result) => {
+        if (
+          connectionClient.isCurrent() &&
+          previewRequest.current === requestId
+        ) {
+          setPreviewSummary(result as AgentSessionSummary);
+        }
+      })
+      .catch((e) => {
+        if (
+          connectionClient.isCurrent() &&
+          previewRequest.current === requestId
+        ) {
+          setPreviewError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (
+          connectionClient.isCurrent() &&
+          previewRequest.current === requestId
+        ) {
+          setPreviewLoading(false);
+        }
+      });
   };
 
   return (
@@ -112,7 +150,9 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
           onSelect?.();
         }}
         onPreviewSession={openSessionPreview}
-        onExportSession={exportSession}
+        onExportSession={(pane) =>
+          exportSessionForConnection(pane, connectionClient)
+        }
         onClosePane={(pane) => setPendingClosePane(pane)}
       />
       <AgentSessionPreviewDialog
@@ -121,6 +161,7 @@ export function AgentPanel({ onSelect }: { onSelect?: () => void }) {
         loading={previewLoading}
         error={previewError}
         onClose={() => {
+          previewRequest.current += 1;
           setPreviewPane(null);
           setPreviewSummary(null);
           setPreviewError("");

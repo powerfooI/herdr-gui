@@ -21,7 +21,9 @@ import {
 import packageJson from "../../package.json";
 import type { Theme } from "../App";
 import { ACCENT_OPTIONS, type AccentColor } from "../appearance";
+import { connectionHttpPath } from "../connectionHttp";
 import { store, useStore } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import {
   mobileTerminalShortcutCount,
   type MobileTerminalShortcutRows,
@@ -74,6 +76,7 @@ export function ConfigMenu({
   onMobileTerminalSideShortcutsChange,
 }: ConfigMenuProps) {
   const s = useStore();
+  const connectionClient = useConnectionClient();
   const updateAvailable = !!s.updateInfo?.update_available;
   const canInstallUpdate = updateAvailable && s.updateInfo?.can_auto_update;
   const updateVersion = s.updateInfo?.latest_version;
@@ -111,15 +114,27 @@ export function ConfigMenu({
         if (!cancelled) setHealth(healthInfo);
       });
 
-    fetch("/api/herdr-info", {
-      credentials: "same-origin",
-      cache: "no-store",
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((info) => {
-        if (!cancelled) setHerdrInfo(info);
-      });
+    if (connectionClient.isCurrent()) {
+      const herdrInfoUrl = new URL(
+        connectionHttpPath(
+          connectionClient.connectionId,
+          "/herdr-info",
+          connectionClient.serverRuntimeGeneration,
+        ),
+        window.location.origin,
+      );
+      if (herdrInfoUrl.origin === window.location.origin) {
+        fetch(herdrInfoUrl, {
+          credentials: "same-origin",
+          cache: "no-store",
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+          .then((info) => {
+            if (!cancelled && connectionClient.isCurrent()) setHerdrInfo(info);
+          });
+      }
+    }
 
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -140,7 +155,7 @@ export function ConfigMenu({
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey, { capture: true });
     };
-  }, [open]);
+  }, [connectionClient, open]);
 
   return (
     <>

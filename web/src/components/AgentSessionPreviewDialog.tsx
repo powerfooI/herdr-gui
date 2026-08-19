@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../store";
 import type { Pane } from "../types";
+import { useConnectionClient } from "../useConnectionClient";
 import { shortId } from "../utils";
 import { AgentIcon } from "./AgentIcon";
 import { CodePreview } from "./CodePreview";
@@ -96,6 +97,7 @@ export function AgentSessionPreviewDialog({
   onClose: () => void;
 }) {
   const appState = useStore();
+  const connectionClient = useConnectionClient();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"timeline" | "atif" | "raw">("timeline");
   const turns = useMemo(
@@ -284,12 +286,16 @@ export function AgentSessionPreviewDialog({
                       downloadSessionAtif(
                         pane,
                         summary.session?.value || summary.path,
+                        connectionClient,
                       )
                     }
                   >
                     Export ATIF
                   </button>
-                  <button type="button" onClick={() => downloadSession(pane)}>
+                  <button
+                    type="button"
+                    onClick={() => downloadSession(pane, connectionClient)}
+                  >
                     Export raw
                   </button>
                 </div>

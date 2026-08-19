@@ -87,10 +87,11 @@ export class ThinClient extends EventEmitter {
     opts: { launchMode?: number; encoding?: number } = {},
   ): Promise<void> {
     if (this.sock) throw new Error("thin client is already connected");
+    if (this.closed) throw new Error("thin client is closed");
     const protocolVersion = await this.resolveProtocol();
+    if (this.closed) throw new Error("thin client is closed");
     assertSupportedHerdrProtocol(protocolVersion);
     this.protocolVersion = protocolVersion;
-    this.closed = false;
     await new Promise<void>((resolve, reject) => {
       const sock = net.createConnection({ path: this.socketPath });
       this.sock = sock;

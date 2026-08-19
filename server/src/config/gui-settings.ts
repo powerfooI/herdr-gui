@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
+import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
 import { sourceCheckoutPath as workspaceSourceCheckoutPath } from "../workspace/utils";
 
 export type GuiRepoSettings = {
@@ -140,13 +141,18 @@ export async function readGuiSettings(): Promise<GuiSettings> {
   return cachedGuiSettings;
 }
 
-async function persistGuiSettings(settings: GuiSettings): Promise<GuiSettings> {
+async function persistGuiSettings(
+  settings: GuiSettings,
+  shouldCommit: () => boolean,
+): Promise<GuiSettings> {
   const path = guiSettingsPath();
   const temporaryPath = `${path}.${process.pid}.${++temporaryFileSequence}.tmp`;
   mkdirSync(dirname(path), { recursive: true });
   const normalized = normalizeGuiSettings(settings);
   try {
+    if (!shouldCommit()) throw new Error("settings update cancelled");
     await Bun.write(temporaryPath, `${JSON.stringify(normalized, null, 2)}\n`);
+    if (!shouldCommit()) throw new Error("settings update cancelled");
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => undefined);
@@ -169,23 +175,35 @@ function enqueueSettingsMutation<T>(operation: () => Promise<T>): Promise<T> {
 // overwrite a toggle changed by an RPC that completed at the same time.
 export function updateGuiSettings(
   update: (current: GuiSettings) => GuiSettings | Promise<GuiSettings>,
+  shouldCommit: () => boolean = () => true,
 ): Promise<GuiSettings> {
   return enqueueSettingsMutation(async () => {
     const current = await readGuiSettings();
-    return persistGuiSettings(await update(current));
+    if (!shouldCommit()) throw new Error("settings update cancelled");
+    const next = await update(current);
+    if (!shouldCommit()) throw new Error("settings update cancelled");
+    return persistGuiSettings(next, shouldCommit);
   });
+}
+
+export function connectionSettingsPrefix(connectionId?: string | null): string {
+  return connectionId && connectionId !== LEGACY_DEFAULT_CONNECTION_ID
+    ? `connection:${encodeURIComponent(connectionId)}:`
+    : "";
 }
 
 export function repoSettingsKey(
   rawRepoKey: string,
   host?: string | null,
+  connectionId?: string | null,
 ): string {
-  return `${host ? `ssh:${host}` : "local"}:${rawRepoKey}`;
+  return `${connectionSettingsPrefix(connectionId)}${host ? `ssh:${host}` : "local"}:${rawRepoKey}`;
 }
 
 export function workspaceRepoSettingsKey(
   workspace: any,
   host?: string | null,
+  connectionId?: string | null,
 ): string | null {
   const raw =
     (typeof workspace?.worktree?.repo_key === "string" &&
@@ -193,15 +211,16 @@ export function workspaceRepoSettingsKey(
     (typeof workspace?.worktree?.repo_root === "string" &&
       workspace.worktree.repo_root) ||
     workspaceSourceCheckoutPath(workspace);
-  return raw ? repoSettingsKey(raw, host) : null;
+  return raw ? repoSettingsKey(raw, host, connectionId) : null;
 }
 
 export function workspaceAutoSyncSettingsKey(
   checkoutPath: string,
   host?: string | null,
+  connectionId?: string | null,
 ): string | null {
   const path = checkoutPath.trim();
-  return path ? repoSettingsKey(path, host) : null;
+  return path ? repoSettingsKey(path, host, connectionId) : null;
 }
 
 export async function repoWorktreeHooksEnabled(

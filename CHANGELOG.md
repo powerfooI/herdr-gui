@@ -4,7 +4,19 @@
 
 ### Added
 
+- Manage multiple local and SSH-backed Herdr servers from one bridge, with a
+  per-browser active connection, isolated runtime state, persisted profiles,
+  connection testing, automatic SSH supervision, and a connection manager UI.
 - Reload the current browser page or standalone PWA from the application menu.
+
+### Fixed
+
+- Keep connection-scoped RPC, HTTP, terminal, clipboard, file, Git, worktree,
+  agent, and settings activity bound to the selected server generation so stale
+  work cannot cross into a replacement connection.
+- Send full-page Page Up and Page Down as page-key input instead of wheel input,
+  restoring page-sized scrolling in fullscreen Pi while preserving Alt/Option
+  half-page scrolling.
 
 ## 0.3.5 - 2026-08-18
 

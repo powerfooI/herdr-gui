@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { sshCommandArgv } from "../bridge/ssh-command";
 import type { SessionFile } from "./session-types";
 
 const SESSION_FILE_TIMEOUT_MS = 15_000;
@@ -65,7 +66,7 @@ export function createAgentSessionFileAccess(args: {
 
   async function runRemote(command: string) {
     const result = await args.runBinaryProcessWithTimeout(
-      ["ssh", host, `bash -lc ${args.shQuote(command)}`],
+      sshCommandArgv(host, `bash -lc ${args.shQuote(command)}`),
       SESSION_FILE_TIMEOUT_MS,
     );
     if (result.code !== 0) {
@@ -93,7 +94,7 @@ path64="$(printf '%s' "$path" | base64 | tr -d '\\n')"
 printf '%s\\t%s\\t%s\\n' "$size" "$mtime" "$path64"
 `;
     const result = await args.runBinaryProcessWithTimeout(
-      ["ssh", host, `bash -lc ${args.shQuote(command)}`],
+      sshCommandArgv(host, `bash -lc ${args.shQuote(command)}`),
       SESSION_FILE_TIMEOUT_MS,
     );
     if (result.code === 44) return null;
@@ -149,7 +150,7 @@ path64="$(printf '%s' "$latest" | base64 | tr -d '\\n')"
 printf '%s\\t%s\\t%s\\n' "$size" "$latest_mtime" "$path64"
 `;
       const result = await args.runBinaryProcessWithTimeout(
-        ["ssh", host, `bash -lc ${args.shQuote(command)}`],
+        sshCommandArgv(host, `bash -lc ${args.shQuote(command)}`),
         SESSION_FILE_TIMEOUT_MS,
       );
       if (result.code === 44) return null;

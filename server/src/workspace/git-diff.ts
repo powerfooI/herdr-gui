@@ -1,3 +1,4 @@
+import { sshCommandArgv } from "../bridge/ssh-command";
 import {
   GIT_DIFF_MAX_BYTES,
   GIT_DIFF_TIMEOUT_MS,
@@ -179,7 +180,7 @@ function runGitShellCommand({
 }) {
   const fullCommand = `git -C ${shQuote(root)} -c core.quotepath=false ${command}`;
   return runProcessWithCodeTimeout(
-    host ? ["ssh", host, fullCommand] : ["sh", "-lc", fullCommand],
+    host ? sshCommandArgv(host, fullCommand) : ["sh", "-lc", fullCommand],
     timeoutMs,
   );
 }
@@ -306,7 +307,7 @@ done
 exit 1
 `;
   const result = await runProcessWithCodeTimeout(
-    host ? ["ssh", host, command] : ["sh", "-lc", command],
+    host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
     GIT_DIFF_TIMEOUT_MS,
   );
   if (result.code !== 0) {
@@ -504,7 +505,7 @@ export async function pullGit({
 }) {
   const command = `GIT_TERMINAL_PROMPT=0 git -C ${shQuote(root)} -c core.quotepath=false pull --ff-only`;
   const result = await runProcessWithCodeTimeout(
-    host ? ["ssh", host, command] : ["sh", "-lc", command],
+    host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
     GIT_PULL_TIMEOUT_MS,
   );
   if (result.code !== 0) {

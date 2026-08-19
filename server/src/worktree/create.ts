@@ -1,3 +1,4 @@
+import { sshCommandArgv } from "../bridge/ssh-command";
 import { GIT_PULL_TIMEOUT_MS } from "../workspace/file-constants";
 import type { RunProcessWithCodeTimeout } from "../workspace/file-types";
 
@@ -46,7 +47,7 @@ export async function syncWorktreeBase({
   const runGit = (args: string) => {
     const command = `GIT_TERMINAL_PROMPT=0 git -C ${shQuote(root)} ${args}`;
     return runProcessWithCodeTimeout(
-      host ? ["ssh", host, command] : ["sh", "-lc", command],
+      host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
       GIT_PULL_TIMEOUT_MS,
     );
   };

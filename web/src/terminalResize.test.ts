@@ -189,21 +189,28 @@ describe("terminal relay viewport", () => {
 });
 
 describe("terminal relay viewport cache", () => {
-  test("remembers independent target sizes and prunes closed tabs", () => {
+  test("isolates colliding tab IDs by connection generation and prunes one scope", () => {
     clearTerminalRelayViewports();
-    rememberTerminalRelayViewport("tab_1", { cols: 169, rows: 45 });
-    rememberTerminalRelayViewport("tab_2", { cols: 172, rows: 47 });
-    expect(terminalRelayViewportForTab("tab_1")).toEqual({
+    rememberTerminalRelayViewport("alpha", 1, "same", {
       cols: 169,
       rows: 45,
     });
-    expect(terminalRelayViewportForTab("tab_2")).toEqual({
+    rememberTerminalRelayViewport("beta", 1, "same", {
       cols: 172,
       rows: 47,
     });
-    forgetTerminalRelayViewportsExcept(new Set(["tab_2"]));
-    expect(terminalRelayViewportForTab("tab_1")).toBeNull();
-    expect(terminalRelayViewportForTab("tab_2")).toEqual({
+    expect(terminalRelayViewportForTab("alpha", 1, "same")).toEqual({
+      cols: 169,
+      rows: 45,
+    });
+    expect(terminalRelayViewportForTab("beta", 1, "same")).toEqual({
+      cols: 172,
+      rows: 47,
+    });
+    expect(terminalRelayViewportForTab("alpha", 2, "same")).toBeNull();
+    forgetTerminalRelayViewportsExcept("alpha", 1, new Set());
+    expect(terminalRelayViewportForTab("alpha", 1, "same")).toBeNull();
+    expect(terminalRelayViewportForTab("beta", 1, "same")).toEqual({
       cols: 172,
       rows: 47,
     });

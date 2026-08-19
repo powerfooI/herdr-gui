@@ -26,6 +26,9 @@ public internet. When binding to a non-loopback address:
   exposed in process arguments.
 - Put the service behind HTTPS or a trusted VPN.
 - Restrict network access with a firewall or reverse proxy.
+- Configure reverse proxies to preserve the browser-facing `Host` header on
+  WebSocket upgrades. The bridge rejects browser `Origin` authorities that do
+  not match that request authority.
 - Treat worktree hook configuration as executable code.
 
 The built-in password protects application access but does not provide TLS,

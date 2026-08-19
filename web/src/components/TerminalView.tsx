@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -17,7 +18,14 @@ import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { Columns2, History, Keyboard, Maximize2, Rows2 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { store, useStore } from "../store";
-import { bridge } from "../api";
+import { bridge, type ConnectionClient } from "../api";
+import { connectionHttpPath } from "../connectionHttp";
+import {
+  registerTerminalConnectionDisposer,
+  terminalConnectionKey,
+  terminalPushMatches,
+  type TerminalConnectionIdentity,
+} from "../terminalConnection";
 import { MessageDialog } from "./ModalDialogs";
 import { requestFilePreview } from "./FileExplorerDialog";
 import { FilePreviewContent } from "./FilePreviewContent";
@@ -79,8 +87,12 @@ function b64toBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
-function b64toText(b64: string): string {
-  return new TextDecoder().decode(b64toBytes(b64));
+function b64toText(b64: string): string | null {
+  try {
+    return new TextDecoder().decode(b64toBytes(b64));
+  } catch {
+    return null;
+  }
 }
 function bytesToB64(bytes: Uint8Array): string {
   let s = "";
@@ -88,21 +100,44 @@ function bytesToB64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-function sendBytes(bytes: Uint8Array, terminalId?: string | null) {
-  return bridge.call("terminal.input", {
+function sendBytes(
+  client: ConnectionClient,
+  bytes: Uint8Array,
+  terminalId: string,
+) {
+  return client.call("terminal.input", {
+    terminal_id: terminalId,
     data: bytesToB64(bytes),
-    ...(terminalId ? { terminal_id: terminalId } : {}),
   });
 }
 
-async function uploadImage(file: File): Promise<string> {
+async function uploadImage(
+  client: ConnectionClient,
+  file: File,
+): Promise<string> {
+  if (!client.isCurrent()) throw new Error("connection changed during upload");
   const ext = (file.type.split("/")[1] || "png").toLowerCase();
-  const res = await fetch("/api/upload-image", {
+  const uploadUrl = new URL(
+    connectionHttpPath(
+      client.connectionId,
+      "/upload-image",
+      client.serverRuntimeGeneration,
+    ),
+    window.location.origin,
+  );
+  if (uploadUrl.origin !== window.location.origin) {
+    throw new Error("invalid upload origin");
+  }
+  const res = await fetch(uploadUrl, {
     method: "POST",
-    headers: { "x-image-ext": ext, "content-type": file.type || "image/png" },
+    headers: {
+      "x-image-ext": ext,
+      "content-type": file.type || "image/png",
+    },
     body: file,
   });
   const data = await res.json().catch(() => ({}));
+  if (!client.isCurrent()) throw new Error("connection changed during upload");
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data.path as string;
 }
@@ -114,23 +149,6 @@ const RESET_FOREGROUND = "\x1b[39m";
 const ANSI_SEQUENCE_RE =
   /\x1b\][\s\S]*?(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
 const CLIPBOARD_READ_TIMEOUT_MS = 2000;
-
-const terminalFileResolutionCache = new TerminalFileResolutionCache(
-  async (workspaceId, candidates) => {
-    const result = (await bridge.call("file.resolve", {
-      workspace_id: workspaceId,
-      paths: candidates,
-    })) as { files?: unknown };
-    if (!Array.isArray(result?.files)) return [];
-    return result.files.flatMap((value): ResolvedTerminalFile[] => {
-      if (!value || typeof value !== "object") return [];
-      const file = value as Record<string, unknown>;
-      return typeof file.candidate === "string" && typeof file.path === "string"
-        ? [{ candidate: file.candidate, path: file.path }]
-        : [];
-    });
-  },
-);
 
 function terminalDensity() {
   const compact =
@@ -401,6 +419,47 @@ export function TerminalView({
   onAgentHistoryOpenChange?: (open: boolean) => void;
 }) {
   const s = useStore();
+  const terminalIdentity = useMemo<TerminalConnectionIdentity>(
+    () => ({
+      connectionId: s.activeConnectionId,
+      generation: s.connectionGeneration,
+    }),
+    [s.activeConnectionId, s.connectionGeneration],
+  );
+  const serverRuntimeGeneration =
+    s.connections.find(
+      (connection) => connection.id === terminalIdentity.connectionId,
+    )?.generation ?? null;
+  const connectionClient = useMemo(
+    () =>
+      bridge.connection(terminalIdentity.connectionId, serverRuntimeGeneration),
+    [serverRuntimeGeneration, terminalIdentity],
+  );
+  const connectionScopeKey = terminalConnectionKey(terminalIdentity);
+  const terminalFileResolutionCache = useMemo(
+    () =>
+      new TerminalFileResolutionCache(
+        async (_scopeId, workspaceId, candidates) => {
+          const result = (await connectionClient.call("file.resolve", {
+            workspace_id: workspaceId,
+            paths: candidates,
+          })) as { files?: unknown };
+          if (!connectionClient.isCurrent() || !Array.isArray(result?.files)) {
+            return [];
+          }
+          return result.files.flatMap((value): ResolvedTerminalFile[] => {
+            if (!value || typeof value !== "object") return [];
+            const file = value as Record<string, unknown>;
+            return typeof file.candidate === "string" &&
+              typeof file.path === "string"
+              ? [{ candidate: file.candidate, path: file.path }]
+              : [];
+          });
+        },
+        { isScopeCurrent: () => connectionClient.isCurrent() },
+      ),
+    [connectionClient],
+  );
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [terminalLoading, setTerminalLoading] = useState(false);
@@ -439,6 +498,22 @@ export function TerminalView({
   const attachTimeoutCountRef = useRef(0);
   const attachTimeoutTerminalRef = useRef<string | null>(null);
   const pathPreviewDialogRef = useRef<HTMLDivElement | null>(null);
+  const pathPreviewRequestSeqRef = useRef(0);
+  const closePathPreview = useCallback(() => {
+    pathPreviewRequestSeqRef.current += 1;
+    setPathPreview({
+      entry: null,
+      preview: null,
+      loading: false,
+      error: null,
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      pathPreviewRequestSeqRef.current += 1;
+    },
+    [],
+  );
   const selectedPaneInLayout =
     s.selectedPaneId &&
     s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
@@ -493,6 +568,7 @@ export function TerminalView({
     if (shouldAvoidVirtualKeyboard()) return;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
+        if (!connectionClient.isCurrent()) return;
         const term = termRef.current;
         const active = document.activeElement;
         const activeElement = active instanceof HTMLElement ? active : null;
@@ -502,7 +578,7 @@ export function TerminalView({
         term.focus();
       }, 0);
     });
-  }, []);
+  }, [connectionClient]);
   // Fits the xterm to its container, unless the container is hidden or
   // unmounted (e.g. the diff/files view covers it with display:none). Fitting
   // a hidden container would collapse the terminal to a 2x1 minimum and leak a
@@ -532,10 +608,17 @@ export function TerminalView({
         paneIdRef.current,
       );
       const tabId = paneTabIdRef.current;
-      if (tabId) rememberTerminalRelayViewport(tabId, relaySize);
+      if (tabId) {
+        rememberTerminalRelayViewport(
+          terminalIdentity.connectionId,
+          terminalIdentity.generation,
+          tabId,
+          relaySize,
+        );
+      }
       return relaySize;
     },
-    [],
+    [terminalIdentity],
   );
   useEffect(() => {
     if (isActivePane) focusTerminalSoon();
@@ -578,10 +661,11 @@ export function TerminalView({
 
   const sendControl = (bytes: number[]) => {
     if (shouldAvoidVirtualKeyboard()) blurTerminalInput();
-    sendBytes(
-      new Uint8Array(bytes),
-      desiredTerminalRef.current ?? pane?.terminal_id,
-    ).catch(() => {});
+    const terminalId = desiredTerminalRef.current ?? pane?.terminal_id;
+    if (!terminalId) return;
+    sendBytes(connectionClient, new Uint8Array(bytes), terminalId).catch(
+      () => {},
+    );
   };
 
   const scrollPage = useCallback(
@@ -591,14 +675,15 @@ export function TerminalView({
       if (shouldAvoidVirtualKeyboard()) blurTerminalInput();
       const targetTerminalId =
         desiredTerminalRef.current ?? paneTerminalIdRef.current;
-      bridge
+      if (!targetTerminalId) return;
+      connectionClient
         .call("terminal.scroll", {
-          ...(targetTerminalId ? { terminal_id: targetTerminalId } : {}),
+          terminal_id: targetTerminalId,
           ...terminalPageScroll(direction, term.rows, amount),
         })
         .catch(() => {});
     },
-    [],
+    [connectionClient],
   );
   const preventShortcutFocus = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -610,68 +695,91 @@ export function TerminalView({
     e.currentTarget.blur();
   };
 
-  const previewPathInDialog = useCallback((path: string) => {
-    const workspaceId = previewWorkspaceIdRef.current;
-    if (!workspaceId) {
-      store.notify({
-        kind: "error",
-        message: "Cannot preview file",
-        detail: "No active workspace is available.",
-      });
-      return;
-    }
-    const initialEntry: FileExplorerEntry = {
-      name: path.split("/").filter(Boolean).pop() ?? path,
-      path,
-      type: "file",
-      size: 0,
-      mtime_ms: 0,
-      hidden: false,
-    };
-    setPathPreview({
-      entry: initialEntry,
-      preview: null,
-      loading: true,
-      error: null,
-    });
-    requestFilePreview(workspaceId, path)
-      .then((preview) => {
-        const entry: FileExplorerEntry = {
-          ...initialEntry,
-          name:
-            preview.path.split("/").filter(Boolean).pop() ?? initialEntry.name,
-          path: preview.path,
-          size: preview.size,
-          mtime_ms: preview.mtime_ms,
-        };
-        setPathPreview({
-          entry,
-          preview,
-          loading: false,
-          error: null,
+  const previewPathInDialog = useCallback(
+    (path: string) => {
+      const requestSeq = ++pathPreviewRequestSeqRef.current;
+      if (!connectionClient.isCurrent()) return;
+      const workspaceId = previewWorkspaceIdRef.current;
+      if (!workspaceId) {
+        store.notify({
+          kind: "error",
+          message: "Cannot preview file",
+          detail: "No active workspace is available.",
         });
-      })
-      .catch((e) => {
-        setPathPreview({
-          entry: initialEntry,
-          preview: null,
-          loading: false,
-          error: (e as Error).message,
-        });
+        return;
+      }
+      const initialEntry: FileExplorerEntry = {
+        name: path.split("/").filter(Boolean).pop() ?? path,
+        path,
+        type: "file",
+        size: 0,
+        mtime_ms: 0,
+        hidden: false,
+      };
+      setPathPreview({
+        entry: initialEntry,
+        preview: null,
+        loading: true,
+        error: null,
       });
-  }, []);
+      requestFilePreview(workspaceId, path, { client: connectionClient })
+        .then((preview) => {
+          if (
+            !connectionClient.isCurrent() ||
+            pathPreviewRequestSeqRef.current !== requestSeq
+          ) {
+            return;
+          }
+          const entry: FileExplorerEntry = {
+            ...initialEntry,
+            name:
+              preview.path.split("/").filter(Boolean).pop() ??
+              initialEntry.name,
+            path: preview.path,
+            size: preview.size,
+            mtime_ms: preview.mtime_ms,
+          };
+          setPathPreview({
+            entry,
+            preview,
+            loading: false,
+            error: null,
+          });
+        })
+        .catch((e) => {
+          if (
+            !connectionClient.isCurrent() ||
+            pathPreviewRequestSeqRef.current !== requestSeq
+          ) {
+            return;
+          }
+          setPathPreview({
+            entry: initialEntry,
+            preview: null,
+            loading: false,
+            error: (e as Error).message,
+          });
+        });
+    },
+    [connectionClient],
+  );
 
-  const resolveRelativeFilePaths = useCallback(async (paths: string[]) => {
-    const workspaceId = previewWorkspaceIdRef.current;
-    if (!workspaceId) return new Map<string, string>();
-    const resolved = await terminalFileResolutionCache.resolve(
-      workspaceId,
-      paths,
-    );
-    return previewWorkspaceIdRef.current === workspaceId
-      ? resolved
-      : new Map<string, string>();
-  }, []);
+  const resolveRelativeFilePaths = useCallback(
+    async (paths: string[]) => {
+      const workspaceId = previewWorkspaceIdRef.current;
+      if (!workspaceId) return new Map<string, string>();
+      const resolved = await terminalFileResolutionCache.resolve(
+        connectionScopeKey,
+        workspaceId,
+        paths,
+      );
+      return connectionClient.isCurrent() &&
+        previewWorkspaceIdRef.current === workspaceId
+        ? resolved
+        : new Map<string, string>();
+    },
+    [connectionClient, connectionScopeKey, terminalFileResolutionCache],
+  );
 
   useEffect(() => {
     if (!pathPreview.entry) return;
@@ -683,12 +791,7 @@ export function TerminalView({
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        setPathPreview({
-          entry: null,
-          preview: null,
-          loading: false,
-          error: null,
-        });
+        closePathPreview();
         return;
       }
       if (!isInsideDialog) {
@@ -701,11 +804,12 @@ export function TerminalView({
       cancelFocus();
       window.removeEventListener("keydown", onKey, { capture: true });
     };
-  }, [pathPreview.entry]);
+  }, [closePathPreview, pathPreview.entry]);
 
   // init xterm once the container element is available
   useEffect(() => {
     if (!container) return;
+    let terminalEffectDisposed = false;
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: FONT_FAMILY,
@@ -734,11 +838,13 @@ export function TerminalView({
     const fit = new FitAddon();
     const clipboardProvider = createTerminalClipboardProvider({
       onWriteStart() {
+        if (terminalEffectDisposed || !connectionClient.isCurrent()) return;
         if (store.get().notice?.actionClipboardText !== undefined) {
           store.clearNotice();
         }
       },
       onWriteError(error, text) {
+        if (terminalEffectDisposed || !connectionClient.isCurrent()) return;
         store.notify({
           kind: "error",
           message: "Browser blocked terminal copy",
@@ -797,34 +903,69 @@ export function TerminalView({
       const dataAt = performance.now();
       const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
       if (!shouldSend) return;
+      const terminalId = desiredTerminalRef.current;
+      if (!terminalId) return;
       const bytes = new TextEncoder().encode(unsuppressedData);
-      sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
+      sendBytes(connectionClient, bytes, terminalId).catch(() => {});
     });
 
     const off = bridge.onTerminal((t) => {
-      // Fast terminal switches can produce late frames from the previous attach.
-      // Drop them instead of painting stale content over the newly selected pane.
-      if (t.terminal_id && desiredTerminalRef.current !== t.terminal_id) return;
+      // A mount owns exactly one connection generation. Drop frames from an
+      // inactive connection or a prior terminal attach before touching xterm.
+      if (
+        !terminalPushMatches(
+          terminalIdentity,
+          connectionClient,
+          desiredTerminalRef.current,
+          t,
+        )
+      ) {
+        return;
+      }
+      const text = b64toText(t.bytes);
+      if (text === null) return;
       attachWatchdogRef.current?.markFrame();
       attachTimeoutCountRef.current = 0;
       setTerminalLoading(false);
       setTerminalAttachError("");
-      term.write(colorHttpLinks(b64toText(t.bytes)));
+      term.write(colorHttpLinks(text));
       focusTerminalSoon();
     });
     const offClipboard = bridge.onTerminalClipboard((clipboard) => {
-      if (desiredTerminalRef.current !== clipboard.terminal_id) return;
+      if (
+        !terminalPushMatches(
+          terminalIdentity,
+          connectionClient,
+          desiredTerminalRef.current,
+          clipboard,
+        )
+      ) {
+        return;
+      }
       const text = decodeTerminalClipboard(clipboard.data);
-      if (text !== null) {
+      if (text !== null && connectionClient.isCurrent()) {
         clipboardProvider.writeText(SYSTEM_CLIPBOARD, text);
       }
     });
+    let disposedByConnectionLease = false;
+    const unregisterConnectionDisposer = registerTerminalConnectionDisposer(
+      terminalIdentity,
+      (sendRemoteDetach) => {
+        disposedByConnectionLease = true;
+        const terminalId = attachedRef.current ?? desiredTerminalRef.current;
+        if (sendRemoteDetach && terminalId && connectionClient.isCurrent()) {
+          void connectionClient
+            .call("terminal.detach", { terminal_id: terminalId })
+            .catch(() => null);
+        }
+      },
+    );
 
     const resizeSync = new TerminalResizeSync((size) => {
       const terminalId = attachedRef.current;
       if (!terminalId) return false;
       const relaySize = relayViewportFor(size);
-      bridge
+      connectionClient
         .call("terminal.resize", {
           terminal_id: terminalId,
           cols: size.cols,
@@ -835,7 +976,12 @@ export function TerminalView({
             : {}),
         })
         .catch(() => {
-          if (attachedRef.current === terminalId) resizeSync.markFailed(size);
+          if (
+            connectionClient.isCurrent() &&
+            attachedRef.current === terminalId
+          ) {
+            resizeSync.markFailed(size);
+          }
         });
       return true;
     });
@@ -857,8 +1003,10 @@ export function TerminalView({
     ro.observe(container);
 
     const sendText = (text: string) => {
+      const terminalId = desiredTerminalRef.current;
+      if (!terminalId) return;
       const bytes = new TextEncoder().encode(text);
-      sendBytes(bytes, desiredTerminalRef.current).catch(() => {});
+      sendBytes(connectionClient, bytes, terminalId).catch(() => {});
     };
     const pasteText = async (
       text: string,
@@ -867,7 +1015,7 @@ export function TerminalView({
       if (!text) return;
       if (destinationPaneId) {
         const request = terminalPasteRequest(destinationPaneId, text);
-        await bridge.call(request.method, request.params);
+        await connectionClient.call(request.method, request.params);
         return;
       }
       const activeTerm = termRef.current;
@@ -909,13 +1057,22 @@ export function TerminalView({
     };
     let pasteOperationCount = 0;
     const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
+      if (!connectionClient.isCurrent()) {
+        throw new Error("connection changed during paste");
+      }
       pasteOperationCount += 1;
       setPasteLoading(true);
       try {
-        return await operation();
+        const result = await operation();
+        if (!connectionClient.isCurrent()) {
+          throw new Error("connection changed during paste");
+        }
+        return result;
       } finally {
         pasteOperationCount -= 1;
-        if (pasteOperationCount === 0) setPasteLoading(false);
+        if (pasteOperationCount === 0 && connectionClient.isCurrent()) {
+          setPasteLoading(false);
+        }
       }
     };
     const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
@@ -925,7 +1082,7 @@ export function TerminalView({
           : new File([blob], "clipboard-image.png", {
               type: blob.type || "image/png",
             });
-      const path = await uploadImage(file);
+      const path = await uploadImage(connectionClient, file);
       await pasteText(path, destinationPaneId);
     };
     let clipboardPasteInFlight = false;
@@ -1359,12 +1516,11 @@ export function TerminalView({
 
     const onWheel = (e: WheelEvent) => {
       const scroll = terminalWheelScroll(e.deltaY, e.deltaMode, term.rows);
-      if (!scroll) return;
-      bridge
+      const terminalId = desiredTerminalRef.current;
+      if (!scroll || !terminalId) return;
+      connectionClient
         .call("terminal.scroll", {
-          ...(desiredTerminalRef.current
-            ? { terminal_id: desiredTerminalRef.current }
-            : {}),
+          terminal_id: terminalId,
           ...scroll,
           ...terminalCellAt(term, e),
         })
@@ -1394,17 +1550,18 @@ export function TerminalView({
       const lines = Math.trunc(touchRemainder / 24);
       if (lines !== 0) {
         touchRemainder -= lines * 24;
-        bridge
-          .call("terminal.scroll", {
-            ...(desiredTerminalRef.current
-              ? { terminal_id: desiredTerminalRef.current }
-              : {}),
-            direction: lines < 0 ? "up" : "down",
-            lines: Math.min(term.rows, Math.abs(lines)),
-            source: "wheel",
-            ...terminalCellAtPoint(term, touch.clientX, touch.clientY),
-          })
-          .catch(() => {});
+        const terminalId = desiredTerminalRef.current;
+        if (terminalId) {
+          connectionClient
+            .call("terminal.scroll", {
+              terminal_id: terminalId,
+              direction: lines < 0 ? "up" : "down",
+              lines: Math.min(term.rows, Math.abs(lines)),
+              source: "wheel",
+              ...terminalCellAtPoint(term, touch.clientX, touch.clientY),
+            })
+            .catch(() => {});
+        }
       }
 
       e.preventDefault();
@@ -1434,8 +1591,10 @@ export function TerminalView({
     });
 
     return () => {
+      terminalEffectDisposed = true;
       off();
       offClipboard();
+      unregisterConnectionDisposer();
       densityQuery.removeEventListener("change", applyDensity);
       ro.disconnect();
       resizeSync.dispose();
@@ -1490,8 +1649,12 @@ export function TerminalView({
       imeFallback.dispose();
       linkProvider.dispose();
       const terminalId = attachedRef.current ?? desiredTerminalRef.current;
-      if (terminalId) {
-        void bridge
+      if (
+        terminalId &&
+        !disposedByConnectionLease &&
+        connectionClient.isCurrent()
+      ) {
+        void connectionClient
           .call("terminal.detach", { terminal_id: terminalId })
           .catch(() => null);
       }
@@ -1504,6 +1667,7 @@ export function TerminalView({
       renderedTerminalRef.current = null;
     };
   }, [
+    connectionClient,
     container,
     fitVisibleTerminal,
     focusTerminalSoon,
@@ -1511,10 +1675,12 @@ export function TerminalView({
     relayViewportFor,
     resolveRelativeFilePaths,
     scrollPage,
+    terminalIdentity,
   ]);
 
   // attach / re-attach when the rendered pane changes
   useEffect(() => {
+    if (!connectionClient.isCurrent()) return;
     const term = termRef.current;
     const paneTerminalId = pane?.terminal_id ?? null;
     if (terminalAttachEpochRef.current !== s.terminalAttachEpoch) {
@@ -1551,7 +1717,7 @@ export function TerminalView({
         !!id && id !== terminalId && ids.indexOf(id) === index,
     );
     for (const staleTerminalId of staleTerminalIds) {
-      void bridge
+      void connectionClient
         .call("terminal.detach", { terminal_id: staleTerminalId })
         .catch(() => null);
     }
@@ -1580,7 +1746,7 @@ export function TerminalView({
     }
     resizeSyncRef.current?.markAttached({ cols, rows });
     const attachStartedAt = performance.now();
-    bridge
+    connectionClient
       .call("terminal.attach", {
         terminal_id: terminalId,
         cols,
@@ -1592,6 +1758,7 @@ export function TerminalView({
       })
       .then(
         () => {
+          if (!connectionClient.isCurrent()) return;
           if (attachingRef.current === terminalId) attachingRef.current = null;
           if (desiredTerminalRef.current === terminalId) {
             attachedRef.current = terminalId;
@@ -1604,11 +1771,16 @@ export function TerminalView({
               performance.now() - attachStartedAt,
             );
             attachWatchdogRef.current?.arm(attachAttempt, watchdogMs, () => {
-              if (desiredTerminalRef.current !== terminalId) return;
+              if (
+                !connectionClient.isCurrent() ||
+                desiredTerminalRef.current !== terminalId
+              ) {
+                return;
+              }
               attachTimeoutCountRef.current += 1;
               attachedRef.current = null;
               attachingRef.current = null;
-              void bridge
+              void connectionClient
                 .call("terminal.detach", { terminal_id: terminalId })
                 .catch(() => null);
               if (attachTimeoutCountRef.current > 2) {
@@ -1620,6 +1792,7 @@ export function TerminalView({
           }
         },
         (e) => {
+          if (!connectionClient.isCurrent()) return;
           attachWatchdogRef.current?.cancel(attachAttempt);
           if (attachingRef.current === terminalId) attachingRef.current = null;
           if (desiredTerminalRef.current === terminalId) {
@@ -1639,6 +1812,7 @@ export function TerminalView({
     s.status,
     s.terminalAttachEpoch,
     attachRetry,
+    connectionClient,
   ]);
 
   useEffect(() => {
@@ -1864,14 +2038,7 @@ export function TerminalView({
       {pathPreview.entry ? (
         <div
           className="modal-backdrop terminal-preview-backdrop"
-          onMouseDown={() =>
-            setPathPreview({
-              entry: null,
-              preview: null,
-              loading: false,
-              error: null,
-            })
-          }
+          onMouseDown={closePathPreview}
         >
           <div
             ref={pathPreviewDialogRef}
@@ -1888,14 +2055,7 @@ export function TerminalView({
                 type="button"
                 className="ghost"
                 aria-label="Close"
-                onClick={() =>
-                  setPathPreview({
-                    entry: null,
-                    preview: null,
-                    loading: false,
-                    error: null,
-                  })
-                }
+                onClick={closePathPreview}
               >
                 x
               </button>

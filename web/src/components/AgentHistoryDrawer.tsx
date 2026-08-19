@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Copy, Download, Eye, RefreshCw, X } from "lucide-react";
-import { bridge } from "../api";
 import { useStore } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 import type { Pane } from "../types";
 import { shortId } from "../utils";
 import { AgentIcon } from "./AgentIcon";
@@ -162,6 +162,7 @@ export function AgentHistoryDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const appState = useStore();
+  const connectionClient = useConnectionClient();
   const workspaceLabel =
     appState.workspaces.find(
       (workspace) => workspace.workspace_id === pane.workspace_id,
@@ -184,6 +185,7 @@ export function AgentHistoryDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadSeqRef = useRef(0);
+  const previewSeqRef = useRef(0);
 
   const loadHistory = useCallback(() => {
     if (!pane.agent) return;
@@ -199,14 +201,14 @@ export function AgentHistoryDrawer({
       agent_status: pane.agent_status,
     };
     Promise.allSettled([
-      bridge.call("agent_history.get", params),
-      bridge.call("agent_session.get", {
+      connectionClient.call("agent_history.get", params),
+      connectionClient.call("agent_session.get", {
         pane_id: pane.pane_id,
         agent: pane.agent,
       }),
     ])
       .then(([historyResult, sessionResult]) => {
-        if (loadSeqRef.current !== seq) return;
+        if (!connectionClient.isCurrent() || loadSeqRef.current !== seq) return;
         setHistory(
           historyResult.status === "fulfilled"
             ? (historyResult.value as AgentHistory)
@@ -230,9 +232,12 @@ export function AgentHistoryDrawer({
         setError(errors.join("\n"));
       })
       .finally(() => {
-        if (loadSeqRef.current === seq) setLoading(false);
+        if (connectionClient.isCurrent() && loadSeqRef.current === seq) {
+          setLoading(false);
+        }
       });
   }, [
+    connectionClient,
     pane.agent,
     pane.agent_status,
     pane.pane_id,
@@ -241,20 +246,26 @@ export function AgentHistoryDrawer({
   ]);
 
   useEffect(() => {
-    if (open) loadHistory();
-  }, [loadHistory, open]);
-
-  useEffect(() => {
-    // Session content and secondary dialogs are pane-specific. Clear them when
-    // the selected pane changes, while retaining cached data across close/open.
+    // Resource-derived state belongs to one pane and one connection lease.
+    // Invalidate old continuations before loading a colliding pane ID from a
+    // switched connection or replacement runtime.
+    loadSeqRef.current += 1;
+    previewSeqRef.current += 1;
     setHistory(null);
     setSession(null);
     setDrawerTab("messages");
     setExpandedMessage(null);
     setPreviewPane(null);
     setPreviewSummary(null);
+    setPreviewLoading(false);
     setPreviewError("");
-  }, [pane.pane_id]);
+    setLoading(false);
+    setError("");
+  }, [connectionClient, pane.pane_id]);
+
+  useEffect(() => {
+    if (open) loadHistory();
+  }, [loadHistory, open]);
 
   useEffect(() => {
     if (!open) {
@@ -266,12 +277,19 @@ export function AgentHistoryDrawer({
   }, [open]);
 
   const openSessionPreview = useCallback(() => {
-    if (!pane.agent || session?.status !== "ok") return;
+    if (
+      !pane.agent ||
+      session?.status !== "ok" ||
+      !connectionClient.isCurrent()
+    ) {
+      return;
+    }
+    const seq = ++previewSeqRef.current;
     setPreviewPane(pane);
     setPreviewSummary(null);
     setPreviewError("");
     setPreviewLoading(true);
-    bridge
+    connectionClient
       .call("agent_session.get", {
         pane_id: pane.pane_id,
         agent: pane.agent,
@@ -279,14 +297,27 @@ export function AgentHistoryDrawer({
         include_trajectory: true,
         preview_limit: 1024 * 1024,
       })
-      .then((result) => setPreviewSummary(result as AgentSessionSummary))
-      .catch((value) =>
-        setPreviewError(value instanceof Error ? value.message : String(value)),
-      )
-      .finally(() => setPreviewLoading(false));
-  }, [pane, session?.status]);
+      .then((result) => {
+        if (connectionClient.isCurrent() && previewSeqRef.current === seq) {
+          setPreviewSummary(result as AgentSessionSummary);
+        }
+      })
+      .catch((value) => {
+        if (connectionClient.isCurrent() && previewSeqRef.current === seq) {
+          setPreviewError(
+            value instanceof Error ? value.message : String(value),
+          );
+        }
+      })
+      .finally(() => {
+        if (connectionClient.isCurrent() && previewSeqRef.current === seq) {
+          setPreviewLoading(false);
+        }
+      });
+  }, [connectionClient, pane, session?.status]);
 
   const closeSessionPreview = useCallback(() => {
+    previewSeqRef.current += 1;
     setPreviewPane(null);
     setPreviewSummary(null);
     setPreviewError("");
@@ -563,7 +594,7 @@ export function AgentHistoryDrawer({
                 <button
                   type="button"
                   className="secondary-btn"
-                  onClick={() => downloadSession(pane)}
+                  onClick={() => downloadSession(pane, connectionClient)}
                 >
                   <Download size={14} />
                   Export raw

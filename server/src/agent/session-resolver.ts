@@ -25,7 +25,17 @@ import {
   stringValue,
 } from "./session-utils";
 
-const SESSION_PATH_CACHE = new Map<string, string>();
+export type AgentSessionResolverContext = {
+  pathCache: Map<string, string>;
+};
+
+const DEFAULT_RESOLVER_CONTEXT: AgentSessionResolverContext = {
+  pathCache: new Map(),
+};
+
+export function createAgentSessionResolverContext(): AgentSessionResolverContext {
+  return { pathCache: new Map() };
+}
 
 function normalizeParams(raw: Record<string, unknown>): AgentHistoryParams {
   return {
@@ -70,18 +80,22 @@ async function walkFiles(root: string, match: (path: string) => boolean) {
 }
 
 async function resolveCachedSessionPath(
+  context: AgentSessionResolverContext,
   cacheKey: string,
   resolvePath: () => Promise<string | null>,
 ) {
-  const cached = SESSION_PATH_CACHE.get(cacheKey);
+  const cached = context.pathCache.get(cacheKey);
   if (cached && existsSync(cached)) return cached;
   const path = await resolvePath();
-  if (path) SESSION_PATH_CACHE.set(cacheKey, path);
+  if (path) context.pathCache.set(cacheKey, path);
   return path;
 }
 
-async function findCodexSession(id: string) {
-  return resolveCachedSessionPath(`codex:${id}`, async () => {
+async function findCodexSession(
+  id: string,
+  context: AgentSessionResolverContext,
+) {
+  return resolveCachedSessionPath(context, `codex:${id}`, async () => {
     const root = join(homedir(), ".codex", "sessions");
     const files = await walkFiles(
       root,
@@ -91,8 +105,11 @@ async function findCodexSession(id: string) {
   });
 }
 
-async function findClaudeSession(id: string) {
-  return resolveCachedSessionPath(`claude:${id}`, async () => {
+async function findClaudeSession(
+  id: string,
+  context: AgentSessionResolverContext,
+) {
+  return resolveCachedSessionPath(context, `claude:${id}`, async () => {
     const root = join(homedir(), ".claude", "projects");
     const files = await walkFiles(
       root,
@@ -102,8 +119,11 @@ async function findClaudeSession(id: string) {
   });
 }
 
-async function findKimiSession(id: string) {
-  return resolveCachedSessionPath(`kimi:${id}`, async () => {
+async function findKimiSession(
+  id: string,
+  context: AgentSessionResolverContext,
+) {
+  return resolveCachedSessionPath(context, `kimi:${id}`, async () => {
     const root = join(homedir(), ".kimi-code", "sessions");
     const suffix = join(id, "agents", "main", "wire.jsonl");
     const files = await walkFiles(
@@ -115,8 +135,8 @@ async function findKimiSession(id: string) {
   });
 }
 
-async function findPiSession(id: string) {
-  return resolveCachedSessionPath(`pi:${id}`, async () => {
+async function findPiSession(id: string, context: AgentSessionResolverContext) {
+  return resolveCachedSessionPath(context, `pi:${id}`, async () => {
     const root = join(piAgentDirectory(), "sessions");
     const files = await walkFiles(root, (path) => {
       const name = basename(path);
@@ -146,6 +166,7 @@ async function sessionFileFor(
   session: AgentSessionInfo,
   cwd: string,
   files: AgentSessionFileAccess,
+  context: AgentSessionResolverContext,
 ) {
   if (agent === "grok") {
     const descriptor =
@@ -162,10 +183,11 @@ async function sessionFileFor(
     return files.findPiSessionById(session.value);
   }
   let path: string | null = null;
-  if (agent === "codex") path = await findCodexSession(session.value);
-  if (agent === "claude") path = await findClaudeSession(session.value);
-  if (agent === "kimi") path = await findKimiSession(session.value);
-  if (agent === "pi") path = await findPiSession(session.value);
+  if (agent === "codex") path = await findCodexSession(session.value, context);
+  if (agent === "claude")
+    path = await findClaudeSession(session.value, context);
+  if (agent === "kimi") path = await findKimiSession(session.value, context);
+  if (agent === "pi") path = await findPiSession(session.value, context);
   if (path) return files.statFile(path);
   return null;
 }
@@ -192,6 +214,7 @@ export async function resolveAgentSession(
   rawParams: Record<string, unknown>,
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
+  context: AgentSessionResolverContext = DEFAULT_RESOLVER_CONTEXT,
 ): Promise<AgentSessionResolved> {
   const params = normalizeParams(rawParams);
   if (!params.pane_id) throw new Error("agent session requires pane_id");
@@ -257,7 +280,7 @@ export async function resolveAgentSession(
     };
   }
 
-  file ??= await sessionFileFor(agent, resolvedSession, cwd, files);
+  file ??= await sessionFileFor(agent, resolvedSession, cwd, files, context);
   if (!file) {
     return {
       ...base,

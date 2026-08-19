@@ -130,17 +130,22 @@ http://192.0.2.23:8781/?token=<token>
 `HERDR_GUI_PASSWORD` 设置固定密码，继续使用登录页面。需要轮换随机 token
 时，先停止服务，删除 `~/.config/herdr-gui/auth-token`，然后重新启动。
 
-## 远程 Herdr
+## 多连接与远程 Herdr
 
-如果 Herdr 跑在远程机器上，可以使用 SSH 模式：
+标题旁的连接选择器可以添加、测试、连接、断开、编辑和删除 Herdr server。
+Profile 由同一个 bridge 的所有已认证浏览器共享，但每个浏览器独立选择当前展示的
+连接。Local profile 只附着已经存在的 Unix socket，不会启动 Herdr。
 
-```bash
-./herdr-gui --ssh-host user@host
+SSH profile 要求远端 Herdr server 已经运行，并填写 OpenSSH Host alias 或
+`user@host`，以及远端 control/render socket 的绝对路径。例如：
+
+```text
+SSH destination: devbox
+Control socket: /home/dev/.config/herdr/herdr.sock
+Render socket:  /home/dev/.config/herdr/herdr-client.sock
 ```
 
-herdr-gui 会通过 SSH 自动转发远程 Herdr 的 control socket 和 terminal render socket。浏览器仍然访问本机 herdr-gui，实际操作的是远程 Herdr。
-
-如果远程 SSH 需要指定端口或复杂参数，建议在 `~/.ssh/config` 里配置 Host alias，然后使用 alias：
+端口、跳板机和 identity 等连接参数应放在 `~/.ssh/config`：
 
 ```sshconfig
 Host devbox
@@ -149,11 +154,24 @@ Host devbox
   Port 2222
 ```
 
+herdr-gui 使用正常的 OpenSSH host-key 和 ssh-agent/系统 Keychain 策略，不保存
+密码、私钥、passphrase 或任意 SSH options。每个 SSH profile 使用独立 tunnel；
+bridge 会监督 tunnel，并只对临时 transport failure 执行有界重试。
+
+连接 profile 以私有目录和文件权限原子保存在
+`~/.config/herdr-gui/connections.json`。如果进程启动时显式传入旧式 CLI/env
+连接设置，该 legacy process default 仍然可用，但在连接管理器中只读。
+
+连接选择器支持键盘操作：先用 `Tab` 聚焦，按 `Enter`、`Space`、`↑` 或 `↓`
+打开，再用方向键、`Home` 和 `End` 选择。目前没有全局的上一个/下一个连接快捷键。
+
+旧式单远端启动方式仍然兼容：
+
 ```bash
 ./herdr-gui --ssh-host devbox
 ```
 
-如果需要手动指定 socket：
+浏览器仍访问本机 herdr-gui，实际操作远端 Herdr。如果需要手动指定单连接 socket：
 
 ```bash
 ./herdr-gui \

@@ -160,6 +160,39 @@ Then open <http://localhost:5173>.
 Use `bun run format` to format supported files with the repository's pinned
 Biome version and `bun run format:check` to verify formatting without writing.
 
+## Manage multiple Herdr connections
+
+Use the connection selector beside the application title to add, test, connect,
+disconnect, edit, and remove Herdr servers. Profiles are shared by every
+authenticated browser connected to the bridge, while each browser independently
+selects the connection it displays. Local profiles attach to existing Unix
+sockets; they never start Herdr.
+
+![Connection selector showing local and SSH profiles](docs/screenshots/multi-connection-selector.png)
+
+SSH profiles require an already-running remote Herdr server and accept only an
+OpenSSH alias or `user@host`, plus explicit remote control and render socket
+paths. Configure ports, jump hosts, identities, and other transport details in
+`~/.ssh/config`; herdr-gui uses the normal OpenSSH host-key and agent/Keychain
+policies and does not store passwords, private keys, passphrases, or arbitrary
+SSH options. A typical profile uses:
+
+```text
+Destination: workbox
+Control socket: /home/you/.config/herdr/herdr.sock
+Render socket:  /home/you/.config/herdr/herdr-client.sock
+```
+
+Connection profiles are stored atomically in
+`~/.config/herdr-gui/connections.json` with private directory and file modes.
+The bridge supervises each SSH tunnel independently and retries only transient
+transport failures. The legacy CLI/environment connection remains available as
+a read-only process default when those options are explicit.
+
+The selector is keyboard accessible: tab to its trigger, open it with Enter,
+Space, Arrow Up, or Arrow Down, then use the arrow, Home, and End keys. There is
+currently no global next/previous-connection shortcut.
+
 ## Configuration (CLI flags **or** env vars)
 
 Flags override env vars, which override defaults. Run `herdr-gui --help` for the

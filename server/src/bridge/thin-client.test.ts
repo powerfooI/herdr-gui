@@ -24,12 +24,14 @@ afterEach(async () => {
 
 async function startHandshakeServer(
   welcome: (protocol: number) => { version: number; error?: string },
+  onConnection: () => void = () => undefined,
 ) {
   const socketPath = path.join(
     tmpdir(),
     `herdr-gui-thin-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
+    onConnection();
     let input = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       input = Buffer.concat([
@@ -60,7 +62,7 @@ async function startHandshakeServer(
 }
 
 async function startMessageServer(
-  onVariant: (variant: number, socket: net.Socket) => void,
+  onVariant: (variant: number, socket: net.Socket, reader: BinReader) => void,
 ) {
   const socketPath = path.join(
     tmpdir(),
@@ -79,7 +81,7 @@ async function startMessageServer(
         const reader = new BinReader(input.subarray(4, length + 4));
         input = input.subarray(length + 4);
         const variant = reader.variant();
-        onVariant(variant, socket);
+        onVariant(variant, socket, reader);
         if (variant !== 0) continue;
         const protocol = reader.varint();
         const writer = new BinWriter();
@@ -157,6 +159,29 @@ describe("Herdr thin-client protocol compatibility", () => {
     );
   });
 
+  test("does not open a socket when closed during protocol resolution", async () => {
+    let resolveProtocol!: (protocol: number) => void;
+    const protocol = new Promise<number>((resolve) => {
+      resolveProtocol = resolve;
+    });
+    let connections = 0;
+    const socketPath = await startHandshakeServer(
+      (requestedProtocol) => ({ version: requestedProtocol }),
+      () => {
+        connections += 1;
+      },
+    );
+    const client = new ThinClient(socketPath, () => protocol);
+
+    const connecting = client.connect(100, 30);
+    client.close();
+    resolveProtocol(17);
+
+    await expect(connecting).rejects.toThrow("thin client is closed");
+    await Bun.sleep(10);
+    expect(connections).toBe(0);
+  });
+
   test("sends the one-time terminal attach transition only once", async () => {
     const variants: number[] = [];
     const socketPath = await startMessageServer((variant, socket) => {
@@ -181,6 +206,53 @@ describe("Herdr thin-client protocol compatibility", () => {
     expect(() => client.attach("term_2", true)).toThrow(
       "already attached to term_1",
     );
+    client.close();
+  });
+
+  test("encodes both physical page keys with the PageKey source", async () => {
+    const scrolls: Array<{
+      source: number;
+      bytes: Buffer;
+      direction: number;
+      lines: number;
+    }> = [];
+    let resolveScrolls!: () => void;
+    const receivedScrolls = new Promise<void>((resolve) => {
+      resolveScrolls = resolve;
+    });
+    const socketPath = await startMessageServer((variant, _socket, reader) => {
+      if (variant !== 6) return;
+      const source = reader.variant();
+      const bytes = source === 1 ? reader.bytes() : Buffer.alloc(0);
+      const direction = reader.variant();
+      const lines = reader.varint();
+      expect(reader.option(() => reader.varint())).toBeNull();
+      expect(reader.option(() => reader.varint())).toBeNull();
+      expect(reader.u8()).toBe(0);
+      scrolls.push({ source, bytes, direction, lines });
+      if (scrolls.length === 2) resolveScrolls();
+    });
+    const client = new ThinClient(socketPath, async () => 17);
+
+    await client.connect(100, 30, { launchMode: 1, encoding: 1 });
+    client.scroll("up", 28, null, null, "page-key");
+    client.scroll("down", 17, null, null, "page-key");
+    await receivedScrolls;
+
+    expect(scrolls).toEqual([
+      {
+        source: 1,
+        bytes: Buffer.from([0x1b, 0x5b, 0x35, 0x7e]),
+        direction: 0,
+        lines: 28,
+      },
+      {
+        source: 1,
+        bytes: Buffer.from([0x1b, 0x5b, 0x36, 0x7e]),
+        direction: 1,
+        lines: 17,
+      },
+    ]);
     client.close();
   });
 

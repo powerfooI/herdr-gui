@@ -21,24 +21,46 @@ export const TERMINAL_RESIZE_DEBOUNCE_MS = 90;
 
 const relayViewportByTab = new Map<string, TerminalSize>();
 
+function relayViewportKey(
+  connectionId: string,
+  generation: number,
+  tabId: string,
+) {
+  return `${connectionId}\0${generation}\0${tabId}`;
+}
+
 export function rememberTerminalRelayViewport(
+  connectionId: string,
+  generation: number,
   tabId: string,
   size: TerminalSize,
 ) {
-  if (!tabId || !validSize(size)) return;
-  relayViewportByTab.set(tabId, { ...size });
+  if (!connectionId || !tabId || !validSize(size)) return;
+  relayViewportByTab.set(relayViewportKey(connectionId, generation, tabId), {
+    ...size,
+  });
 }
 
 export function terminalRelayViewportForTab(
+  connectionId: string,
+  generation: number,
   tabId: string,
 ): TerminalSize | null {
-  const size = relayViewportByTab.get(tabId);
+  const size = relayViewportByTab.get(
+    relayViewportKey(connectionId, generation, tabId),
+  );
   return size ? { ...size } : null;
 }
 
-export function forgetTerminalRelayViewportsExcept(tabIds: Set<string>) {
-  for (const tabId of relayViewportByTab.keys()) {
-    if (!tabIds.has(tabId)) relayViewportByTab.delete(tabId);
+export function forgetTerminalRelayViewportsExcept(
+  connectionId: string,
+  generation: number,
+  tabIds: Set<string>,
+) {
+  const prefix = `${connectionId}\0${generation}\0`;
+  for (const key of relayViewportByTab.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    if (!tabIds.has(key.slice(prefix.length))) relayViewportByTab.delete(key);
   }
 }
 

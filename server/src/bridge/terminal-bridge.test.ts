@@ -48,6 +48,8 @@ async function startThinServer(
     skipAppWelcome?: boolean;
     directClipboardOnResize?: string;
     directFrameDelayMs?: number;
+    skipDirectFrame?: boolean;
+    onDirectAttach?: () => void;
     tracker?: {
       appConnects: number;
       appCloses: number;
@@ -123,6 +125,7 @@ async function startThinServer(
             sendWelcome();
           }
         } else if (variant === 1) {
+          if (!isAppSocket) options.tracker?.events.push("input");
           if (options.clipboardData) {
             appSocket?.write(clipboardFrame(options.clipboardData));
           }
@@ -134,24 +137,31 @@ async function startThinServer(
             socketRows = resizeRows;
             if (isAppSocket && options.tracker) {
               options.tracker.appSizes.push(`${resizeCols}x${resizeRows}`);
+            } else if (options.tracker) {
+              options.tracker.events.push("resize");
             }
-          } else if (options.tracker) {
-            options.tracker.events.push("attach");
-            options.tracker.events.push("terminalFrame");
+          } else {
+            options.tracker?.events.push("attach");
+            options.tracker?.events.push("terminalFrame");
+            options.onDirectAttach?.();
           }
           const sendTerminalFrame = () => {
             if (!socket.destroyed) {
               socket.write(terminalFrame(socketCols, socketRows));
             }
           };
-          if (variant === 5 && (options.directFrameDelayMs ?? 0) > 0) {
-            setTimeout(sendTerminalFrame, options.directFrameDelayMs);
-          } else {
-            sendTerminalFrame();
+          if (variant !== 5 || !options.skipDirectFrame) {
+            if (variant === 5 && (options.directFrameDelayMs ?? 0) > 0) {
+              setTimeout(sendTerminalFrame, options.directFrameDelayMs);
+            } else {
+              sendTerminalFrame();
+            }
           }
           if (variant === 3 && options.directClipboardOnResize) {
             socket.write(clipboardFrame(options.directClipboardOnResize));
           }
+        } else if (variant === 6) {
+          options.tracker?.events.push("scroll");
         }
       }
     });
@@ -173,6 +183,17 @@ async function waitForTerminalFrame(messages: string[]) {
     await Bun.sleep(2);
   }
   throw new Error("timed out waiting for terminal frame");
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  message: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return;
+    await Bun.sleep(2);
+  }
+  throw new Error(message);
 }
 
 describe("terminal bridge sharing", () => {
@@ -325,6 +346,162 @@ describe("terminal bridge sharing", () => {
     ).toBe(false);
     bridge.cleanupWs(browser);
     bridge.cleanupWs(observer);
+  });
+
+  test("isolates duplicate terminal ids, operations, frames, and clipboard by connection", async () => {
+    const alphaTracker = {
+      appConnects: 0,
+      appCloses: 0,
+      appSizes: [] as string[],
+      events: [] as string[],
+    };
+    const betaTracker = {
+      appConnects: 0,
+      appCloses: 0,
+      appSizes: [] as string[],
+      events: [] as string[],
+    };
+    const [alphaSocket, betaSocket] = await Promise.all([
+      startThinServer({
+        tracker: alphaTracker,
+        clipboardData: "YWxwaGE=",
+      }),
+      startThinServer({
+        tracker: betaTracker,
+        clipboardData: "YmV0YQ==",
+      }),
+    ]);
+    const browser = {} as ServerWebSocket<unknown>;
+    const alphaMessages: string[] = [];
+    const betaMessages: string[] = [];
+    const alphaBridge = createTerminalBridge({
+      connectionId: "alpha",
+      connectionGeneration: 11,
+      clientSocketPath: alphaSocket,
+      herdrProtocol: async () => 17,
+      safeSend: (_ws, payload) => {
+        alphaMessages.push(payload);
+        return true;
+      },
+      clientLabel: () => "browser",
+      markRpcError: () => undefined,
+    });
+    const betaBridge = createTerminalBridge({
+      connectionId: "beta",
+      connectionGeneration: 12,
+      clientSocketPath: betaSocket,
+      herdrProtocol: async () => 17,
+      safeSend: (_ws, payload) => {
+        betaMessages.push(payload);
+        return true;
+      },
+      clientLabel: () => "browser",
+      markRpcError: () => undefined,
+    });
+
+    await Promise.all([
+      alphaBridge.handleTerminalRpc(
+        browser,
+        "alpha-attach",
+        "terminal.attach",
+        {
+          terminal_id: "same-terminal",
+          cols: 100,
+          rows: 30,
+        },
+      ),
+      betaBridge.handleTerminalRpc(browser, "beta-attach", "terminal.attach", {
+        terminal_id: "same-terminal",
+        cols: 100,
+        rows: 30,
+      }),
+    ]);
+    await Promise.all([
+      waitForTerminalFrame(alphaMessages),
+      waitForTerminalFrame(betaMessages),
+    ]);
+
+    expect(
+      alphaMessages.every((message) => {
+        const parsed = JSON.parse(message);
+        return (
+          parsed.connection_id === "alpha" &&
+          parsed.connection_generation === 11
+        );
+      }),
+    ).toBe(true);
+    expect(
+      betaMessages.every((message) => {
+        const parsed = JSON.parse(message);
+        return (
+          parsed.connection_id === "beta" && parsed.connection_generation === 12
+        );
+      }),
+    ).toBe(true);
+
+    await alphaBridge.handleTerminalRpc(
+      browser,
+      "alpha-input",
+      "terminal.input",
+      {
+        terminal_id: "same-terminal",
+        data: Buffer.from("copy").toString("base64"),
+      },
+    );
+    await alphaBridge.handleTerminalRpc(
+      browser,
+      "alpha-scroll",
+      "terminal.scroll",
+      {
+        terminal_id: "same-terminal",
+        direction: "up",
+        lines: 10,
+        source: "page-key",
+      },
+    );
+    await betaBridge.handleTerminalRpc(
+      browser,
+      "beta-resize",
+      "terminal.resize",
+      {
+        terminal_id: "same-terminal",
+        cols: 120,
+        rows: 40,
+      },
+    );
+
+    await waitForCondition(
+      () =>
+        alphaTracker.events.includes("input") &&
+        alphaTracker.events.includes("scroll") &&
+        betaTracker.events.includes("resize") &&
+        alphaMessages.some((message) => JSON.parse(message).terminal_clipboard),
+      "timed out waiting for isolated terminal operations",
+    );
+    expect(alphaTracker.events).toContain("input");
+    expect(alphaTracker.events).toContain("scroll");
+    expect(alphaTracker.events).not.toContain("resize");
+    expect(betaTracker.events).toContain("resize");
+    expect(betaTracker.events).not.toContain("input");
+    expect(betaTracker.events).not.toContain("scroll");
+    expect(
+      alphaMessages
+        .map((message) => JSON.parse(message))
+        .find((message) => message.terminal_clipboard),
+    ).toMatchObject({
+      connection_id: "alpha",
+      connection_generation: 11,
+      terminal_clipboard: {
+        terminal_id: "same-terminal",
+        data: "YWxwaGE=",
+      },
+    });
+    expect(
+      betaMessages.some((message) => JSON.parse(message).terminal_clipboard),
+    ).toBe(false);
+
+    alphaBridge.dispose();
+    betaBridge.dispose();
   });
 
   test("does not broadcast clipboard events without a matching input owner", async () => {
@@ -720,5 +897,151 @@ describe("terminal bridge sharing", () => {
     ).toBe("no terminal attached");
     bridge.cleanupWs(owner);
     bridge.cleanupWs(stranger);
+  });
+
+  test("dispose closes runtime-owned terminal resources", async () => {
+    const tracker = {
+      appConnects: 0,
+      appCloses: 0,
+      appSizes: [] as string[],
+      events: [] as string[],
+    };
+    const socketPath = await startThinServer({ tracker });
+    const browser = {} as ServerWebSocket<unknown>;
+    const messages: string[] = [];
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 17,
+      safeSend: (_ws, payload) => {
+        messages.push(payload);
+        return true;
+      },
+      clientLabel: () => "browser",
+      markRpcError: () => undefined,
+    });
+
+    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
+      terminal_id: "term_dispose",
+      cols: 100,
+      rows: 30,
+    });
+    expect(bridge.statusTerminals()).toEqual([
+      { terminal_id: "term_dispose", viewers: 1 },
+    ]);
+
+    bridge.dispose();
+    bridge.dispose();
+    await bridge.handleTerminalRpc(
+      browser,
+      "after-dispose",
+      "terminal.attach",
+      {
+        terminal_id: "term_after_dispose",
+        cols: 100,
+        rows: 30,
+      },
+    );
+
+    expect(bridge.statusTerminals()).toEqual([]);
+    expect(bridge.viewedTerminals(browser)).toEqual([]);
+    expect(
+      messages
+        .map((message) => JSON.parse(message))
+        .find((message) => message.id === "after-dispose")?.error.message,
+    ).toBe("terminal bridge disposed");
+    for (
+      let attempt = 0;
+      attempt < 50 && tracker.appCloses !== 1;
+      attempt += 1
+    ) {
+      await Bun.sleep(2);
+    }
+    expect(tracker.appCloses).toBe(1);
+  });
+
+  test("dispose wins an in-flight attach without retaining resources", async () => {
+    const tracker = {
+      appConnects: 0,
+      appCloses: 0,
+      appSizes: [] as string[],
+      events: [] as string[],
+    };
+    let resolveDirectAttach!: () => void;
+    const directAttach = new Promise<void>((resolve) => {
+      resolveDirectAttach = resolve;
+    });
+    const socketPath = await startThinServer({
+      tracker,
+      skipDirectFrame: true,
+      onDirectAttach: resolveDirectAttach,
+    });
+    const browser = {} as ServerWebSocket<unknown>;
+    const messages: string[] = [];
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 17,
+      safeSend: (_ws, payload) => {
+        messages.push(payload);
+        return true;
+      },
+      clientLabel: () => "browser",
+      markRpcError: () => undefined,
+    });
+
+    const attaching = bridge.handleTerminalRpc(
+      browser,
+      "concurrent-attach",
+      "terminal.attach",
+      {
+        terminal_id: "term_concurrent_dispose",
+        cols: 100,
+        rows: 30,
+      },
+    );
+    await directAttach;
+    expect(tracker.events).toContain("attach");
+    bridge.dispose();
+    await attaching;
+
+    expect(bridge.statusTerminals()).toEqual([]);
+    expect(bridge.viewedTerminals(browser)).toEqual([]);
+    expect(tracker.appConnects).toBe(0);
+    expect(
+      messages
+        .map((message) => JSON.parse(message))
+        .find((message) => message.id === "concurrent-attach")?.error.message,
+    ).toBe("terminal bridge disposed");
+  });
+
+  test("suppresses terminal replies after the request lease is invalidated", async () => {
+    const messages: string[] = [];
+    const bridge = createTerminalBridge({
+      connectionId: "alpha",
+      clientSocketPath: "/tmp/unused-terminal-lease.sock",
+      herdrProtocol: async () => 17,
+      safeSend: (_ws, payload) => {
+        messages.push(payload);
+        return true;
+      },
+      clientLabel: () => "browser",
+      markRpcError: () => undefined,
+    });
+
+    await bridge.handleTerminalRpc(
+      {} as ServerWebSocket<unknown>,
+      "stale-terminal",
+      "terminal.input",
+      { terminal_id: "same", data: "YQ==" },
+      () => false,
+    );
+
+    expect(messages.map((message) => JSON.parse(message))).toEqual([
+      {
+        connection_id: "alpha",
+        id: "stale-terminal",
+        error: { message: "connection changed during request" },
+      },
+    ]);
+    bridge.dispose();
   });
 });

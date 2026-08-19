@@ -1,6 +1,19 @@
 import {
-  Suspense,
+  ChevronLeft,
+  ChevronRight,
+  FileDiff,
+  FileText,
+  FolderTree,
+  History,
+  MoreHorizontal,
+  PanelTop,
+  Plug,
+  SquareTerminal,
+  X,
+} from "lucide-react";
+import {
   lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,74 +21,79 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  store,
-  isTaskNotificationTarget,
-  noticeAutoDismissDelay,
-  TASK_NOTIFICATION_ACTIVATE_EVENT,
-  useStore,
-  type Notice,
-  type TaskNotificationTarget,
-} from "./store";
-import { copyTextFromUserGesture } from "./terminalClipboard";
-import { WorkspaceTree } from "./components/WorkspaceTree";
-import { AgentPanel } from "./components/AgentPanel";
+import packageJson from "../package.json";
+import { type AccentColor, normalizeAccentColor } from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
-import { requestCloseTab, TabBar } from "./components/TabBar";
-import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
+import { AgentPanel } from "./components/AgentPanel";
 import { CommandCombobox } from "./components/CommandCombobox";
-import { GlobalTooltip } from "./components/GlobalTooltip";
+import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
+import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
+import { DiffContentView } from "./components/DiffContentView";
 import {
-  ChevronLeft,
-  ChevronRight,
-  FileDiff,
-  FileText,
-  FolderTree,
-  History,
-  PanelTop,
-  Plug,
-  SquareTerminal,
-  MoreHorizontal,
-  X,
-} from "lucide-react";
+  type ActiveDiffSelection,
+  type DiffSelectionMeta,
+  DiffViewerPanel,
+  prefetchDiffViewerWorkspace,
+} from "./components/DiffViewerPanel";
 import {
   FileExplorerPanel,
   prefetchFileExplorerWorkspace,
   requestFilePreview,
 } from "./components/FileExplorerDialog";
 import {
-  FilePreviewContent,
   type ActiveFilePreviewSelection,
+  FilePreviewContent,
   type FilePreviewSelectionMeta,
 } from "./components/FilePreviewContent";
+import { GlobalTooltip } from "./components/GlobalTooltip";
+import { requestCloseTab, TabBar } from "./components/TabBar";
+import { WorkspaceTree } from "./components/WorkspaceTree";
 import {
-  DiffViewerPanel,
-  prefetchDiffViewerWorkspace,
-  type ActiveDiffSelection,
-  type DiffSelectionMeta,
-} from "./components/DiffViewerPanel";
-import { DiffContentView } from "./components/DiffContentView";
-import type { FileExplorerEntry } from "./types";
-import {
-  paneJumpEntries,
-  paneJumpTargetId,
-  type PaneJumpEntry,
-} from "./paneJump";
-import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
-import { normalizeAccentColor, type AccentColor } from "./appearance";
+  type ConnectionResourceSelection,
+  connectionStorageKey,
+  DIFF_VIEWER_WORKSPACE_STORAGE_KEY as DIFF_VIEWER_WORKSPACE_KEY,
+  FILE_EXPLORER_WORKSPACE_STORAGE_KEY as FILE_EXPLORER_WORKSPACE_KEY,
+  FILE_PREVIEW_STORAGE_KEY as FILE_PREVIEW_KEY,
+  readConnectionResourceSelection,
+  readStoredFilePreview,
+  type StoredFilePreview,
+  transitionConnectionResourceSelection,
+} from "./connectionStorage";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY,
+  type MobileTerminalShortcutRows,
+  type MobileTerminalSideShortcuts,
   parseMobileTerminalShortcutRows,
   parseMobileTerminalSideShortcuts,
   serializeMobileTerminalShortcutRows,
   serializeMobileTerminalSideShortcuts,
-  type MobileTerminalShortcutRows,
-  type MobileTerminalSideShortcuts,
 } from "./mobileTerminalShortcuts";
+import {
+  type PaneJumpEntry,
+  paneJumpEntries,
+  paneJumpTargetId,
+} from "./paneJump";
+import {
+  isTaskNotificationTarget,
+  type Notice,
+  noticeAutoDismissDelay,
+  store,
+  TASK_NOTIFICATION_ACTIVATE_EVENT,
+  type TaskNotificationTarget,
+  taskNotificationTargetFromNotice,
+  useStore,
+} from "./store";
+import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
+import { copyTextFromUserGesture } from "./terminalClipboard";
+import { terminalMountKey } from "./terminalConnection";
+import type { FileExplorerEntry } from "./types";
+import {
+  connectionClientScopeKey,
+  useConnectionClient,
+} from "./useConnectionClient";
 import { agentClass } from "./utils";
-import packageJson from "../package.json";
 
 const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 560;
@@ -83,9 +101,6 @@ const DEFAULT_SIDEBAR = 284;
 const THEME_KEY = "theme";
 const ACCENT_COLOR_KEY = "accentColor";
 const SIDEBAR_ACTIVITY_KEY = "sidebarActivity";
-const FILE_EXPLORER_WORKSPACE_KEY = "fileExplorerWorkspaceId";
-const FILE_PREVIEW_KEY = "filePreview";
-const DIFF_VIEWER_WORKSPACE_KEY = "diffViewerWorkspaceId";
 
 const LazyTerminalView = lazy(() =>
   import("./components/TerminalView").then((module) => ({
@@ -234,36 +249,41 @@ function loadSidebarActivity(): SidebarActivity {
   return value === "files" || value === "diff" ? value : "workspaces";
 }
 
-function loadOptionalString(key: string) {
-  return localStorage.getItem(key) || undefined;
+function emptyActiveDiffSelection(): ActiveDiffSelection {
+  return {
+    entry: null,
+    file: null,
+    loading: false,
+    error: null,
+    entries: [],
+    files: {},
+    fileErrors: {},
+    summaryLoading: false,
+  };
 }
 
-function loadStoredFilePreview(): {
-  workspaceId: string;
-  path: string;
-  name: string;
-} | null {
-  try {
-    const raw = localStorage.getItem(FILE_PREVIEW_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as {
-      workspaceId?: unknown;
-      path?: unknown;
-      name?: unknown;
-    };
-    if (typeof value.workspaceId !== "string") return null;
-    if (typeof value.path !== "string") return null;
-    return {
-      workspaceId: value.workspaceId,
-      path: value.path,
-      name:
-        typeof value.name === "string" && value.name
-          ? value.name
-          : (value.path.split("/").filter(Boolean).pop() ?? value.path),
-    };
-  } catch {
-    return null;
-  }
+function emptyActiveFilePreviewSelection(): ActiveFilePreviewSelection {
+  return {
+    entry: null,
+    preview: null,
+    loading: false,
+    error: null,
+  };
+}
+
+function storedFilePreviewFromSelection(
+  selection: ActiveFilePreviewSelection,
+  fileExplorerWorkspaceId: string | undefined,
+): StoredFilePreview | undefined {
+  const entry = selection.entry;
+  const workspaceId =
+    selection.preview?.workspace_id ?? fileExplorerWorkspaceId;
+  if (!entry?.path || !workspaceId) return undefined;
+  return {
+    workspaceId,
+    path: entry.path,
+    name: entry.name,
+  };
 }
 
 function useMobileLayout() {
@@ -347,26 +367,6 @@ function tabShortcutIndex(e: KeyboardEvent) {
   if (/^[1-9]$/.test(e.key)) return Number(e.key) - 1;
   const match = /^Digit([1-9])$/.exec(e.code);
   return match ? Number(match[1]) - 1 : null;
-}
-
-function StatusDot() {
-  const s = useStore();
-  const label = s.connectionPaused ? "paused" : s.status;
-  const clientCount =
-    !s.connectionPaused && s.status === "connected"
-      ? s.bridgeStatus?.clients
-      : null;
-  const clientLabel =
-    typeof clientCount === "number"
-      ? ` · ${clientCount} ${clientCount === 1 ? "client" : "clients"}`
-      : "";
-  return (
-    <span className={`status status-${label}`}>
-      <span className="status-dot" />
-      {label}
-      {clientLabel}
-    </span>
-  );
 }
 
 // Herdr reports pane rectangles in terminal-cell coordinates. The GUI maps
@@ -638,10 +638,23 @@ function TerminalPaneLayout({
     visiblePanes.find((lp) => lp.pane_id === layout?.focused_pane_id)
       ?.pane_id ??
     fallbackPaneId;
+  const mountKeyForPane = (paneId: string | null) => {
+    const terminalId =
+      s.panes.find((pane) => pane.pane_id === paneId)?.terminal_id ?? null;
+    return terminalMountKey(
+      {
+        connectionId: s.activeConnectionId,
+        generation: s.connectionGeneration,
+      },
+      paneId,
+      terminalId,
+    );
+  };
 
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
     return (
       <TerminalView
+        key={mountKeyForPane(activePaneId)}
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
         agentHistoryOpen={agentHistoryOpen}
@@ -697,6 +710,7 @@ function TerminalPaneLayout({
           </button>
         </div>
         <TerminalView
+          key={mountKeyForPane(activePaneId)}
           paneId={activePaneId}
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
@@ -783,7 +797,7 @@ function TerminalPaneLayout({
         const isActive = layoutPane.pane_id === activePaneId;
         return (
           <div
-            key={layoutPane.pane_id}
+            key={mountKeyForPane(layoutPane.pane_id)}
             className={`pane-layout-cell ${isActive ? "is-active" : ""}`}
             style={{
               left: `${rectPercent(rect.x, area.x, areaWidth)}%`,
@@ -796,6 +810,7 @@ function TerminalPaneLayout({
             }}
           >
             <TerminalView
+              key={mountKeyForPane(layoutPane.pane_id)}
               paneId={layoutPane.pane_id}
               showMobileKeys={isActive}
               mobileShortcuts={mobileShortcuts}
@@ -838,6 +853,16 @@ function TerminalPaneLayout({
 
 export default function App() {
   const s = useStore();
+  const connectionClient = useConnectionClient();
+  const initialResourceSelectionRef =
+    useRef<ConnectionResourceSelection | null>(null);
+  if (initialResourceSelectionRef.current === null) {
+    initialResourceSelectionRef.current = readConnectionResourceSelection(
+      localStorage,
+      s.activeConnectionId,
+    );
+  }
+  const initialResourceSelection = initialResourceSelectionRef.current;
   useVisualViewportCssVars();
   const mobile = useMobileLayout();
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
@@ -867,29 +892,38 @@ export default function App() {
   );
   const [fileExplorerWorkspaceId, setFileExplorerWorkspaceId] = useState<
     string | undefined
-  >(() => loadOptionalString(FILE_EXPLORER_WORKSPACE_KEY));
+  >(() => initialResourceSelection.fileExplorerWorkspaceId);
   const [diffViewerWorkspaceId, setDiffViewerWorkspaceId] = useState<
     string | undefined
-  >(() => loadOptionalString(DIFF_VIEWER_WORKSPACE_KEY));
-  const [activeDiff, setActiveDiff] = useState<ActiveDiffSelection>({
-    entry: null,
-    file: null,
-    loading: false,
-    error: null,
-    entries: [],
-    files: {},
-    fileErrors: {},
-    summaryLoading: false,
-  });
+  >(() => initialResourceSelection.diffViewerWorkspaceId);
+  const [activeDiff, setActiveDiff] = useState<ActiveDiffSelection>(
+    emptyActiveDiffSelection,
+  );
   const [activeFilePreview, setActiveFilePreview] =
-    useState<ActiveFilePreviewSelection>({
-      entry: null,
-      preview: null,
-      loading: false,
-      error: null,
-    });
+    useState<ActiveFilePreviewSelection>(emptyActiveFilePreviewSelection);
   const fileQuickOpenRequestRef = useRef(0);
   const restoredFilePreviewKeyRef = useRef<string | null>(null);
+  const resourceScopeRef = useRef({
+    connectionId: s.activeConnectionId,
+    generation: s.connectionGeneration,
+  });
+  const resourceStateScopeRef = useRef({
+    connectionId: s.activeConnectionId,
+    generation: s.connectionGeneration,
+  });
+  const pendingResourceScopeRef = useRef<{
+    connectionId: string;
+    generation: number;
+  } | null>(null);
+  const resourceSelectionRef = useRef<{
+    fileExplorerWorkspaceId?: string;
+    filePreview?: StoredFilePreview;
+    diffViewerWorkspaceId?: string;
+  }>({});
+  const resourceUiKey = connectionClientScopeKey(
+    connectionClient,
+    "resource-ui",
+  );
   const focusedWorkspaceId = s.workspaces.find((w) => w.focused)?.workspace_id;
   const activePaneId =
     s.selectedPaneId &&
@@ -946,7 +980,9 @@ export default function App() {
         .workspaces.find((w) => w.focused)?.workspace_id;
       const targetWorkspaceId = workspaceId ?? focusedWorkspaceId;
       if (targetWorkspaceId !== fileExplorerWorkspaceId) {
-        localStorage.removeItem(FILE_PREVIEW_KEY);
+        localStorage.removeItem(
+          connectionStorageKey(connectionClient.connectionId, FILE_PREVIEW_KEY),
+        );
         restoredFilePreviewKeyRef.current = null;
         setActiveFilePreview({
           entry: null,
@@ -960,7 +996,11 @@ export default function App() {
       setSidebarHidden(false);
       restoreMobileViewForActivity("files");
     },
-    [fileExplorerWorkspaceId, restoreMobileViewForActivity],
+    [
+      connectionClient.connectionId,
+      fileExplorerWorkspaceId,
+      restoreMobileViewForActivity,
+    ],
   );
   const openFileExplorerFile = useCallback(
     (workspaceId: string, entry: FileExplorerEntry) => {
@@ -976,9 +1016,16 @@ export default function App() {
         error: null,
       });
       if (mobile) setMobileView("session");
-      void requestFilePreview(workspaceId, entry.path)
+      void requestFilePreview(workspaceId, entry.path, {
+        client: connectionClient,
+      })
         .then((preview) => {
-          if (fileQuickOpenRequestRef.current !== requestId) return;
+          if (
+            !connectionClient.isCurrent() ||
+            fileQuickOpenRequestRef.current !== requestId
+          ) {
+            return;
+          }
           setActiveFilePreview({
             entry,
             preview,
@@ -987,7 +1034,12 @@ export default function App() {
           });
         })
         .catch((e) => {
-          if (fileQuickOpenRequestRef.current !== requestId) return;
+          if (
+            !connectionClient.isCurrent() ||
+            fileQuickOpenRequestRef.current !== requestId
+          ) {
+            return;
+          }
           setActiveFilePreview({
             entry,
             preview: null,
@@ -996,7 +1048,7 @@ export default function App() {
           });
         });
     },
-    [mobile],
+    [connectionClient, mobile],
   );
   const openDiffViewer = useCallback(
     (workspaceId?: string) => {
@@ -1025,7 +1077,9 @@ export default function App() {
       .get()
       .workspaces.find((w) => w.focused)?.workspace_id;
     if (focusedWorkspaceId !== fileExplorerWorkspaceId) {
-      localStorage.removeItem(FILE_PREVIEW_KEY);
+      localStorage.removeItem(
+        connectionStorageKey(connectionClient.connectionId, FILE_PREVIEW_KEY),
+      );
       restoredFilePreviewKeyRef.current = null;
       setActiveFilePreview({
         entry: null,
@@ -1039,6 +1093,7 @@ export default function App() {
     setSidebarHidden(false);
     restoreMobileViewForActivity("files");
   }, [
+    connectionClient.connectionId,
     fileExplorerWorkspaceId,
     openWorkspaces,
     restoreMobileViewForActivity,
@@ -1124,12 +1179,9 @@ export default function App() {
         );
         return;
       }
-      const target = {
-        paneId: notice.actionPaneId,
-        workspaceId: notice.actionWorkspaceId,
-      };
+      const target = taskNotificationTargetFromNotice(notice);
       store.clearNotice();
-      if (isTaskNotificationTarget(target)) openNotificationTarget(target);
+      if (target) openNotificationTarget(target);
     },
     [openNotificationTarget],
   );
@@ -1139,7 +1191,13 @@ export default function App() {
       if (!isTaskNotificationTarget(target)) return;
       openNotificationTarget(target);
       const notice = store.get().notice;
-      if (notice?.actionPaneId === target.paneId) store.clearNotice();
+      if (
+        notice?.actionConnectionId === target.connectionId &&
+        notice.actionRuntimeGeneration === target.runtimeGeneration &&
+        notice.actionPaneId === target.paneId
+      ) {
+        store.clearNotice();
+      }
     };
     window.addEventListener(
       TASK_NOTIFICATION_ACTIVATE_EVENT,
@@ -1187,6 +1245,60 @@ export default function App() {
     return previousPaneIndex >= 0 ? previousPaneIndex : 0;
   }, [paneJumpOptions]);
 
+  // Keep the outgoing resource snapshot separate from the active bridge
+  // identity. The transition effect saves this snapshot under the old ID
+  // before restoring the target ID, preventing alpha values from being
+  // persisted under beta during the switch render.
+  useLayoutEffect(() => {
+    resourceSelectionRef.current = {
+      fileExplorerWorkspaceId,
+      filePreview: storedFilePreviewFromSelection(
+        activeFilePreview,
+        fileExplorerWorkspaceId,
+      ),
+      diffViewerWorkspaceId,
+    };
+  }, [activeFilePreview, diffViewerWorkspaceId, fileExplorerWorkspaceId]);
+  useLayoutEffect(() => {
+    const pendingScope = pendingResourceScopeRef.current;
+    if (!pendingScope) return;
+    resourceStateScopeRef.current = pendingScope;
+    pendingResourceScopeRef.current = null;
+  });
+  useLayoutEffect(() => {
+    const previousScope = resourceScopeRef.current;
+    if (
+      previousScope.connectionId === connectionClient.connectionId &&
+      previousScope.generation === connectionClient.generation
+    ) {
+      return;
+    }
+
+    const targetSelection = transitionConnectionResourceSelection(
+      localStorage,
+      previousScope.connectionId,
+      resourceSelectionRef.current,
+      connectionClient.connectionId,
+    );
+    const targetScope = {
+      connectionId: connectionClient.connectionId,
+      generation: connectionClient.generation,
+    };
+    resourceScopeRef.current = targetScope;
+    pendingResourceScopeRef.current = targetScope;
+    fileQuickOpenRequestRef.current += 1;
+    restoredFilePreviewKeyRef.current = null;
+    paneJumpCtrlDownRef.current = false;
+    paneJumpIndexRef.current = 0;
+    setFileExplorerWorkspaceId(targetSelection.fileExplorerWorkspaceId);
+    setDiffViewerWorkspaceId(targetSelection.diffViewerWorkspaceId);
+    setActiveDiff(emptyActiveDiffSelection());
+    setActiveFilePreview(emptyActiveFilePreviewSelection());
+    setAgentHistoryOpen(false);
+    setPaneJumpOpen(false);
+    setPaneJumpIndex(0);
+  }, [connectionClient]);
+
   useEffect(() => {
     store.init();
   }, []);
@@ -1230,7 +1342,10 @@ export default function App() {
   }, [focusedWorkspaceId]);
   useEffect(() => {
     if (sidebarActivity !== "files") return;
-    const stored = loadStoredFilePreview();
+    const stored = readStoredFilePreview(
+      localStorage,
+      connectionClient.connectionId,
+    );
     if (!stored) return;
     if (
       fileExplorerWorkspaceId &&
@@ -1257,6 +1372,7 @@ export default function App() {
       hidden: stored.name.startsWith("."),
     });
   }, [
+    connectionClient,
     fileExplorerWorkspaceId,
     openFileExplorerFile,
     s.workspaces,
@@ -1265,12 +1381,12 @@ export default function App() {
   useEffect(() => {
     if (!focusedWorkspaceId) return;
     if (sidebarActivity !== "files") {
-      void prefetchFileExplorerWorkspace(focusedWorkspaceId);
+      void prefetchFileExplorerWorkspace(focusedWorkspaceId, connectionClient);
     }
     if (sidebarActivity !== "diff") {
-      void prefetchDiffViewerWorkspace(focusedWorkspaceId);
+      void prefetchDiffViewerWorkspace(focusedWorkspaceId, connectionClient);
     }
-  }, [focusedWorkspaceId, sidebarActivity]);
+  }, [connectionClient, focusedWorkspaceId, sidebarActivity]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (paneJumpOpen) {
@@ -1506,13 +1622,14 @@ export default function App() {
     localStorage.setItem(SIDEBAR_ACTIVITY_KEY, sidebarActivity);
   }, [sidebarActivity]);
   useEffect(() => {
+    const key = connectionStorageKey(
+      resourceStateScopeRef.current.connectionId,
+      FILE_EXPLORER_WORKSPACE_KEY,
+    );
     if (fileExplorerWorkspaceId) {
-      localStorage.setItem(
-        FILE_EXPLORER_WORKSPACE_KEY,
-        fileExplorerWorkspaceId,
-      );
+      localStorage.setItem(key, fileExplorerWorkspaceId);
     } else {
-      localStorage.removeItem(FILE_EXPLORER_WORKSPACE_KEY);
+      localStorage.removeItem(key);
     }
   }, [fileExplorerWorkspaceId]);
   useEffect(() => {
@@ -1521,7 +1638,10 @@ export default function App() {
       activeFilePreview.preview?.workspace_id ?? fileExplorerWorkspaceId;
     if (entry?.path && workspaceId) {
       localStorage.setItem(
-        FILE_PREVIEW_KEY,
+        connectionStorageKey(
+          resourceStateScopeRef.current.connectionId,
+          FILE_PREVIEW_KEY,
+        ),
         JSON.stringify({
           workspaceId,
           path: entry.path,
@@ -1535,10 +1655,14 @@ export default function App() {
     fileExplorerWorkspaceId,
   ]);
   useEffect(() => {
+    const key = connectionStorageKey(
+      resourceStateScopeRef.current.connectionId,
+      DIFF_VIEWER_WORKSPACE_KEY,
+    );
     if (diffViewerWorkspaceId) {
-      localStorage.setItem(DIFF_VIEWER_WORKSPACE_KEY, diffViewerWorkspaceId);
+      localStorage.setItem(key, diffViewerWorkspaceId);
     } else {
-      localStorage.removeItem(DIFF_VIEWER_WORKSPACE_KEY);
+      localStorage.removeItem(key);
     }
   }, [diffViewerWorkspaceId]);
   const notice = s.notice;
@@ -1592,7 +1716,7 @@ export default function App() {
             <span className="brand-title">herdr-gui</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
-          <StatusDot />
+          <ConnectionSwitcher />
         </div>
         <SidebarViewSwitcher
           className="topbar-view-switcher"
@@ -1619,11 +1743,13 @@ export default function App() {
           ) : null}
           <div className="topbar-command-group">
             <CommandCombobox
+              key={`${resourceUiKey}:commands`}
               onOpenFileExplorer={openFileExplorer}
               onOpenFile={openFileExplorerFile}
               onOpenDiffViewer={openDiffViewer}
             />
             <ConfigMenu
+              key={`${resourceUiKey}:config`}
               theme={theme}
               accentColor={accentColor}
               mobileTerminalShortcuts={mobileTerminalShortcuts}
@@ -1830,11 +1956,18 @@ export default function App() {
           <div className="sidebar-content">
             {sidebarActivity === "workspaces" ? (
               <>
-                <WorkspaceTree onSelect={() => setMobileView("session")} />
-                <AgentPanel onSelect={() => setMobileView("session")} />
+                <WorkspaceTree
+                  key={`${resourceUiKey}:workspaces`}
+                  onSelect={() => setMobileView("session")}
+                />
+                <AgentPanel
+                  key={`${resourceUiKey}:agents`}
+                  onSelect={() => setMobileView("session")}
+                />
               </>
             ) : sidebarActivity === "files" ? (
               <FileExplorerPanel
+                key={`${resourceUiKey}:files`}
                 open
                 workspaceId={fileExplorerWorkspaceId}
                 activePath={activeFilePreview.entry?.path}
@@ -1843,6 +1976,7 @@ export default function App() {
               />
             ) : (
               <DiffViewerPanel
+                key={`${resourceUiKey}:diff-sidebar`}
                 workspaceId={diffViewerWorkspaceId}
                 onSelectionChange={handleDiffSelectionChange}
               />
@@ -1868,7 +2002,7 @@ export default function App() {
                 : ""
             }`}
           >
-            <TabBar mobile={mobile} />
+            <TabBar key={`${resourceUiKey}:tabs`} mobile={mobile} />
             <TerminalPaneLayout
               mobileShortcuts={mobileTerminalShortcuts}
               mobileSideShortcuts={mobileTerminalSideShortcuts}
@@ -1882,6 +2016,7 @@ export default function App() {
             }`}
           >
             <DiffContentView
+              key={`${resourceUiKey}:diff-content`}
               entry={activeDiff.entry}
               file={activeDiff.file}
               loading={activeDiff.loading}
@@ -1891,6 +2026,7 @@ export default function App() {
               fileErrors={activeDiff.fileErrors}
               summaryLoading={activeDiff.summaryLoading}
               mobile={mobile}
+              connectionClient={connectionClient}
               onOpenFile={openDiffFileInExplorer}
             />
           </div>
@@ -1900,6 +2036,7 @@ export default function App() {
             }`}
           >
             <FilePreviewContent
+              key={`${resourceUiKey}:file-preview`}
               entry={activeFilePreview.entry}
               preview={activeFilePreview.preview}
               loading={activeFilePreview.loading}

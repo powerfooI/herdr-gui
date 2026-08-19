@@ -14,7 +14,7 @@ import {
   Folder,
   RefreshCw,
 } from "lucide-react";
-import { bridge } from "../api";
+import type { ConnectionClient } from "../api";
 import type {
   GitDiffEntry,
   GitDiffFile,
@@ -22,6 +22,11 @@ import type {
   GitDiffSummary,
 } from "../types";
 import { useStore } from "../store";
+import {
+  connectionClientScopeKey,
+  useConnectionClient,
+} from "../useConnectionClient";
+import { connectionStorageKey } from "../connectionStorage";
 
 export type ActiveDiffSelection = {
   entry: GitDiffEntry | null;
@@ -66,30 +71,54 @@ function diffEntryKey(entry: GitDiffEntry) {
   return `${entry.kind}:${entry.path}`;
 }
 
-function diffCacheKey(workspaceId: string | undefined, scope: DiffScope) {
-  return `${workspaceId ?? "focused"}:${scope}`;
+export function diffCacheKey(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId: string | undefined,
+  scope: DiffScope,
+) {
+  return connectionClientScopeKey(
+    client,
+    "diff",
+    workspaceId ?? "focused",
+    scope,
+  );
 }
 
 function diffFileRequestKey(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
   workspaceId: string,
   scope: DiffScope,
   entry: GitDiffEntry,
 ) {
-  return `${workspaceId}:${scope}:${diffEntryKey(entry)}`;
+  return connectionClientScopeKey(
+    client,
+    "diff-file",
+    workspaceId,
+    scope,
+    diffEntryKey(entry),
+  );
 }
 
-function diffSelectionStorageKey(workspaceId: string, scope: DiffScope) {
-  return `diffViewerSelected:${workspaceId}:${scope}`;
+export function diffSelectionStorageKey(
+  connectionId: string,
+  workspaceId: string,
+  scope: DiffScope,
+) {
+  return connectionStorageKey(
+    connectionId,
+    `diffViewerSelected:${workspaceId}:${scope}`,
+  );
 }
 
 function readStoredSelection(
+  connectionId: string,
   workspaceId: string | undefined,
   scope: DiffScope,
 ): GitDiffEntry | null {
   if (!workspaceId) return null;
   try {
     const raw = localStorage.getItem(
-      diffSelectionStorageKey(workspaceId, scope),
+      diffSelectionStorageKey(connectionId, workspaceId, scope),
     );
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<GitDiffEntry>;
@@ -109,13 +138,14 @@ function readStoredSelection(
 }
 
 function writeStoredSelection(
+  connectionId: string,
   workspaceId: string | undefined,
   scope: DiffScope,
   entry: GitDiffEntry,
 ) {
   if (!workspaceId) return;
   localStorage.setItem(
-    diffSelectionStorageKey(workspaceId, scope),
+    diffSelectionStorageKey(connectionId, workspaceId, scope),
     JSON.stringify(entry),
   );
 }
@@ -130,8 +160,12 @@ function emptyDiffCache(): DiffCache {
   };
 }
 
-function readDiffCache(workspaceId: string | undefined, scope: DiffScope) {
-  const key = diffCacheKey(workspaceId, scope);
+function readDiffCache(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId: string | undefined,
+  scope: DiffScope,
+) {
+  const key = diffCacheKey(client, workspaceId, scope);
   const cached = diffCache.get(key);
   if (cached) {
     return {
@@ -150,11 +184,12 @@ function readDiffCache(workspaceId: string | undefined, scope: DiffScope) {
 }
 
 function writeDiffCache(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
   workspaceId: string | undefined,
   scope: DiffScope,
   patch: Partial<DiffCache>,
 ) {
-  const key = diffCacheKey(workspaceId, scope);
+  const key = diffCacheKey(client, workspaceId, scope);
   const current = diffCache.get(key) ?? emptyDiffCache();
   diffCache.set(key, {
     ...current,
@@ -167,12 +202,13 @@ function writeDiffCache(
 }
 
 function resolveSelectedEntry(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
   workspaceId: string,
   scope: DiffScope,
   entries: GitDiffEntry[],
   preferred?: GitDiffEntry | null,
 ) {
-  const stored = readStoredSelection(workspaceId, scope);
+  const stored = readStoredSelection(client.connectionId, workspaceId, scope);
   const candidates = [preferred, stored].filter(Boolean) as GitDiffEntry[];
   for (const candidate of candidates) {
     const match = entries.find(
@@ -184,14 +220,18 @@ function resolveSelectedEntry(
 }
 
 function requestDiffFile(
+  client: ConnectionClient,
   workspaceId: string,
   scope: DiffScope,
   entry: GitDiffEntry,
 ) {
-  const requestKey = diffFileRequestKey(workspaceId, scope, entry);
+  if (!client.isCurrent()) {
+    return Promise.reject(new Error("connection changed during diff request"));
+  }
+  const requestKey = diffFileRequestKey(client, workspaceId, scope, entry);
   const running = diffFileRequests.get(requestKey);
   if (running) return running;
-  const task = bridge.call("git.diff_file", {
+  const task = client.call("git.diff_file", {
     workspace_id: workspaceId,
     mode: scope,
     path: entry.path,
@@ -199,23 +239,32 @@ function requestDiffFile(
   }) as Promise<GitDiffFile>;
   diffFileRequests.set(
     requestKey,
-    task.finally(() => {
-      diffFileRequests.delete(requestKey);
-    }),
+    task
+      .then((file) => {
+        if (!client.isCurrent()) {
+          throw new Error("connection changed during diff request");
+        }
+        return file;
+      })
+      .finally(() => {
+        diffFileRequests.delete(requestKey);
+      }),
   );
   return diffFileRequests.get(requestKey)!;
 }
 
 function cacheDiffFile(
+  client: ConnectionClient,
   workspaceId: string,
   scope: DiffScope,
   entry: GitDiffEntry,
   file: GitDiffFile,
 ) {
-  const cached = readDiffCache(workspaceId, scope);
+  if (!client.isCurrent()) return;
+  const cached = readDiffCache(client, workspaceId, scope);
   const nextFileErrors = { ...cached.fileErrors };
   delete nextFileErrors[diffEntryKey(entry)];
-  writeDiffCache(workspaceId, scope, {
+  writeDiffCache(client, workspaceId, scope, {
     files: { ...cached.files, [diffEntryKey(entry)]: file },
     fileErrors: nextFileErrors,
     error: null,
@@ -223,6 +272,7 @@ function cacheDiffFile(
 }
 
 function prefetchDiffFilesInBatches(
+  client: ConnectionClient,
   workspaceId: string,
   scope: DiffScope,
   entries: GitDiffEntry[],
@@ -230,7 +280,7 @@ function prefetchDiffFilesInBatches(
   onFileError?: (entry: GitDiffEntry, error: string) => void,
 ) {
   const queue = entries.filter((entry) => {
-    const cached = readDiffCache(workspaceId, scope);
+    const cached = readDiffCache(client, workspaceId, scope);
     return !cached.files[diffEntryKey(entry)];
   });
   if (!queue.length) return Promise.resolve();
@@ -241,10 +291,12 @@ function prefetchDiffFilesInBatches(
       const entry = queue[cursor];
       cursor += 1;
       try {
-        const file = await requestDiffFile(workspaceId, scope, entry);
-        cacheDiffFile(workspaceId, scope, entry, file);
+        const file = await requestDiffFile(client, workspaceId, scope, entry);
+        if (!client.isCurrent()) return;
+        cacheDiffFile(client, workspaceId, scope, entry, file);
         onFile?.(entry, file);
       } catch (e) {
+        if (!client.isCurrent()) return;
         onFileError?.(entry, (e as Error).message);
       }
     }
@@ -356,19 +408,29 @@ function expandedDirsForEntries(entries: GitDiffEntry[]) {
   return expanded;
 }
 
-export function prefetchDiffViewerWorkspace(workspaceId?: string) {
-  if (!workspaceId) return Promise.resolve();
-  const running = diffPrefetches.get(workspaceId);
+export function prefetchDiffViewerWorkspace(
+  workspaceId: string | undefined,
+  client: ConnectionClient,
+) {
+  if (!workspaceId || !client.isCurrent()) return Promise.resolve();
+  const prefetchKey = connectionClientScopeKey(
+    client,
+    "diff-prefetch",
+    workspaceId,
+  );
+  const running = diffPrefetches.get(prefetchKey);
   if (running) return running;
 
   const task = (async () => {
     const scope: DiffScope = "working";
-    const cached = readDiffCache(workspaceId, scope);
-    const summary = (await bridge.call("git.diff_summary", {
+    const cached = readDiffCache(client, workspaceId, scope);
+    const summary = (await client.call("git.diff_summary", {
       workspace_id: workspaceId,
       mode: scope,
     })) as GitDiffSummary;
+    if (!client.isCurrent()) return;
     const selected = resolveSelectedEntry(
+      client,
       workspaceId,
       scope,
       summary.entries,
@@ -376,7 +438,7 @@ export function prefetchDiffViewerWorkspace(workspaceId?: string) {
     );
     const files = { ...cached.files };
 
-    writeDiffCache(workspaceId, scope, {
+    writeDiffCache(client, workspaceId, scope, {
       summary,
       selected,
       files,
@@ -386,8 +448,9 @@ export function prefetchDiffViewerWorkspace(workspaceId?: string) {
     if (!selected) return;
     const key = diffEntryKey(selected);
     if (files[key]) return;
-    const file = await requestDiffFile(workspaceId, scope, selected);
-    writeDiffCache(workspaceId, scope, {
+    const file = await requestDiffFile(client, workspaceId, scope, selected);
+    if (!client.isCurrent()) return;
+    writeDiffCache(client, workspaceId, scope, {
       summary,
       selected,
       files: { ...files, [key]: file },
@@ -398,10 +461,10 @@ export function prefetchDiffViewerWorkspace(workspaceId?: string) {
       // Background warmups should never surface transient bridge errors.
     })
     .finally(() => {
-      diffPrefetches.delete(workspaceId);
+      diffPrefetches.delete(prefetchKey);
     });
 
-  diffPrefetches.set(workspaceId, task);
+  diffPrefetches.set(prefetchKey, task);
   return task;
 }
 
@@ -416,6 +479,7 @@ export function DiffViewerPanel({
   ) => void;
 }) {
   const s = useStore();
+  const connectionClient = useConnectionClient();
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const workspace =
     s.workspaces.find((w) => w.workspace_id === workspaceId) ??
@@ -423,23 +487,32 @@ export function DiffViewerPanel({
   const cacheWorkspaceId = workspace?.workspace_id;
   const [diffScope, setDiffScope] = useState<DiffScope>(() => loadDiffScope());
   const [cache, setCache] = useState<DiffCache>(() =>
-    readDiffCache(cacheWorkspaceId, loadDiffScope()),
+    readDiffCache(connectionClient, cacheWorkspaceId, loadDiffScope()),
   );
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [fileLoadingKey, setFileLoadingKey] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
     () => new Set([""]),
   );
-  const activeContextRef = useRef(diffCacheKey(cacheWorkspaceId, diffScope));
+  const activeContextRef = useRef(
+    diffCacheKey(connectionClient, cacheWorkspaceId, diffScope),
+  );
 
   useEffect(() => {
-    activeContextRef.current = diffCacheKey(cacheWorkspaceId, diffScope);
-  }, [cacheWorkspaceId, diffScope]);
+    activeContextRef.current = diffCacheKey(
+      connectionClient,
+      cacheWorkspaceId,
+      diffScope,
+    );
+  }, [cacheWorkspaceId, connectionClient, diffScope]);
 
   const isCurrentContext = (
     workspaceId: string | undefined,
     scope: DiffScope,
-  ) => activeContextRef.current === diffCacheKey(workspaceId, scope);
+  ) =>
+    connectionClient.isCurrent() &&
+    activeContextRef.current ===
+      diffCacheKey(connectionClient, workspaceId, scope);
 
   const updateCache = (patch: Partial<DiffCache>) => {
     setCache((current) => {
@@ -451,7 +524,7 @@ export function DiffViewerPanel({
           ? { ...patch.fileErrors }
           : { ...current.fileErrors },
       };
-      writeDiffCache(cacheWorkspaceId, diffScope, next);
+      writeDiffCache(connectionClient, cacheWorkspaceId, diffScope, next);
       return next;
     });
   };
@@ -487,18 +560,20 @@ export function DiffViewerPanel({
   }, [cache, diffSelection, onSelectionChange]);
 
   const loadSummary = async (previousSelected = cache.selected) => {
-    if (!workspace?.workspace_id) return;
+    if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     const workspaceId = workspace.workspace_id;
     const scope = diffScope;
     setSummaryLoading(true);
     updateCache({ error: null });
     try {
-      const summary = (await bridge.call("git.diff_summary", {
+      const summary = (await connectionClient.call("git.diff_summary", {
         workspace_id: workspaceId,
         mode: scope,
       })) as GitDiffSummary;
       if (!isCurrentContext(workspaceId, scope)) return;
+      if (!connectionClient.isCurrent()) return;
       const selected = resolveSelectedEntry(
+        connectionClient,
         workspaceId,
         scope,
         summary.entries,
@@ -521,12 +596,17 @@ export function DiffViewerPanel({
     entry: GitDiffEntry,
     meta: DiffSelectionMeta = {},
   ) => {
-    if (!workspace?.workspace_id) return;
+    if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     const workspaceId = workspace.workspace_id;
     const scope = diffScope;
     const key = diffEntryKey(entry);
     updateCache({ selected: entry, error: null });
-    writeStoredSelection(workspaceId, scope, entry);
+    writeStoredSelection(
+      connectionClient.connectionId,
+      workspaceId,
+      scope,
+      entry,
+    );
     const cachedFile = cache.files[key];
     if (cachedFile) {
       onSelectionChange?.(
@@ -541,7 +621,12 @@ export function DiffViewerPanel({
       meta,
     );
     try {
-      const file = await requestDiffFile(workspaceId, scope, entry);
+      const file = await requestDiffFile(
+        connectionClient,
+        workspaceId,
+        scope,
+        entry,
+      );
       if (!isCurrentContext(workspaceId, scope)) return;
       setCache((current) => {
         const next = {
@@ -555,7 +640,7 @@ export function DiffViewerPanel({
           ),
           error: null,
         };
-        writeDiffCache(cacheWorkspaceId, scope, next);
+        writeDiffCache(connectionClient, cacheWorkspaceId, scope, next);
         return next;
       });
       onSelectionChange?.(
@@ -604,7 +689,7 @@ export function DiffViewerPanel({
   }, [diffScope]);
 
   useEffect(() => {
-    const cached = readDiffCache(cacheWorkspaceId, diffScope);
+    const cached = readDiffCache(connectionClient, cacheWorkspaceId, diffScope);
     setFileLoadingKey(null);
     setCache(cached);
     setExpandedDirs(expandedDirsForEntries(cached.summary?.entries ?? []));
@@ -623,7 +708,7 @@ export function DiffViewerPanel({
     void loadSummary(cached.selected);
     // Reopen against a fresh workspace snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheWorkspaceId, diffScope]);
+  }, [cacheWorkspaceId, connectionClient, diffScope]);
 
   useEffect(() => {
     if (cache.selected) void loadFile(cache.selected);
@@ -639,18 +724,26 @@ export function DiffViewerPanel({
     }
     // Load the selected file whenever summary refresh changes selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheWorkspaceId, diffScope, selectedDiffEntryKey]);
+  }, [cacheWorkspaceId, connectionClient, diffScope, selectedDiffEntryKey]);
 
   useEffect(() => {
     if (!cacheWorkspaceId || !cache.summary?.entries.length) return;
     let cancelled = false;
     void prefetchDiffFilesInBatches(
+      connectionClient,
       cacheWorkspaceId,
       diffScope,
       cache.summary.entries,
       (entry, file) => {
         if (cancelled) return;
-        cacheDiffFile(cacheWorkspaceId, diffScope, entry, file);
+        if (!connectionClient.isCurrent()) return;
+        cacheDiffFile(
+          connectionClient,
+          cacheWorkspaceId,
+          diffScope,
+          entry,
+          file,
+        );
         setCache((current) => {
           const key = diffEntryKey(entry);
           if (current.files[key]) return current;
@@ -661,19 +754,19 @@ export function DiffViewerPanel({
             files: { ...current.files, [key]: file },
             fileErrors: nextFileErrors,
           };
-          writeDiffCache(cacheWorkspaceId, diffScope, next);
+          writeDiffCache(connectionClient, cacheWorkspaceId, diffScope, next);
           return next;
         });
       },
       (entry, error) => {
-        if (cancelled) return;
+        if (cancelled || !connectionClient.isCurrent()) return;
         const key = diffEntryKey(entry);
         setCache((current) => {
           const next = {
             ...current,
             fileErrors: { ...current.fileErrors, [key]: error },
           };
-          writeDiffCache(cacheWorkspaceId, diffScope, next);
+          writeDiffCache(connectionClient, cacheWorkspaceId, diffScope, next);
           return next;
         });
       },
@@ -681,7 +774,7 @@ export function DiffViewerPanel({
     return () => {
       cancelled = true;
     };
-  }, [cacheWorkspaceId, cache.summary?.entries, diffScope]);
+  }, [cacheWorkspaceId, cache.summary?.entries, connectionClient, diffScope]);
 
   const selectedKey = cache.selected ? diffEntryKey(cache.selected) : null;
   const tree = useMemo(

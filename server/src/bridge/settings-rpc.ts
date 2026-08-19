@@ -1,6 +1,11 @@
 import type { ServerWebSocket } from "bun";
+import {
+  CONNECTION_CHANGED_DURING_REQUEST,
+  serializeConnectionEnvelope,
+} from "../connections/protocol";
 import type { HerdrClient } from "./herdr-client";
 import {
+  connectionSettingsPrefix,
   DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES,
   type GuiRepoSettings,
   guiSettingsPath,
@@ -29,6 +34,10 @@ type ReadPaseoWorktreeHooks = (
 } | null>;
 
 export function createSettingsRpcHandler(args: {
+  connectionId?: string;
+  connectionGeneration?: number;
+  readSettings?: typeof readGuiSettings;
+  updateSettings?: typeof updateGuiSettings;
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   readPaseoWorktreeHooks: ReadPaseoWorktreeHooks;
@@ -49,8 +58,29 @@ export function createSettingsRpcHandler(args: {
     detail?: string,
   ) => void;
 }) {
+  const readSettings = args.readSettings ?? readGuiSettings;
+  const updateSettings = args.updateSettings ?? updateGuiSettings;
+  const serialize = (message: Record<string, unknown>) =>
+    args.connectionId
+      ? serializeConnectionEnvelope(
+          args.connectionId,
+          message,
+          args.connectionGeneration,
+        )
+      : JSON.stringify(message);
+
   function repoSettingsKey(workspace: any): string | null {
-    return workspaceRepoSettingsKey(workspace, args.sshHost());
+    return workspaceRepoSettingsKey(
+      workspace,
+      args.sshHost(),
+      args.connectionId,
+    );
+  }
+
+  function ownsSettingsKey(key: string): boolean {
+    const host = args.sshHost();
+    const prefix = `${connectionSettingsPrefix(args.connectionId)}${host ? `ssh:${host}` : "local"}:`;
+    return key.startsWith(prefix);
   }
 
   return async function handleSettingsRpc(
@@ -58,20 +88,26 @@ export function createSettingsRpcHandler(args: {
     id: string,
     method: string,
     params: Record<string, unknown>,
+    requestIsCurrent: () => boolean = () => true,
   ) {
-    const reply = (result: unknown) =>
-      args.safeSend(ws, JSON.stringify({ id, result }), method);
     const fail = (message: string) => {
-      args.markRpcError(ws, id, message);
+      const effectiveMessage = requestIsCurrent()
+        ? message
+        : CONNECTION_CHANGED_DURING_REQUEST;
+      args.markRpcError(ws, id, effectiveMessage);
       return args.safeSend(
         ws,
-        JSON.stringify({ id, error: { message } }),
+        serialize({ id, error: { message: effectiveMessage } }),
         `${method}-error`,
       );
     };
+    const reply = (result: unknown) =>
+      requestIsCurrent()
+        ? args.safeSend(ws, serialize({ id, result }), method)
+        : fail(CONNECTION_CHANGED_DURING_REQUEST);
     try {
       if (method === "settings.get") {
-        const settings = await readGuiSettings();
+        const settings = await readSettings();
         return reply({ settings, path: guiSettingsPath() });
       }
       if (method === "settings.worktree_hooks.get") {
@@ -126,11 +162,15 @@ export function createSettingsRpcHandler(args: {
         }
         const { workspace, root } =
           await args.resolveWorkspaceGitRoot(workspaceId);
-        const key = workspaceAutoSyncSettingsKey(root, args.sshHost());
+        const key = workspaceAutoSyncSettingsKey(
+          root,
+          args.sshHost(),
+          args.connectionId,
+        );
         if (!key) {
           return fail("workspace has no checkout path");
         }
-        const settings = await readGuiSettings();
+        const settings = await readSettings();
         const entry = settings.workspace_auto_sync[key];
         return reply({
           workspace_id: workspaceId,
@@ -149,9 +189,10 @@ export function createSettingsRpcHandler(args: {
         });
       }
       if (method === "settings.workspace_auto_sync.list") {
-        const settings = await readGuiSettings();
+        const settings = await readSettings();
         return reply({
           configs: Object.entries(settings.workspace_auto_sync)
+            .filter(([key]) => ownsSettingsKey(key))
             .map(([key, entry]) => ({
               key,
               ...entry,
@@ -171,8 +212,13 @@ export function createSettingsRpcHandler(args: {
             "settings.workspace_auto_sync.update_key requires enabled",
           );
         }
+        if (!ownsSettingsKey(key)) {
+          return fail(
+            "workspace auto-sync config belongs to another connection",
+          );
+        }
         const enabled = params.enabled;
-        const updated = await updateGuiSettings((current) => {
+        const updated = await updateSettings((current) => {
           const existing = current.workspace_auto_sync[key];
           if (!existing) {
             throw new Error(`unknown workspace auto-sync config: ${key}`);
@@ -185,7 +231,10 @@ export function createSettingsRpcHandler(args: {
               [key]: entry,
             },
           };
-        });
+        }, requestIsCurrent);
+        if (!requestIsCurrent()) {
+          return fail(CONNECTION_CHANGED_DURING_REQUEST);
+        }
         const entry = updated.workspace_auto_sync[key];
         args.onWorkspaceAutoSyncSettingsChanged(key, enabled);
         return reply({ key, ...entry });
@@ -203,11 +252,15 @@ export function createSettingsRpcHandler(args: {
         const enabled = params.enabled;
         const { workspace, root } =
           await args.resolveWorkspaceGitRoot(workspaceId);
-        const key = workspaceAutoSyncSettingsKey(root, args.sshHost());
+        const key = workspaceAutoSyncSettingsKey(
+          root,
+          args.sshHost(),
+          args.connectionId,
+        );
         if (!key) {
           return fail("workspace has no checkout path");
         }
-        const updated = await updateGuiSettings((current) => {
+        const updated = await updateSettings((current) => {
           const existing = current.workspace_auto_sync[key];
           const entry = {
             enabled,
@@ -228,7 +281,10 @@ export function createSettingsRpcHandler(args: {
               [key]: entry,
             },
           };
-        });
+        }, requestIsCurrent);
+        if (!requestIsCurrent()) {
+          return fail(CONNECTION_CHANGED_DURING_REQUEST);
+        }
         const entry = updated.workspace_auto_sync[key];
         args.onWorkspaceAutoSyncSettingsChanged(key, enabled);
         return reply({
@@ -242,11 +298,14 @@ export function createSettingsRpcHandler(args: {
       if (method === "settings.update_repo") {
         const key = String(params.key ?? "");
         if (!key) return fail("settings.update_repo requires key");
+        if (!ownsSettingsKey(key)) {
+          return fail("repository settings belong to another connection");
+        }
         const patch =
           params.settings && typeof params.settings === "object"
             ? (params.settings as Partial<GuiRepoSettings>)
             : {};
-        const settings = await updateGuiSettings((current) => {
+        const settings = await updateSettings((current) => {
           const existing = current.repositories[key] ?? {};
           const next: GuiRepoSettings = { ...existing };
           if (typeof patch.worktree_hooks_enabled === "boolean") {
@@ -262,7 +321,7 @@ export function createSettingsRpcHandler(args: {
               [key]: next,
             },
           };
-        });
+        }, requestIsCurrent);
         const next = settings.repositories[key];
         return reply({ settings, repo: next, key });
       }

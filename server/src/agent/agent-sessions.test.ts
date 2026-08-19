@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createAgentSessionHandlers,
   downloadAgentSessionAtif,
   downloadAgentSessionFile,
   readAgentMessageHistory,
@@ -194,6 +195,42 @@ describe("Pi agent sessions", () => {
 
     expect(result.status).toBe("missing_session");
     expect(result.command).toBe("herdr integration install pi");
+  });
+
+  test("binds Herdr and file access inside each runtime handler bundle", async () => {
+    const record = (id: string, text: string) =>
+      [
+        {
+          type: "session",
+          version: 3,
+          id,
+          timestamp: "2026-07-24T00:00:00.000Z",
+        },
+        {
+          type: "message",
+          id: `${id}-user`,
+          timestamp: "2026-07-24T00:00:01.000Z",
+          message: { role: "user", content: [{ type: "text", text }] },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n");
+    const first = createAgentSessionHandlers({
+      herdrCall: piAgentCall(remotePiSessionPath),
+      files: remotePiFiles(`${record("first-session", "first runtime")}\n`),
+    });
+    const second = createAgentSessionHandlers({
+      herdrCall: piAgentCall(remotePiSessionPath),
+      files: remotePiFiles(`${record("second-session", "second runtime")}\n`),
+    });
+
+    const [firstHistory, secondHistory] = await Promise.all([
+      first.readHistory({ pane_id: "p1", agent: "pi" }),
+      second.readHistory({ pane_id: "p1", agent: "pi" }),
+    ]);
+
+    expect(firstHistory.messages[0]?.text).toBe("first runtime");
+    expect(secondHistory.messages[0]?.text).toBe("second runtime");
   });
 
   test("reads and exports an SSH-reported Pi session", async () => {

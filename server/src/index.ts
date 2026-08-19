@@ -1,14 +1,11 @@
 import type { ServerWebSocket } from "bun";
-import { HerdrClient } from "./bridge/herdr-client";
-import { createAuthHandlers } from "./http/auth";
-import { createImageUploadHandler } from "./http/image-upload";
+import { rmSync } from "node:fs";
+import packageJson from "../../package.json";
+import type { SshTunnelConfig } from "./bridge/ssh-tunnel";
 import {
-  runProcess,
-  runProcessWithCode,
-  runProcessWithCodeTimeout,
-  shQuote,
-} from "./utils/process-utils";
-import { runBinaryProcessWithTimeout } from "./workspace/process";
+  sendWebSocketMessage,
+  WebSocketCleanupTracker,
+} from "./bridge/websocket-send";
 import {
   browserUrlFor,
   getLanIPs,
@@ -17,45 +14,80 @@ import {
   openBrowser,
   withLoginToken,
 } from "./config/server-config";
-import { createSettingsRpcHandler } from "./bridge/settings-rpc";
-import { serveStatic } from "./http/static-files";
-import { createSshTunnelManager } from "./bridge/ssh-tunnel";
-import { createTerminalBridge } from "./bridge/terminal-bridge";
+import { runServiceCommand } from "./config/service-manager";
 import {
-  sendWebSocketMessage,
-  WebSocketCleanupTracker,
-} from "./bridge/websocket-send";
+  connectionRoutingErrorResponse,
+  type ParsedConnectionHttpRoute,
+  parseConnectionHttpRoute,
+  publishConnectionHttpResponse,
+  rawRequestPathname,
+  resolveConnectionHttpRoute,
+} from "./connections/http-routing";
+import {
+  ConnectionManager,
+  type ConnectionRuntimeContext,
+  sanitizeConnectionError,
+} from "./connections/manager";
+import {
+  ConnectionProfileService,
+  connectionIdentityForProfile,
+  loadConnectionProfileBootstrap,
+  type SyntheticLocalProfile,
+  testConnectionSockets,
+} from "./connections/profile-service";
+import {
+  type ConnectionProfile,
+  ConnectionProfileStore,
+} from "./connections/profiles";
+import { createSshProfileRuntimeConfig } from "./connections/ssh-profile-runtime";
+import {
+  ConnectionRoutingError,
+  createConnectionReplyPublisher,
+  createLegacyRoutingLogger,
+  isBridgeGlobalMethod,
+  serializeConnectionEnvelope,
+  serializeHerdrEventEnvelope,
+  validateConnectionGeneration,
+  validateConnectionId,
+} from "./connections/protocol";
+import {
+  type ConnectionRpcRequest,
+  isConnectionRpcEnvelope,
+  resolveRpcRoute,
+} from "./connections/rpc-routing";
+import {
+  createLegacyConnectionRuntime,
+  type LegacyConnectionRuntime,
+} from "./connections/runtime";
+import { createShutdownController } from "./connections/shutdown";
+import { bindListenerBeforeConnectionStart } from "./connections/startup";
+import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
+import { createAuthHandlers } from "./http/auth";
+import { serveStatic } from "./http/static-files";
+import { isAllowedWebSocketOrigin } from "./http/websocket-origin";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
 } from "./http/update";
-import { createHerdrInfoHandler } from "./http/herdr-info";
-import {
-  downloadAgentSessionAtif,
-  downloadAgentSessionFile,
-  readAgentMessageHistory,
-  readAgentSessionSummary,
-} from "./agent/agent-sessions";
-import { createAgentSessionFileAccess } from "./agent/session-file-access";
-import { createFileHandlers } from "./workspace/files";
-import { createWorkspaceAutoSync } from "./workspace/auto-sync";
-import { createStatusEnricher } from "./workspace/status";
-import { createWorktreeHookRunner } from "./worktree/worktree-hooks";
+import { runProcessWithCodeTimeout, shQuote } from "./utils/process-utils";
 import { syncWorktreeBase } from "./worktree/create";
-import { createWorktreeParentStore } from "./worktree/parents";
 import {
-  createWorktreeRemovalCoordinator,
-  createWorktreeRemovalRuntime,
   removeWorktreeWithRecovery,
   WORKTREE_REMOVE_TIMEOUT_MS,
 } from "./worktree/remove";
-import { runServiceCommand } from "./config/service-manager";
-import packageJson from "../../package.json";
 
 const APP_VERSION = packageJson.version;
 const serviceCommandExitCode = runServiceCommand(process.argv.slice(2));
 if (serviceCommandExitCode !== null) process.exit(serviceCommandExitCode);
 const config = loadServerConfig(APP_VERSION);
+const downstreamConnectionConfig = {
+  socketPath: config.socketPath,
+  clientSocketPath: config.clientSocketPath,
+  sshHost: config.sshHost,
+  session: config.session,
+  hasExplicitSocketPath: config.hasExplicitSocketPath,
+  hasExplicitClientSocketPath: config.hasExplicitClientSocketPath,
+};
 const { isAuthed, handleTokenLogin, handleLogin, loginPage } =
   createAuthHandlers({
     authRequired: config.authRequired,
@@ -63,136 +95,13 @@ const { isAuthed, handleTokenLogin, handleLogin, loginPage } =
     urlLoginToken: config.generatedAuthToken,
   });
 
-const DEFAULT_EVENTS = [
-  "workspace.created",
-  "workspace.updated",
-  "workspace.renamed",
-  "workspace.closed",
-  "workspace.focused",
-  "tab.created",
-  "tab.closed",
-  "tab.renamed",
-  "tab.focused",
-  "pane.created",
-  "pane.closed",
-  "pane.focused",
-  "pane.moved",
-  "pane.exited",
-  "pane.agent_detected",
-  "worktree.created",
-  "worktree.opened",
-  "worktree.removed",
-];
+type RpcRequest = ConnectionRpcRequest;
 
-function sshHost(): string | undefined {
-  return config.sshHost;
-}
-
-interface RpcRequest {
-  id: string;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-const socketPath = config.socketPath;
-const clientSocketPath = config.clientSocketPath;
-const herdr = new HerdrClient(socketPath);
-const agentSessionFiles = createAgentSessionFileAccess({
-  sshHost: config.sshHost,
-  runBinaryProcessWithTimeout,
-  shQuote,
-});
-const worktreeParents = createWorktreeParentStore({ herdr, sshHost });
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   appVersion: APP_VERSION,
   runProcessWithCodeTimeout,
   shQuote,
-});
-const { handleHerdrInfo } = createHerdrInfoHandler({
-  ping: () => herdr.ping(),
-});
-const {
-  listWorkspaceFiles,
-  resolveWorkspaceFiles,
-  readWorkspaceFile,
-  downloadWorkspaceFile,
-  uploadWorkspaceFile,
-  deleteWorkspaceFile,
-  readGitDiffSummary,
-  readGitDiffFile,
-  runGitPull,
-  resolveWorkspaceGitRoot,
-} = createFileHandlers({
-  herdr,
-  sshHost,
-  runProcessWithCodeTimeout,
-  shQuote,
-});
-const { enrichWorkspacesWithGitStatus, invalidateGitStatus } =
-  createStatusEnricher({
-    sshHost,
-    runProcessWithCodeTimeout,
-    shQuote,
-  });
-const workspaceAutoSync = createWorkspaceAutoSync({
-  herdr,
-  sshHost,
-  runProcessWithCodeTimeout,
-  shQuote,
-  invalidateGitStatus,
-  resolveWorkspaceGitRoot: async (workspaceId) =>
-    resolveWorkspaceGitRoot({ workspace_id: workspaceId }),
-});
-const {
-  readPaseoWorktreeHooks,
-  runPaseoWorktreeHook,
-  worktreeRemoveHookContext,
-  runWorktreeRemovedHook,
-  runWorktreeOpenedHook,
-  sourceWorkspaceForWorktreeCreate,
-  runWorktreeSetupHook,
-} = createWorktreeHookRunner({
-  herdr,
-  sshHost,
-  runProcess,
-  runProcessWithCode,
-  shQuote,
-});
-const worktreeRemovalCoordinator = createWorktreeRemovalCoordinator();
-const worktreeRemovalRuntime = createWorktreeRemovalRuntime({
-  host: sshHost(),
-  runProcessWithCodeTimeout,
-  shQuote,
-});
-const handleImageUpload = createImageUploadHandler({ sshHost });
-const { startAutoSshTunnel, cleanupAutoSshTunnel } = createSshTunnelManager({
-  config,
-  runProcess,
-});
-const handleSettingsRpc = createSettingsRpcHandler({
-  herdr,
-  sshHost,
-  readPaseoWorktreeHooks,
-  resolveWorkspaceGitRoot: async (workspaceId) =>
-    resolveWorkspaceGitRoot({ workspace_id: workspaceId }),
-  workspaceAutoSyncIsRunning: workspaceAutoSync.isRunning,
-  onWorkspaceAutoSyncSettingsChanged: workspaceAutoSync.settingsChanged,
-  safeSend,
-  markRpcError,
-});
-process.on("exit", () => {
-  workspaceAutoSync.stop();
-  cleanupAutoSshTunnel();
-});
-process.on("SIGINT", () => {
-  workspaceAutoSync.stop();
-  cleanupAutoSshTunnel();
-  process.exit(130);
-});
-process.on("SIGTERM", () => {
-  workspaceAutoSync.stop();
-  cleanupAutoSshTunnel();
-  process.exit(143);
+  scheduleProcessExit: scheduleManagedShutdown,
 });
 const clients = new Set<ServerWebSocket<unknown>>();
 const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
@@ -222,6 +131,9 @@ const IMPORTANT_RPC_METHODS = new Set([
   "worktree.remove",
 ]);
 const SLOW_RPC_LOG_MS = 750;
+const legacyRoutingLogger = createLegacyRoutingLogger({
+  log: (message) => console.warn(message),
+});
 
 function clientLabel(ws: ServerWebSocket<unknown>): string {
   const id = clientIds.get(ws);
@@ -234,21 +146,37 @@ function assignClientId(ws: ServerWebSocket<unknown>): string {
 }
 
 function logDetail(value: string): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, 300);
+  return sanitizeConnectionError(value)
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "?")
+    .trim()
+    .slice(0, 300);
 }
 
 function parseRpcMeta(raw: string): {
   id: string | null;
   method: string | null;
+  connectionId: unknown;
+  connectionGeneration: unknown;
 } {
   try {
     const msg = JSON.parse(raw);
     return {
       id: typeof msg?.id === "string" ? msg.id : null,
       method: typeof msg?.method === "string" ? msg.method : null,
+      connectionId: Object.hasOwn(msg ?? {}, "connection_id")
+        ? msg.connection_id
+        : undefined,
+      connectionGeneration: Object.hasOwn(msg ?? {}, "connection_generation")
+        ? msg.connection_generation
+        : undefined,
     };
   } catch {
-    return { id: null, method: null };
+    return {
+      id: null,
+      method: null,
+      connectionId: undefined,
+      connectionGeneration: undefined,
+    };
   }
 }
 
@@ -291,6 +219,7 @@ function logRpc(
   method: string | null,
   startedAt: number,
   status: "ok" | "error",
+  connectionId: string | null,
   detail?: string,
 ) {
   const elapsedMs = Date.now() - startedAt;
@@ -299,7 +228,8 @@ function logRpc(
   const parts = [
     `[bridge] rpc ${status}`,
     `client=${clientLabel(ws)}`,
-    `method=${method ?? "unknown"}`,
+    `method=${method ? logDetail(method) : "unknown"}`,
+    ...(connectionId ? [`connection=${logDetail(connectionId)}`] : []),
     `duration=${elapsedMs}ms`,
   ];
   if (detail) parts.push(`detail=${logDetail(detail)}`);
@@ -307,56 +237,189 @@ function logRpc(
 }
 
 function summarizeHerdrEvent(event: any): string {
-  const type = String(event?.event ?? event?.type ?? "unknown");
+  const type = logDetail(String(event?.event ?? event?.type ?? "unknown"));
   const data = event?.data && typeof event.data === "object" ? event.data : {};
   const ids = ["workspace_id", "tab_id", "pane_id", "agent_id", "terminal_id"]
     .map((key) => {
       const value = data[key] ?? event?.[key];
-      return typeof value === "string" && value ? `${key}=${value}` : "";
+      return typeof value === "string" && value
+        ? `${key}=${logDetail(value)}`
+        : "";
     })
     .filter(Boolean);
   return [`type=${type}`, ...ids].join(" ");
 }
 
-const terminalBridge = createTerminalBridge({
-  clientSocketPath,
-  herdrProtocol: async () => Number((await herdr.ping()).protocol),
-  safeSend,
-  clientLabel,
-  markRpcError,
-  confirmRelayResize: async ({ cols, rows, paneId }) => {
-    if (!paneId) return false;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      try {
-        const result = await herdr.call("pane.layout", { pane_id: paneId });
-        const area = result?.layout?.area;
-        if (
-          area &&
-          Number(area.x) + Number(area.width) === cols &&
-          Number(area.y) + Number(area.height) === rows
-        ) {
-          return true;
-        }
-      } catch {
-        return false;
-      }
-      await Bun.sleep(50);
-    }
-    return false;
+const connectionProfileStore = new ConnectionProfileStore();
+const syntheticLegacyProfile: SyntheticLocalProfile = {
+  id: LEGACY_DEFAULT_CONNECTION_ID,
+  label: "Default",
+  type: "local",
+  control_socket_path: config.socketPath,
+  client_socket_path: config.clientSocketPath,
+  auto_connect: true,
+};
+const explicitLegacyOverride = Boolean(
+  config.hasExplicitSocketPath ||
+    config.hasExplicitClientSocketPath ||
+    config.sshHost ||
+    config.session,
+);
+let connectionBootstrap;
+try {
+  connectionBootstrap = loadConnectionProfileBootstrap({
+    store: connectionProfileStore,
+    legacyProfile: syntheticLegacyProfile,
+    explicitLegacyOverride,
+  });
+} catch (error) {
+  const registryLoadError = sanitizeConnectionError(error);
+  console.error(
+    `[bridge] invalid connection registry preserved; profile mutations are disabled: ${registryLoadError}`,
+  );
+  connectionBootstrap = {
+    defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
+    explicitLegacyOverride,
+    persistedRegistry: null,
+    registryLoadError,
+    registrations: [
+      { profile: syntheticLegacyProfile, readOnly: true as const },
+    ],
+  };
+}
+
+const connectionManager = new ConnectionManager<LegacyConnectionRuntime>(
+  connectionBootstrap.defaultConnectionId,
+  (status) => {
+    const error = status.error
+      ? ` error=${logDetail(status.error.message)}`
+      : "";
+    console.log(
+      `[bridge] connection status id=${status.id} state=${status.state} generation=${status.generation}${error}`,
+    );
   },
+);
+
+function runtimeFactoryForProfile(
+  profile: ConnectionProfile | SyntheticLocalProfile,
+) {
+  const identity = connectionIdentityForProfile(profile);
+  return (context: ConnectionRuntimeContext) => {
+    const profileConfig: SshTunnelConfig =
+      profile.id === LEGACY_DEFAULT_CONNECTION_ID
+        ? downstreamConnectionConfig
+        : profile.type === "ssh"
+          ? createSshProfileRuntimeConfig(profile)
+          : {
+              socketPath: profile.control_socket_path,
+              clientSocketPath: profile.client_socket_path,
+              sshHost: undefined,
+              session: undefined,
+              hasExplicitSocketPath: true,
+              hasExplicitClientSocketPath: true,
+              ownedRuntimeDirectory: undefined,
+            };
+    let runtime: LegacyConnectionRuntime;
+    try {
+      runtime = createLegacyConnectionRuntime({
+        identity,
+        connectionGeneration: context.generation,
+        config: profileConfig,
+        safeSend,
+        clientLabel,
+        markRpcError,
+        onEvent: (event, eventIdentity) => {
+          if (!context.isCurrent()) return;
+          console.log(
+            "[bridge] herdr event",
+            `connection=${eventIdentity.id}`,
+            summarizeHerdrEvent(event),
+          );
+          try {
+            const line = serializeHerdrEventEnvelope(
+              eventIdentity.id,
+              event,
+              context.generation,
+            );
+            for (const ws of clients) safeSend(ws, line, "event");
+          } catch (error) {
+            console.error(
+              `[bridge] dropped invalid Herdr event connection=${eventIdentity.id}: ${sanitizeConnectionError(error)}`,
+            );
+          }
+        },
+        onError: (error, eventIdentity) => {
+          if (!context.isCurrent()) return;
+          console.error(
+            `[herdr connection=${eventIdentity.id}]`,
+            sanitizeConnectionError(error),
+          );
+        },
+        onTransportExit: profileConfig.sshHost
+          ? (error) => {
+              if (!context.isCurrent()) return;
+              const reconnecting = connectionProfiles.willRetry(
+                profile.id,
+                error,
+              );
+              context.reportError(error, { reconnecting });
+              connectionProfiles.runtimeFailed(profile.id, error);
+            }
+          : undefined,
+      });
+    } catch (error) {
+      if (profileConfig.ownedRuntimeDirectory) {
+        rmSync(profileConfig.ownedRuntimeDirectory, {
+          recursive: true,
+          force: true,
+        });
+      }
+      throw error;
+    }
+    if (profile.id === LEGACY_DEFAULT_CONNECTION_ID && !profileConfig.sshHost) {
+      return runtime;
+    }
+    return {
+      ...runtime,
+      async startTransport() {
+        await runtime.startTransport();
+        await testConnectionSockets(
+          profileConfig.socketPath,
+          profileConfig.clientSocketPath,
+        );
+      },
+    };
+  };
+}
+
+const connectionProfiles = new ConnectionProfileService({
+  manager: connectionManager,
+  store: connectionProfileStore,
+  bootstrap: connectionBootstrap,
+  createRuntime: runtimeFactoryForProfile,
 });
+
+function notifyBrowserClientCount() {
+  connectionManager.forEachCurrentRuntime((runtime) => {
+    runtime.terminalBridge.browserClientCountChanged(clients.size);
+  });
+}
 
 const webSocketCleanup = new WebSocketCleanupTracker<
   ServerWebSocket<unknown>,
   WebSocketCleanupSnapshot
 >((ws) => {
+  const viewedTerminals: string[] = [];
+  connectionManager.forEachCurrentRuntime((runtime) => {
+    viewedTerminals.push(...runtime.terminalBridge.viewedTerminals(ws));
+    runtime.terminalBridge.cleanupWs(ws);
+  });
   const snapshot = {
     client: clientLabel(ws),
-    viewedTerminals: terminalBridge.viewedTerminals(ws),
+    viewedTerminals,
   };
   clients.delete(ws);
-  terminalBridge.cleanupWs(ws);
-  terminalBridge.browserClientCountChanged(clients.size);
+  notifyBrowserClientCount();
   return snapshot;
 });
 
@@ -373,55 +436,10 @@ function safeSend(
   });
 }
 
-// Broadcast pushed Herdr events to every connected browser.
-herdr.on("event", (e) => {
-  console.log("[bridge] herdr event", summarizeHerdrEvent(e));
-  const line = JSON.stringify({ event: e });
-  for (const ws of clients) {
-    safeSend(ws, line, "event");
-  }
-});
-herdr.on("error", (e) => console.error("[herdr]", (e as Error).message ?? e));
-
-/**
- * Keep a long-lived `events.subscribe` connection open while the Herdr server
- * is reachable. If the server isn't up yet (or goes away), retry with backoff
- * so events start flowing automatically once it appears.
- */
-function startSubscriptionLoop() {
-  let stopped = false;
-  const loop = async () => {
-    while (!stopped) {
-      const sub = herdr.subscribe(DEFAULT_EVENTS);
-      try {
-        await sub.ready;
-      } catch (e) {
-        console.error(
-          "[bridge] subscribe failed:",
-          (e as Error).message,
-          "- retrying in 2s",
-        );
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      console.log("[bridge] subscribed to herdr events");
-      await new Promise<void>((res) =>
-        herdr.once("subscription_closed", () => res()),
-      );
-      console.log("[bridge] subscription closed, reconnecting in 2s...");
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-  };
-  loop();
-  return () => {
-    stopped = true;
-  };
-}
-
 async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
-  let req: RpcRequest;
+  let parsed: unknown;
   try {
-    req = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     safeSend(
       ws,
@@ -430,37 +448,187 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     );
     return;
   }
-  const { id, method, params } = req;
-  if (!id || !method) {
-    markRpcError(ws, id, "missing id/method");
+  if (!isConnectionRpcEnvelope(parsed)) {
     safeSend(
       ws,
-      JSON.stringify({ id, error: { message: "missing id/method" } }),
-      "missing-id-method",
+      JSON.stringify({ error: { message: "invalid request envelope" } }),
+      "invalid-request-envelope",
     );
     return;
   }
+  const req = parsed as RpcRequest;
+  const { id, method, params } = req;
+  let validationConnectionId: string | undefined;
+  let connectionIdValidationFailed = false;
+  if (Object.hasOwn(req, "connection_id")) {
+    try {
+      validationConnectionId = validateConnectionId(req.connection_id);
+    } catch {
+      connectionIdValidationFailed = true;
+    }
+  }
+  let validationConnectionGeneration: number | undefined;
+  let connectionGenerationValidationFailed = false;
+  if (Object.hasOwn(req, "connection_generation")) {
+    try {
+      validationConnectionGeneration = validateConnectionGeneration(
+        req.connection_generation,
+      );
+    } catch {
+      connectionGenerationValidationFailed = true;
+    }
+  }
+  if (typeof id !== "string" || !id || typeof method !== "string" || !method) {
+    const message = connectionIdValidationFailed
+      ? "invalid connection_id"
+      : connectionGenerationValidationFailed
+        ? "invalid connection_generation"
+        : "missing id/method";
+    markRpcError(ws, typeof id === "string" ? id : undefined, message);
+    const responseId = typeof id === "string" ? id : undefined;
+    const payload = validationConnectionId
+      ? serializeConnectionEnvelope(
+          validationConnectionId,
+          {
+            ...(responseId ? { id: responseId } : {}),
+            error: { message },
+          },
+          validationConnectionGeneration,
+        )
+      : JSON.stringify({
+          ...(responseId ? { id: responseId } : {}),
+          error: { message },
+        });
+    safeSend(ws, payload, "invalid-request");
+    return;
+  }
+  let route: ReturnType<typeof resolveRpcRoute<LegacyConnectionRuntime>>;
+  try {
+    route = resolveRpcRoute({
+      request: req,
+      registry: connectionManager,
+      legacyClient: ws,
+      legacyLogger: legacyRoutingLogger,
+    });
+  } catch (error) {
+    const message = (error as Error).message;
+    markRpcError(ws, id, message);
+    const connectionId =
+      error instanceof ConnectionRoutingError ? error.connectionId : undefined;
+    const connectionGeneration =
+      error instanceof ConnectionRoutingError
+        ? error.connectionGeneration
+        : undefined;
+    const payload = connectionId
+      ? serializeConnectionEnvelope(
+          connectionId,
+          {
+            id,
+            error: { message },
+          },
+          connectionGeneration,
+        )
+      : JSON.stringify({ id, error: { message } });
+    safeSend(ws, payload, "connection-routing-error");
+    return connectionId ?? null;
+  }
+  const connectionId = route.scope === "connection" ? route.connectionId : null;
+  const requestIsCurrent = () => route.scope === "bridge" || route.isCurrent();
+  const encode = (message: Record<string, unknown>) =>
+    route.scope === "connection"
+      ? serializeConnectionEnvelope(
+          route.connectionId,
+          message,
+          route.generation,
+        )
+      : JSON.stringify(message);
+  const replyPublisher =
+    route.scope === "connection"
+      ? createConnectionReplyPublisher({
+          connectionId: route.connectionId,
+          generation: route.generation,
+          requestId: id,
+          isCurrent: route.isCurrent,
+          send: (payload, context) => safeSend(ws, payload, context),
+          markError: (message) => markRpcError(ws, id, message),
+        })
+      : null;
+  const sendReply = (
+    message: Record<string, unknown>,
+    context: string,
+  ): boolean =>
+    replyPublisher
+      ? replyPublisher.send(message, context)
+      : safeSend(ws, encode(message), context);
   const sendError = (context: string, error: unknown) => {
     const message = (error as Error).message;
     markRpcError(ws, id, message);
-    safeSend(ws, JSON.stringify({ id, error: { message } }), context);
+    sendReply({ id, error: { message } }, context);
   };
   if (method === "bridge.ping") {
-    safeSend(ws, JSON.stringify({ id, result: { ok: true } }), "bridge-ping");
+    sendReply({ id, result: { ok: true } }, "bridge-ping");
     return;
   }
   if (method === "bridge.status") {
-    safeSend(
-      ws,
-      JSON.stringify({
+    sendReply(
+      {
         id,
         result: {
           clients: clients.size,
-          terminals: terminalBridge.statusTerminals(),
+          terminals:
+            connectionManager
+              .defaultReadyRuntime()
+              ?.terminalBridge.statusTerminals() ?? [],
+          default_connection_id: connectionManager.defaultId(),
+          connections: connectionProfiles.list(),
         },
-      }),
+      },
       "bridge-status",
     );
+    return;
+  }
+  if (method === "connections.list") {
+    sendReply(
+      {
+        id,
+        result: {
+          default_connection_id: connectionManager.defaultId(),
+          connections: connectionProfiles.list(),
+        },
+      },
+      "connections-list",
+    );
+    return;
+  }
+  if (method.startsWith("connections.")) {
+    try {
+      let result: unknown;
+      if (method === "connections.create") {
+        result = await connectionProfiles.create(params?.profile ?? params);
+      } else if (method === "connections.update") {
+        result = await connectionProfiles.update(
+          params?.id,
+          params?.profile ?? params,
+        );
+      } else if (method === "connections.remove") {
+        result = await connectionProfiles.remove(params?.id);
+      } else if (method === "connections.set_default") {
+        result = await connectionProfiles.setDefault(params?.id);
+      } else if (method === "connections.connect") {
+        result = await connectionProfiles.connect(params?.id);
+      } else if (method === "connections.disconnect") {
+        result = await connectionProfiles.disconnect(params?.id);
+      } else if (method === "connections.test") {
+        result = await connectionProfiles.test(params?.profile ?? params);
+      } else {
+        throw new Error(`unknown bridge-global method: ${method}`);
+      }
+      sendReply({ id, result }, "connections-mutation");
+    } catch (error) {
+      const message = sanitizeConnectionError(error);
+      markRpcError(ws, id, message);
+      sendReply({ id, error: { message } }, "connections-mutation-error");
+    }
     return;
   }
   if (method === "bridge.pause_others") {
@@ -480,28 +648,65 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       );
       if (ok) pausedClients += 1;
     }
-    safeSend(
-      ws,
-      JSON.stringify({
+    sendReply(
+      {
         id,
         result: {
           ok: true,
           paused_clients: pausedClients,
           clients: clients.size,
         },
-      }),
+      },
       "bridge-pause-others",
     );
     return;
   }
+
+  if (route.scope === "bridge") {
+    sendError(
+      "unknown-bridge-method",
+      new Error(`unknown bridge-global method: ${method}`),
+    );
+    return null;
+  }
+  const connection = route.runtime;
+  const {
+    sshHost,
+    herdr,
+    worktreeParents,
+    handleSettingsRpc,
+    worktreeRemovalCoordinator,
+    worktreeRemovalRuntime,
+    terminalBridge,
+  } = connection;
+  const {
+    listWorkspaceFiles,
+    resolveWorkspaceFiles,
+    readWorkspaceFile,
+    readGitDiffSummary,
+    readGitDiffFile,
+    runGitPull,
+    resolveWorkspaceGitRoot,
+  } = connection.files;
+  const { enrichWorkspacesWithGitStatus, invalidateGitStatus } =
+    connection.status;
+  const {
+    runPaseoWorktreeHook,
+    worktreeRemoveHookContext,
+    runWorktreeRemovedHook,
+    runWorktreeOpenedHook,
+    sourceWorkspaceForWorktreeCreate,
+    runWorktreeSetupHook,
+  } = connection.worktreeHooks;
+  const {
+    readHistory: readAgentMessageHistory,
+    readSummary: readAgentSessionSummary,
+  } = connection.agentSessions;
+
   if (method === "agent_history.get") {
     try {
-      const result = await readAgentMessageHistory(
-        params ?? {},
-        (name, callParams) => herdr.call(name, callParams),
-        agentSessionFiles,
-      );
-      safeSend(ws, JSON.stringify({ id, result }), "agent-history-get");
+      const result = await readAgentMessageHistory(params ?? {});
+      sendReply({ id, result }, "agent-history-get");
     } catch (e) {
       sendError("agent-history-get-error", e);
     }
@@ -509,12 +714,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "agent_session.get") {
     try {
-      const result = await readAgentSessionSummary(
-        params ?? {},
-        (name, callParams) => herdr.call(name, callParams),
-        agentSessionFiles,
-      );
-      safeSend(ws, JSON.stringify({ id, result }), "agent-session-get");
+      const result = await readAgentSessionSummary(params ?? {});
+      sendReply({ id, result }, "agent-session-get");
     } catch (e) {
       sendError("agent-session-get-error", e);
     }
@@ -523,7 +724,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "file.list") {
     try {
       const result = await listWorkspaceFiles(params ?? {});
-      safeSend(ws, JSON.stringify({ id, result }), "file-list");
+      sendReply({ id, result }, "file-list");
     } catch (e) {
       sendError("file-list-error", e);
     }
@@ -532,7 +733,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "file.resolve") {
     try {
       const result = await resolveWorkspaceFiles(params ?? {});
-      safeSend(ws, JSON.stringify({ id, result }), "file-resolve");
+      sendReply({ id, result }, "file-resolve");
     } catch (e) {
       sendError("file-resolve-error", e);
     }
@@ -541,7 +742,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "file.read") {
     try {
       const result = await readWorkspaceFile(params ?? {});
-      safeSend(ws, JSON.stringify({ id, result }), "file-read");
+      sendReply({ id, result }, "file-read");
     } catch (e) {
       sendError("file-read-error", e);
     }
@@ -550,7 +751,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "git.diff_summary") {
     try {
       const result = await readGitDiffSummary(params ?? {});
-      safeSend(ws, JSON.stringify({ id, result }), "git-diff-summary");
+      sendReply({ id, result }, "git-diff-summary");
     } catch (e) {
       sendError("git-diff-summary-error", e);
     }
@@ -559,7 +760,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "git.diff_file") {
     try {
       const result = await readGitDiffFile(params ?? {});
-      safeSend(ws, JSON.stringify({ id, result }), "git-diff-file");
+      sendReply({ id, result }, "git-diff-file");
     } catch (e) {
       sendError("git-diff-file-error", e);
     }
@@ -569,17 +770,23 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     try {
       const result = await runGitPull(params ?? {});
       invalidateGitStatus(result.root);
-      safeSend(ws, JSON.stringify({ id, result }), "git-pull");
+      sendReply({ id, result }, "git-pull");
     } catch (e) {
       sendError("git-pull-error", e);
     }
     return;
   }
   if (method.startsWith("terminal.")) {
-    return terminalBridge.handleTerminalRpc(ws, id, method, params ?? {});
+    return terminalBridge.handleTerminalRpc(
+      ws,
+      id,
+      method,
+      params ?? {},
+      requestIsCurrent,
+    );
   }
   if (method.startsWith("settings.")) {
-    return handleSettingsRpc(ws, id, method, params ?? {});
+    return handleSettingsRpc(ws, id, method, params ?? {}, requestIsCurrent);
   }
   if (method === "worktree.create") {
     try {
@@ -602,12 +809,13 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       // Herdr identifies the repository but not which of several workspaces
       // for that repository initiated creation. Keep that GUI relationship.
       await worktreeParents
-        .rememberWorktreeParent(result, workspaceId)
-        .catch((error) =>
+        .rememberWorktreeParent(result, workspaceId, requestIsCurrent)
+        .catch((error) => {
+          if (!requestIsCurrent()) return;
           console.warn(
-            `[bridge] unable to persist worktree parent: ${(error as Error).message}`,
-          ),
-        );
+            `[bridge] unable to persist worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
+          );
+        });
       const hookSourceWorkspace = sourceWorkspace
         ? {
             ...sourceWorkspace,
@@ -618,16 +826,15 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           }
         : { cwd: baseSync.root };
       const setupHook = await runWorktreeSetupHook(result, hookSourceWorkspace);
-      safeSend(
-        ws,
-        JSON.stringify({
+      sendReply(
+        {
           id,
           result: {
             ...result,
             base_sync: baseSync,
             setup_hook: setupHook,
           },
-        }),
+        },
         "worktree-create",
       );
     } catch (e) {
@@ -643,19 +850,19 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       );
       const result = await herdr.call(method, params ?? {});
       await worktreeParents
-        .rememberWorktreeParent(result, workspaceId)
-        .catch((error) =>
+        .rememberWorktreeParent(result, workspaceId, requestIsCurrent)
+        .catch((error) => {
+          if (!requestIsCurrent()) return;
           console.warn(
-            `[bridge] unable to persist opened worktree parent: ${(error as Error).message}`,
-          ),
-        );
+            `[bridge] unable to persist opened worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
+          );
+        });
       const openedHook = await runWorktreeOpenedHook(result, sourceWorkspace);
-      safeSend(
-        ws,
-        JSON.stringify({
+      sendReply(
+        {
           id,
           result: { ...result, opened_hook: openedHook },
-        }),
+        },
         "worktree-open",
       );
     } catch (e) {
@@ -711,17 +918,18 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           });
           if (removal.cleanup?.preserved_path) {
             console.warn(
-              `[bridge] preserved stale worktree files at ${removal.cleanup.preserved_path}`,
+              `[bridge] preserved stale worktree files connection=${connectionId} at ${removal.cleanup.preserved_path}`,
             );
           }
           if (removeHookContext?.checkoutPath) {
             await worktreeParents
-              .forgetWorktree(removeHookContext.checkoutPath)
-              .catch((error) =>
+              .forgetWorktree(removeHookContext.checkoutPath, requestIsCurrent)
+              .catch((error) => {
+                if (!requestIsCurrent()) return;
                 console.warn(
-                  `[bridge] unable to remove worktree parent: ${(error as Error).message}`,
-                ),
-              );
+                  `[bridge] unable to remove worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
+                );
+              });
           }
           const removedHook = await runWorktreeRemovedHook(removeHookContext);
           return {
@@ -732,7 +940,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           };
         },
       );
-      safeSend(ws, JSON.stringify({ id, result }), "worktree-remove");
+      sendReply({ id, result }, "worktree-remove");
     } catch (e) {
       sendError("worktree-remove-error", e);
     }
@@ -745,201 +953,322 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       result = await worktreeParents.enrichWorkspaceList(result);
       result = await enrichWorkspacesWithGitStatus(result);
     }
-    safeSend(ws, JSON.stringify({ id, result }), method);
+    sendReply({ id, result }, method);
   } catch (e) {
     sendError(`${method}-error`, e);
   }
 }
 
-async function main() {
-  await startAutoSshTunnel();
-  Bun.serve({
-    port: config.port,
-    hostname: config.host,
-    async fetch(req, server) {
-      // pi-lens-ignore: ast-grep:unchecked-throwing-call
-      const url = new URL(req.url);
+async function handleConnectionHttpRequest(
+  route: ParsedConnectionHttpRoute,
+  url: URL,
+  req: Request,
+): Promise<Response> {
+  if (route.kind === "error") {
+    return connectionRoutingErrorResponse(route.error);
+  }
 
-      const tokenLoginResponse = handleTokenLogin(req);
-      if (tokenLoginResponse) return tokenLoginResponse;
+  let resolved: ReturnType<
+    typeof resolveConnectionHttpRoute<LegacyConnectionRuntime>
+  >;
+  const generationText = url.searchParams.get("connection_generation");
+  const requestedGeneration =
+    generationText === null
+      ? undefined
+      : /^(0|[1-9]\d*)$/.test(generationText)
+        ? Number(generationText)
+        : generationText;
+  try {
+    resolved = resolveConnectionHttpRoute({
+      route,
+      requestedGeneration,
+      registry: connectionManager,
+      legacyLogger: legacyRoutingLogger,
+    });
+  } catch (error) {
+    if (error instanceof ConnectionRoutingError) {
+      return connectionRoutingErrorResponse(error);
+    }
+    return Response.json(
+      { error: "connection routing failed" },
+      { status: 500 },
+    );
+  }
 
-      if (url.pathname === "/health" || url.pathname === "/healthz") {
-        return new Response("Ok", {
-          status: 200,
-          headers: { "content-type": "text/plain; charset=utf-8" },
+  const { runtime: connection, endpoint } = resolved;
+  try {
+    let response: Response;
+    if (endpoint === "herdr-info") {
+      response = await connection.handleHerdrInfo();
+    } else if (endpoint === "upload-image") {
+      response = await connection.handleImageUpload(req);
+    } else if (endpoint === "agent-session-download") {
+      response = await connection.agentSessions.downloadFile({
+        pane_id: url.searchParams.get("pane_id"),
+        agent: url.searchParams.get("agent"),
+      });
+    } else if (endpoint === "agent-session-atif") {
+      response = await connection.agentSessions.downloadAtif({
+        pane_id: url.searchParams.get("pane_id"),
+        agent: url.searchParams.get("agent"),
+      });
+    } else if (endpoint === "file-download") {
+      try {
+        response = await connection.files.downloadWorkspaceFile({
+          workspace_id: url.searchParams.get("workspace_id"),
+          path: url.searchParams.get("path"),
         });
+      } catch (error) {
+        response = new Response((error as Error).message, { status: 400 });
       }
-
-      // Auth endpoints are always reachable.
-      if (url.pathname === "/api/login" && req.method === "POST") {
-        return handleLogin(req);
+    } else if (endpoint === "file-upload") {
+      try {
+        const result = await connection.files.uploadWorkspaceFile(
+          {
+            workspace_id: url.searchParams.get("workspace_id"),
+            directory: url.searchParams.get("directory"),
+            filename: url.searchParams.get("filename"),
+          },
+          req,
+        );
+        response = Response.json(result);
+      } catch (error) {
+        response = Response.json(
+          { error: (error as Error).message },
+          { status: 400 },
+        );
       }
-      if (url.pathname === "/login") {
-        return loginPage();
-      }
-
-      // Everything else requires auth when bound to a non-localhost address.
-      if (!isAuthed(req)) {
-        const accept = req.headers.get("accept") ?? "";
-        if (req.method === "GET" && accept.includes("text/html")) {
-          return Response.redirect(new URL("/login", req.url).toString(), 302);
-        }
-        return new Response("unauthorized", { status: 401 });
-      }
-
-      if (url.pathname === "/ws") {
-        if (server.upgrade(req)) return undefined;
-        return new Response("websocket upgrade failed", { status: 400 });
-      }
-      if (url.pathname === "/api/health") {
-        return Response.json({
-          ok: true,
-          version: APP_VERSION,
-          socket: socketPath,
+    } else {
+      try {
+        const result = await connection.files.deleteWorkspaceFile({
+          workspace_id: url.searchParams.get("workspace_id"),
+          path: url.searchParams.get("path"),
         });
-      }
-      if (url.pathname === "/api/update/check" && req.method === "GET") {
-        server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
-        return handleUpdateCheck(req);
-      }
-      if (url.pathname === "/api/update/install" && req.method === "POST") {
-        // Binary download and verification can exceed Bun's default ten-second
-        // request timeout. Keep the larger budget scoped to update requests.
-        server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
-        return handleUpdateInstall(req);
-      }
-      if (url.pathname === "/api/herdr-info" && req.method === "GET") {
-        return handleHerdrInfo();
-      }
-      if (url.pathname === "/api/upload-image" && req.method === "POST") {
-        return handleImageUpload(req);
-      }
-      if (
-        url.pathname === "/api/agent-session/download" &&
-        req.method === "GET"
-      ) {
-        return downloadAgentSessionFile(
-          {
-            pane_id: url.searchParams.get("pane_id"),
-            agent: url.searchParams.get("agent"),
-          },
-          (name, callParams) => herdr.call(name, callParams),
-          agentSessionFiles,
+        response = Response.json(result);
+      } catch (error) {
+        response = Response.json(
+          { error: (error as Error).message },
+          { status: 400 },
         );
       }
-      if (url.pathname === "/api/agent-session/atif" && req.method === "GET") {
-        return downloadAgentSessionAtif(
-          {
-            pane_id: url.searchParams.get("pane_id"),
-            agent: url.searchParams.get("agent"),
-          },
-          (name, callParams) => herdr.call(name, callParams),
-          agentSessionFiles,
-        );
-      }
-      if (url.pathname === "/api/file/download" && req.method === "GET") {
-        try {
-          return await downloadWorkspaceFile({
-            workspace_id: url.searchParams.get("workspace_id"),
-            path: url.searchParams.get("path"),
-          });
-        } catch (e) {
-          return new Response((e as Error).message, { status: 400 });
-        }
-      }
-      if (url.pathname === "/api/file/upload" && req.method === "POST") {
-        try {
-          const result = await uploadWorkspaceFile(
-            {
-              workspace_id: url.searchParams.get("workspace_id"),
-              directory: url.searchParams.get("directory"),
-              filename: url.searchParams.get("filename"),
-            },
-            req,
+    }
+    return publishConnectionHttpResponse(resolved, response);
+  } catch (error) {
+    return publishConnectionHttpResponse(
+      resolved,
+      Response.json({ error: (error as Error).message }, { status: 500 }),
+    );
+  }
+}
+
+function main() {
+  const server = bindListenerBeforeConnectionStart({
+    bindListener: () =>
+      Bun.serve({
+        port: config.port,
+        hostname: config.host,
+        async fetch(req, server) {
+          const requestPathname = rawRequestPathname(req.url);
+          let url: URL;
+          try {
+            url = new URL(req.url);
+          } catch {
+            return new Response("invalid request URL", { status: 400 });
+          }
+
+          const tokenLoginResponse = handleTokenLogin(req);
+          if (tokenLoginResponse) return tokenLoginResponse;
+
+          if (url.pathname === "/health" || url.pathname === "/healthz") {
+            return new Response("Ok", {
+              status: 200,
+              headers: { "content-type": "text/plain; charset=utf-8" },
+            });
+          }
+
+          // Auth endpoints are always reachable.
+          if (url.pathname === "/api/login" && req.method === "POST") {
+            return handleLogin(req);
+          }
+          if (url.pathname === "/login") {
+            return loginPage();
+          }
+
+          // Everything else requires auth when bound to a non-localhost address.
+          if (!isAuthed(req)) {
+            const accept = req.headers.get("accept") ?? "";
+            if (req.method === "GET" && accept.includes("text/html")) {
+              return Response.redirect(
+                new URL("/login", req.url).toString(),
+                302,
+              );
+            }
+            return new Response("unauthorized", { status: 401 });
+          }
+
+          if (url.pathname === "/ws") {
+            if (!isAllowedWebSocketOrigin(req)) {
+              return new Response("forbidden websocket origin", {
+                status: 403,
+              });
+            }
+            if (server.upgrade(req)) return undefined;
+            return new Response("websocket upgrade failed", { status: 400 });
+          }
+          if (url.pathname === "/api/health") {
+            return Response.json({
+              ok: true,
+              version: APP_VERSION,
+              socket: config.socketPath,
+            });
+          }
+          if (url.pathname === "/api/update/check" && req.method === "GET") {
+            server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
+            return handleUpdateCheck(req);
+          }
+          if (url.pathname === "/api/update/install" && req.method === "POST") {
+            // Binary download and verification can exceed Bun's default ten-second
+            // request timeout. Keep the larger budget scoped to update requests.
+            server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
+            return handleUpdateInstall(req);
+          }
+          const connectionRoute = parseConnectionHttpRoute(
+            requestPathname,
+            req.method,
           );
-          return Response.json(result);
-        } catch (e) {
-          return Response.json(
-            { error: (e as Error).message },
-            { status: 400 },
-          );
-        }
-      }
-      if (url.pathname === "/api/file/delete" && req.method === "POST") {
-        try {
-          const result = await deleteWorkspaceFile({
-            workspace_id: url.searchParams.get("workspace_id"),
-            path: url.searchParams.get("path"),
-          });
-          return Response.json(result);
-        } catch (e) {
-          return Response.json(
-            { error: (e as Error).message },
-            { status: 400 },
-          );
-        }
-      }
-      // Everything else: serve the built frontend (embedded or on-disk).
-      return serveStatic(req, config.publicDir);
-    },
-    websocket: {
-      open(ws) {
-        clients.add(ws);
-        const label = assignClientId(ws);
-        console.log(
-          "[bridge] client connected",
-          `client=${label}`,
-          `clients=${clients.size}`,
-        );
-        terminalBridge.browserClientCountChanged(clients.size);
-        safeSend(
-          ws,
-          JSON.stringify({ hello: true, socket: socketPath }),
-          "hello",
-        );
-      },
-      message(ws, message) {
-        const text = typeof message === "string" ? message : message.toString();
-        const { id, method } = parseRpcMeta(text);
-        const startedAt = Date.now();
-        handleRpc(ws, text)
-          .then(() => {
-            const outcome = takeRpcOutcome(ws, id);
-            logRpc(
-              ws,
-              method,
-              startedAt,
-              outcome?.status ?? "ok",
-              outcome?.detail,
+          if (connectionRoute) {
+            return handleConnectionHttpRequest(connectionRoute, url, req);
+          }
+          // Everything else: serve the built frontend (embedded or on-disk).
+          return serveStatic(req, config.publicDir);
+        },
+        websocket: {
+          open(ws) {
+            clients.add(ws);
+            const label = assignClientId(ws);
+            console.log(
+              "[bridge] client connected",
+              `client=${label}`,
+              `clients=${clients.size}`,
             );
-          })
-          .catch((e) => {
-            logRpc(ws, method, startedAt, "error", (e as Error).message);
+            notifyBrowserClientCount();
             safeSend(
               ws,
-              JSON.stringify({ error: { message: (e as Error).message } }),
-              "message-error",
+              JSON.stringify({
+                hello: true,
+                socket: config.socketPath,
+                bridge_protocol_version: 2,
+                default_connection_id: connectionManager.defaultId(),
+                capabilities: {
+                  connection_id: true,
+                  connection_scoped_http: true,
+                  connection_runtime_generation: true,
+                },
+              }),
+              "hello",
             );
-          });
-      },
-      close(ws) {
-        const { client, viewedTerminals } = webSocketCleanup.complete(ws);
-        console.log(
-          "[bridge] client disconnected",
-          `client=${client}`,
-          `clients=${clients.size}`,
-          viewedTerminals.length
-            ? `terminals=${viewedTerminals.join(",")}`
-            : "terminals=none",
+          },
+          message(ws, message) {
+            const text =
+              typeof message === "string" ? message : message.toString();
+            const { id, method, connectionId, connectionGeneration } =
+              parseRpcMeta(text);
+            const startedAt = Date.now();
+            let responseConnectionId: string | null = null;
+            let logConnectionId: string | null = null;
+            if (method && !isBridgeGlobalMethod(method)) {
+              if (connectionId === undefined) {
+                responseConnectionId = connectionManager.defaultId();
+                logConnectionId = responseConnectionId;
+              } else {
+                try {
+                  responseConnectionId = validateConnectionId(connectionId);
+                  logConnectionId = responseConnectionId;
+                } catch {
+                  logConnectionId = "invalid";
+                }
+              }
+            }
+            handleRpc(ws, text)
+              .then(() => {
+                const outcome = takeRpcOutcome(ws, id);
+                logRpc(
+                  ws,
+                  method,
+                  startedAt,
+                  outcome?.status ?? "ok",
+                  logConnectionId,
+                  outcome?.detail,
+                );
+              })
+              .catch((e) => {
+                logRpc(
+                  ws,
+                  method,
+                  startedAt,
+                  "error",
+                  logConnectionId,
+                  (e as Error).message,
+                );
+                const errorMessage: Record<string, unknown> = {
+                  error: { message: (e as Error).message },
+                };
+                if (id) errorMessage.id = id;
+                safeSend(
+                  ws,
+                  responseConnectionId
+                    ? serializeConnectionEnvelope(
+                        responseConnectionId,
+                        errorMessage,
+                        typeof connectionGeneration === "number"
+                          ? connectionGeneration
+                          : undefined,
+                      )
+                    : JSON.stringify(errorMessage),
+                  "message-error",
+                );
+              });
+          },
+          close(ws) {
+            const { client, viewedTerminals } = webSocketCleanup.complete(ws);
+            console.log(
+              "[bridge] client disconnected",
+              `client=${client}`,
+              `clients=${clients.size}`,
+              viewedTerminals.length
+                ? `terminals=${viewedTerminals.join(",")}`
+                : "terminals=none",
+            );
+          },
+        },
+      }),
+    startConnection: async () => {
+      await connectionProfiles.startConfigured();
+      notifyBrowserClientCount();
+      const runtime = connectionManager.defaultReadyRuntime();
+      void runtime?.herdr
+        .ping()
+        .then((ping) =>
+          console.log(
+            `[bridge] herdr connection=${runtime.identity.id} ${ping.version} (protocol ${ping.protocol}) reachable`,
+          ),
+        )
+        .catch((error) =>
+          console.error(
+            `[bridge] herdr connection=${runtime.identity.id} not reachable yet (${sanitizeConnectionError(error)}); ` +
+              "start a server with `herdr server`. RPCs will retry per request.",
+          ),
         );
-      },
+    },
+    onConnectionError: (error) => {
+      console.error(
+        `[bridge] default connection startup failed: ${sanitizeConnectionError(error)}`,
+      );
     },
   });
-  // Start background Git work only after the HTTP listener is bound. A failed
-  // startup must never mutate repositories as a side effect.
-  workspaceAutoSync.start();
+  const listeningPort = server.port ?? config.port;
   console.log(
-    `[bridge] listening on http://${config.host}:${config.port}  (ws /ws)`,
+    `[bridge] listening on http://${config.host}:${listeningPort}  (ws /ws)`,
   );
   if (config.authRequired) {
     if (config.generatedAuthTokenPath) {
@@ -950,18 +1279,21 @@ async function main() {
       console.log("[bridge] auth required (password login enabled)");
     }
   }
-  console.log(`[bridge] herdr socket: ${socketPath}`);
-  console.log(`[bridge] herdr client socket: ${clientSocketPath}`);
+  console.log(`[bridge] herdr socket: ${config.socketPath}`);
+  console.log(`[bridge] herdr client socket: ${config.clientSocketPath}`);
   console.log(`[bridge] public dir: ${config.publicDir}`);
 
   const browserUrl = withLoginToken(
-    browserUrlFor(config.host, config.port),
+    browserUrlFor(config.host, listeningPort),
     config.generatedAuthToken,
   );
   console.log(`[bridge] browser URL: ${browserUrl}`);
   if (isAnyHost(config.host)) {
     const lanUrls = getLanIPs().map((ip) =>
-      withLoginToken(`http://${ip}:${config.port}`, config.generatedAuthToken),
+      withLoginToken(
+        `http://${ip}:${listeningPort}`,
+        config.generatedAuthToken,
+      ),
     );
     if (lanUrls.length > 0) {
       console.log("[bridge] accessible from your LAN at:");
@@ -973,27 +1305,45 @@ async function main() {
     }
   }
   openBrowser(config, browserUrl);
-
-  // Best-effort: verify connectivity and start the event fan-out.
-  herdr
-    .ping()
-    .then((p) =>
-      console.log(
-        `[bridge] herdr ${p.version} (protocol ${p.protocol}) reachable`,
-      ),
-    )
-    .catch((e) =>
-      console.error(
-        `[bridge] herdr not reachable yet (${(e as Error).message}); ` +
-          `start a server with \`herdr server\`. RPCs will retry per request.`,
-      ),
-    );
-  startSubscriptionLoop();
 }
 
-main().catch((e) => {
-  console.error(`[bridge] FATAL: ${(e as Error).message}`);
-  workspaceAutoSync.stop();
-  cleanupAutoSshTunnel();
-  process.exit(1);
+let managerStopTask: Promise<void> | null = null;
+function stopManagerOnce(): Promise<void> {
+  connectionProfiles.stopSupervision();
+  managerStopTask ??= connectionManager.stopAll();
+  return managerStopTask;
+}
+
+const shutdownController = createShutdownController({
+  stop: stopManagerOnce,
+  exit: (code) => process.exit(code),
+  onStopError: (error) => {
+    console.error(
+      `[bridge] connection shutdown failed: ${sanitizeConnectionError(error)}`,
+    );
+  },
 });
+
+function scheduleManagedShutdown(): void {
+  const timer = setTimeout(() => {
+    void shutdownController.request(0);
+  }, 1_000);
+  timer.unref();
+}
+
+process.on("exit", () => {
+  void stopManagerOnce();
+});
+process.on("SIGINT", () => {
+  void shutdownController.request(130);
+});
+process.on("SIGTERM", () => {
+  void shutdownController.request(143);
+});
+
+try {
+  main();
+} catch (e) {
+  console.error(`[bridge] FATAL: ${(e as Error).message}`);
+  void shutdownController.request(1);
+}

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { bridge } from "../api";
+import { useEffect, useRef, useState } from "react";
 import { store } from "../store";
+import { useConnectionClient } from "../useConnectionClient";
 
 const HOOKS = [
   ["setup", "Setup"],
@@ -32,10 +32,24 @@ export function WorktreeHooksDialog({
   workspaceId?: string;
   onClose: () => void;
 }) {
+  const connectionClient = useConnectionClient();
   const [info, setInfo] = useState<WorktreeHookInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const requestRef = useRef(0);
+  const scopeKey = JSON.stringify([
+    open,
+    workspaceId ?? null,
+    connectionClient.connectionId,
+    connectionClient.generation,
+  ]);
+  const priorScopeKeyRef = useRef(scopeKey);
+  const scopeVersionRef = useRef(0);
+  if (priorScopeKeyRef.current !== scopeKey) {
+    priorScopeKeyRef.current = scopeKey;
+    scopeVersionRef.current += 1;
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -49,38 +63,62 @@ export function WorktreeHooksDialog({
   useEffect(() => {
     if (!open || !workspaceId) return;
     let cancelled = false;
+    const scopeVersion = scopeVersionRef.current;
+    const request = ++requestRef.current;
+    const requestIsCurrent = () =>
+      !cancelled &&
+      scopeVersionRef.current === scopeVersion &&
+      requestRef.current === request &&
+      connectionClient.isCurrent();
     setLoading(true);
+    setSaving(false);
     setError("");
     setInfo(null);
-    bridge
+    connectionClient
       .call("settings.worktree_hooks.get", { workspace_id: workspaceId })
       .then((result) => {
-        if (!cancelled) setInfo(result as WorktreeHookInfo);
+        if (requestIsCurrent()) setInfo(result as WorktreeHookInfo);
       })
       .catch((err) => {
-        if (!cancelled) setError((err as Error).message);
+        if (requestIsCurrent()) setError((err as Error).message);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (requestIsCurrent()) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [open, workspaceId]);
+  }, [connectionClient, open, scopeKey, workspaceId]);
 
   if (!open) return null;
 
   const setEnabled = async (enabled: boolean) => {
-    if (!info?.key) return;
+    if (!info?.key || !connectionClient.isCurrent()) return;
+    const infoKey = info.key;
+    const scopeVersion = scopeVersionRef.current;
+    const request = ++requestRef.current;
+    const requestIsCurrent = () =>
+      scopeVersionRef.current === scopeVersion &&
+      requestRef.current === request &&
+      connectionClient.isCurrent();
     setSaving(true);
     setError("");
     try {
-      await store.setRepoWorktreeHooksEnabled(info.key, enabled);
-      setInfo((current) => (current ? { ...current, enabled } : current));
+      const result = await store.setRepoWorktreeHooksEnabled(infoKey, enabled);
+      if (!requestIsCurrent()) return;
+      if (result === undefined) {
+        setError(
+          store.get().error || "Unable to update worktree hook settings",
+        );
+        return;
+      }
+      setInfo((current) =>
+        current?.key === infoKey ? { ...current, enabled } : current,
+      );
     } catch (err) {
-      setError((err as Error).message);
+      if (requestIsCurrent()) setError((err as Error).message);
     } finally {
-      setSaving(false);
+      if (requestIsCurrent()) setSaving(false);
     }
   };
 

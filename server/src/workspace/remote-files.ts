@@ -1,3 +1,4 @@
+import { sshCommandArgv } from "../bridge/ssh-command";
 import {
   DELETE_TIMEOUT_MS,
   DOWNLOAD_TIMEOUT_MS,
@@ -115,7 +116,7 @@ while IFS= read -r -d '' p; do
 done < <(find "$target_real" -mindepth 1 -maxdepth 1 -print0)
 `;
   const result = await runProcessWithCodeTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     LIST_TIMEOUT_MS,
   );
   if (result.code !== 0) {
@@ -162,7 +163,7 @@ for request in "\${requests[@]}"; do
 done
 `;
   const result = await runProcessWithCodeTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     PREVIEW_TIMEOUT_MS,
   );
   if (result.code !== 0) {
@@ -258,7 +259,7 @@ head -c $((limit + 1)) "$target_real" | base64 | tr -d '\\n'
 printf '\\n'
 `;
   const result = await runProcessWithCodeTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     PREVIEW_TIMEOUT_MS,
   );
   if (result.code !== 0) {
@@ -354,7 +355,7 @@ fi
 printf '\\n'
 `;
   const result = await runProcessWithCodeTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     DOWNLOAD_TIMEOUT_MS,
   );
   if (result.code !== 0) {
@@ -425,7 +426,7 @@ rel_path="\${target#"$root_real"/}"
 printf 'META\\t%s\\t%s\\t%s\\n' "$(printf '%s' "$rel_path" | base64 | tr -d '\\n')" "$size" "$overwritten"
 `;
   const result = await runProcessWithInputTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     body.toString("base64"),
     UPLOAD_TIMEOUT_MS,
   );
@@ -489,7 +490,7 @@ rm -rf -- "$target"
 printf 'META\\t%s\\t%s\\n' "$(printf '%s' "$rel" | base64 | tr -d '\\n')" "$type"
 `;
   const result = await runProcessWithCodeTimeout(
-    ["ssh", host, `bash -lc ${shQuote(command)}`],
+    sshCommandArgv(host, `bash -lc ${shQuote(command)}`),
     DELETE_TIMEOUT_MS,
   );
   if (result.code !== 0) {

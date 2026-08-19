@@ -32,6 +32,7 @@ import {
   workspaceDisplayName,
 } from "../workspaceTreeBadges";
 import { pruneClosedWorkspacePreferenceKeys } from "../workspacePreferences";
+import { connectionStorageKey } from "../connectionStorage";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -113,14 +114,22 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
     string | null
   >(null);
   const lastPrunedWorkspaceRefresh = useRef(0);
+  const pinsStorageKey = connectionStorageKey(
+    s.activeConnectionId,
+    WORKSPACE_PINS_STORAGE_KEY,
+  );
+  const collapsedGroupsStorageKey = connectionStorageKey(
+    s.activeConnectionId,
+    COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY,
+  );
   const [pinnedWorkspaceKeys, setPinnedWorkspaceKeys] = useState<string[]>(() =>
-    parseWorkspacePins(localStorage.getItem(WORKSPACE_PINS_STORAGE_KEY)),
+    parseWorkspacePins(localStorage.getItem(pinsStorageKey)),
   );
   const [collapsedWorktreeGroupKeys, setCollapsedWorktreeGroupKeys] = useState<
     string[]
   >(() =>
     parseCollapsedWorktreeGroups(
-      localStorage.getItem(COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY),
+      localStorage.getItem(collapsedGroupsStorageKey),
     ),
   );
   const pinnedWorkspaceSet = new Set(pinnedWorkspaceKeys);
@@ -128,16 +137,16 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
 
   useEffect(() => {
     localStorage.setItem(
-      WORKSPACE_PINS_STORAGE_KEY,
+      pinsStorageKey,
       serializeWorkspacePins(pinnedWorkspaceKeys),
     );
-  }, [pinnedWorkspaceKeys]);
+  }, [pinnedWorkspaceKeys, pinsStorageKey]);
   useEffect(() => {
     localStorage.setItem(
-      COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY,
+      collapsedGroupsStorageKey,
       serializeCollapsedWorktreeGroups(collapsedWorktreeGroupKeys),
     );
-  }, [collapsedWorktreeGroupKeys]);
+  }, [collapsedGroupsStorageKey, collapsedWorktreeGroupKeys]);
   useEffect(() => {
     if (
       s.status !== "connected" ||
@@ -158,9 +167,9 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
   }, [s.lastRefresh, s.status, s.workspaces]);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === WORKSPACE_PINS_STORAGE_KEY) {
+      if (event.key === pinsStorageKey) {
         setPinnedWorkspaceKeys(parseWorkspacePins(event.newValue));
-      } else if (event.key === COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY) {
+      } else if (event.key === collapsedGroupsStorageKey) {
         setCollapsedWorktreeGroupKeys(
           parseCollapsedWorktreeGroups(event.newValue),
         );
@@ -168,7 +177,7 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [collapsedGroupsStorageKey, pinsStorageKey]);
 
   const updatePinnedWorkspace = (workspace: Workspace, pinned: boolean) => {
     setPinnedWorkspaceKeys((current) =>

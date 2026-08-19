@@ -1,5 +1,16 @@
 import { useSyncExternalStore } from "react";
-import { bridge, type ConnectionStatus } from "./api";
+import {
+  bridge,
+  type ConnectionClient,
+  type ConnectionStatus,
+  type ConnectionSummary,
+  parseConnectionSummary,
+} from "./api";
+import {
+  LEGACY_DEFAULT_CONNECTION_ID,
+  migrateLegacyConnectionStorage,
+} from "./connectionStorage";
+import { disposeTerminalConnection } from "./terminalConnection";
 import {
   clearTerminalRelayViewports,
   forgetTerminalRelayViewportsExcept,
@@ -7,10 +18,9 @@ import {
 } from "./terminalResize";
 import type { Pane, PaneLayout, Tab, Workspace } from "./types";
 
-export interface State {
-  status: ConnectionStatus;
-  connectionPaused: boolean;
-  bridgeStatus: BridgeStatus | null;
+export interface ServerSessionState {
+  /** ConnectionManager generation that owns every server resource below. */
+  serverRuntimeGeneration: number | null;
   workspaces: Workspace[];
   tabs: Tab[];
   panes: Pane[];
@@ -20,6 +30,20 @@ export interface State {
   selectedPaneId: string | null;
   recentPaneIds: string[];
   error: string | null;
+  pendingFocusWorkspaceId: string | null;
+  terminalAttachEpoch: number;
+  lastRefresh: number;
+}
+
+export interface State extends ServerSessionState {
+  status: ConnectionStatus;
+  connectionPaused: boolean;
+  bridgeStatus: BridgeStatus | null;
+  connections: ConnectionSummary[];
+  defaultConnectionId: string;
+  activeConnectionId: string;
+  connectionGeneration: number;
+  sessionsByConnectionId: Record<string, ServerSessionState>;
   notice: Notice | null;
   taskNotificationsEnabled: boolean;
   taskNotificationPermission: NotificationPermission | "unsupported";
@@ -27,9 +51,6 @@ export interface State {
   updateInstalling: boolean;
   pendingRestartVersion: string | null;
   dismissedUpdateVersion: string | null;
-  pendingFocusWorkspaceId: string | null;
-  terminalAttachEpoch: number;
-  lastRefresh: number;
 }
 
 export interface Notice {
@@ -41,6 +62,8 @@ export interface Notice {
   loading?: boolean;
   autoDismissMs?: number;
   actionLabel?: string;
+  actionConnectionId?: string;
+  actionRuntimeGeneration?: number;
   actionWorkspaceId?: string;
   actionPaneId?: string;
   actionClipboardText?: string;
@@ -96,6 +119,31 @@ const UPDATE_RESTART_VERIFY_TIMEOUT_MS = 90 * 1000;
 const UPDATE_RESTART_VERIFY_INTERVAL_MS = 750;
 const RECENT_PANE_LIMIT = 12;
 
+export interface StoreConnectionLease {
+  connectionId: string;
+  generation: number;
+  client: ConnectionClient;
+}
+
+export function emptyServerSessionState(
+  serverRuntimeGeneration: number | null = null,
+): ServerSessionState {
+  return {
+    serverRuntimeGeneration,
+    workspaces: [],
+    tabs: [],
+    panes: [],
+    layout: null,
+    paneContents: {},
+    selectedPaneId: null,
+    recentPaneIds: [],
+    error: null,
+    pendingFocusWorkspaceId: null,
+    terminalAttachEpoch: 0,
+    lastRefresh: 0,
+  };
+}
+
 export const TASK_NOTIFICATION_ACTIVATE_EVENT =
   "herdr:task-notification-activate";
 
@@ -105,6 +153,8 @@ export function noticeAutoDismissDelay(notice: Notice): number | null {
 }
 
 export interface TaskNotificationTarget {
+  connectionId: string;
+  runtimeGeneration: number;
   workspaceId: string;
   paneId: string;
 }
@@ -117,6 +167,11 @@ export function isTaskNotificationTarget(
   if (!value || typeof value !== "object") return false;
   const target = value as Partial<TaskNotificationTarget>;
   return (
+    typeof target.connectionId === "string" &&
+    target.connectionId.length > 0 &&
+    typeof target.runtimeGeneration === "number" &&
+    Number.isSafeInteger(target.runtimeGeneration) &&
+    target.runtimeGeneration >= 0 &&
     typeof target.workspaceId === "string" &&
     target.workspaceId.length > 0 &&
     typeof target.paneId === "string" &&
@@ -203,20 +258,21 @@ export function healthMatchesUpdateVersion(
   );
 }
 
+const initialSession = emptyServerSessionState();
 const initial: State = {
   status: "disconnected",
   connectionPaused:
     typeof localStorage !== "undefined" &&
     localStorage.getItem("connectionPaused") === "true",
   bridgeStatus: null,
-  workspaces: [],
-  tabs: [],
-  panes: [],
-  layout: null,
-  paneContents: {},
-  selectedPaneId: null,
-  recentPaneIds: [],
-  error: null,
+  connections: [],
+  defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
+  activeConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
+  connectionGeneration: 0,
+  sessionsByConnectionId: {
+    [LEGACY_DEFAULT_CONNECTION_ID]: initialSession,
+  },
+  ...initialSession,
   notice: null,
   taskNotificationsEnabled: storedTaskNotificationsEnabled(),
   taskNotificationPermission: notificationPermission(),
@@ -224,10 +280,156 @@ const initial: State = {
   updateInstalling: false,
   pendingRestartVersion: storedPendingRestartVersion(),
   dismissedUpdateVersion: null,
-  pendingFocusWorkspaceId: null,
-  terminalAttachEpoch: 0,
-  lastRefresh: 0,
 };
+
+const SERVER_SESSION_KEYS: Array<keyof ServerSessionState> = [
+  "serverRuntimeGeneration",
+  "workspaces",
+  "tabs",
+  "panes",
+  "layout",
+  "paneContents",
+  "selectedPaneId",
+  "recentPaneIds",
+  "error",
+  "pendingFocusWorkspaceId",
+  "terminalAttachEpoch",
+  "lastRefresh",
+];
+
+function serverSessionFromState(snapshot: State): ServerSessionState {
+  return {
+    serverRuntimeGeneration: snapshot.serverRuntimeGeneration,
+    workspaces: snapshot.workspaces,
+    tabs: snapshot.tabs,
+    panes: snapshot.panes,
+    layout: snapshot.layout,
+    paneContents: snapshot.paneContents,
+    selectedPaneId: snapshot.selectedPaneId,
+    recentPaneIds: snapshot.recentPaneIds,
+    error: snapshot.error,
+    pendingFocusWorkspaceId: snapshot.pendingFocusWorkspaceId,
+    terminalAttachEpoch: snapshot.terminalAttachEpoch,
+    lastRefresh: snapshot.lastRefresh,
+  };
+}
+
+/** Pure state transition used by the store and deterministic partition tests. */
+export function activateConnectionState(
+  snapshot: State,
+  connectionId: string,
+  generation: number,
+): State {
+  if (connectionId === snapshot.activeConnectionId) {
+    return { ...snapshot, connectionGeneration: generation };
+  }
+  const outgoingIsCataloged = snapshot.connections.some(
+    (connection) => connection.id === snapshot.activeConnectionId,
+  );
+  const oldSession = {
+    ...serverSessionFromState(snapshot),
+    terminalAttachEpoch: snapshot.terminalAttachEpoch + 1,
+  };
+  const runtimeGeneration =
+    snapshot.connections.find((connection) => connection.id === connectionId)
+      ?.generation ?? null;
+  const cached = snapshot.sessionsByConnectionId[connectionId];
+  const restored =
+    cached?.serverRuntimeGeneration === runtimeGeneration &&
+    runtimeGeneration !== null
+      ? cached
+      : emptyServerSessionState(runtimeGeneration);
+  const newSession = {
+    ...restored,
+    terminalAttachEpoch: restored.terminalAttachEpoch + 1,
+  };
+  return {
+    ...snapshot,
+    ...newSession,
+    activeConnectionId: connectionId,
+    connectionGeneration: generation,
+    sessionsByConnectionId: {
+      ...snapshot.sessionsByConnectionId,
+      ...(outgoingIsCataloged
+        ? { [snapshot.activeConnectionId]: oldSession }
+        : {}),
+      [connectionId]: newSession,
+    },
+    notice: null,
+  };
+}
+
+export interface CatalogSessionReconciliation {
+  sessionsByConnectionId: Record<string, ServerSessionState>;
+  activeSession: ServerSessionState | null;
+  invalidatedConnectionIds: string[];
+  activeRuntimeChanged: boolean;
+}
+
+/**
+ * Bind cached server resources to ConnectionManager generations. This is the
+ * production catalog transition and a pure deterministic regression seam.
+ */
+export function reconcileConnectionCatalogSessions(
+  snapshot: State,
+  connections: ConnectionSummary[],
+): CatalogSessionReconciliation {
+  const previousById = new Map(
+    snapshot.connections.map((connection) => [connection.id, connection]),
+  );
+  const sessionsByConnectionId: Record<string, ServerSessionState> = {};
+  const invalidatedConnectionIds: string[] = [];
+  let activeSession: ServerSessionState | null = null;
+  let activeRuntimeChanged = false;
+
+  for (const connection of connections) {
+    const cached =
+      connection.id === snapshot.activeConnectionId
+        ? serverSessionFromState(snapshot)
+        : snapshot.sessionsByConnectionId[connection.id];
+    const previous = previousById.get(connection.id);
+    const initialActiveTag =
+      snapshot.connections.length === 0 &&
+      connection.id === snapshot.activeConnectionId &&
+      !!cached &&
+      (cached.serverRuntimeGeneration === null ||
+        cached.serverRuntimeGeneration === connection.generation);
+    const catalogGenerationChanged =
+      previous !== undefined && previous.generation !== connection.generation;
+    const cachedGenerationMismatch =
+      !!cached &&
+      cached.serverRuntimeGeneration !== null &&
+      cached.serverRuntimeGeneration !== connection.generation;
+    const newCatalogEntry = previous === undefined && !initialActiveTag;
+    const invalidated =
+      !cached ||
+      catalogGenerationChanged ||
+      cachedGenerationMismatch ||
+      newCatalogEntry;
+    const nextSession = invalidated
+      ? {
+          ...emptyServerSessionState(connection.generation),
+          terminalAttachEpoch: (cached?.terminalAttachEpoch ?? 0) + 1,
+        }
+      : {
+          ...cached,
+          serverRuntimeGeneration: connection.generation,
+        };
+    sessionsByConnectionId[connection.id] = nextSession;
+    if (invalidated) invalidatedConnectionIds.push(connection.id);
+    if (connection.id === snapshot.activeConnectionId) {
+      activeSession = nextSession;
+      activeRuntimeChanged = invalidated && !initialActiveTag;
+    }
+  }
+
+  return {
+    sessionsByConnectionId,
+    activeSession,
+    invalidatedConnectionIds,
+    activeRuntimeChanged,
+  };
+}
 
 let state = initial;
 const listeners = new Set<() => void>();
@@ -280,12 +482,92 @@ function set(patch: Partial<State>) {
       ),
     };
   }
+  const sessionPatch: Partial<ServerSessionState> = {};
+  let hasSessionPatch = false;
+  for (const key of SERVER_SESSION_KEYS) {
+    if (!(key in patch)) continue;
+    hasSessionPatch = true;
+    Object.assign(sessionPatch, { [key]: patch[key] });
+  }
+  if (hasSessionPatch) {
+    const updatedSession = {
+      ...(state.sessionsByConnectionId[state.activeConnectionId] ??
+        serverSessionFromState(state)),
+      ...sessionPatch,
+    };
+    patch = {
+      ...patch,
+      sessionsByConnectionId: {
+        ...state.sessionsByConnectionId,
+        ...patch.sessionsByConnectionId,
+        [state.activeConnectionId]: updatedSession,
+      },
+    };
+  }
   state = { ...state, ...patch };
   emit();
 }
 
+function captureConnectionLease(): StoreConnectionLease {
+  const runtimeGeneration = catalogReadyForConnection
+    ? (state.connections.find(
+        (connection) => connection.id === state.activeConnectionId,
+      )?.generation ?? null)
+    : null;
+  return {
+    connectionId: state.activeConnectionId,
+    generation: state.connectionGeneration,
+    client: bridge.connection(state.activeConnectionId, runtimeGeneration),
+  };
+}
+
+export function isStoreConnectionLeaseCurrent(
+  snapshot: Pick<State, "activeConnectionId" | "connectionGeneration">,
+  lease: Pick<StoreConnectionLease, "connectionId" | "generation">,
+): boolean {
+  return (
+    snapshot.activeConnectionId === lease.connectionId &&
+    snapshot.connectionGeneration === lease.generation
+  );
+}
+
+function leaseIsCurrent(lease: StoreConnectionLease): boolean {
+  return (
+    isStoreConnectionLeaseCurrent(state, lease) && lease.client.isCurrent()
+  );
+}
+
+function setForConnection(
+  lease: StoreConnectionLease,
+  patch: Partial<State>,
+): boolean {
+  if (!leaseIsCurrent(lease)) return false;
+  set(patch);
+  return true;
+}
+
+export function connectionEventIsActive(
+  snapshot: Pick<State, "activeConnectionId" | "connections">,
+  connectionId: string,
+  connectionGeneration?: number,
+  requireGeneration = bridge.hello?.capabilities
+    ?.connection_runtime_generation === true,
+): boolean {
+  if (snapshot.activeConnectionId !== connectionId) return false;
+  const expected = snapshot.connections.find(
+    (connection) => connection.id === connectionId,
+  )?.generation;
+  if (!requireGeneration) return true;
+  return expected !== undefined && expected === connectionGeneration;
+}
+
 function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function redirectToLogin() {
+  const loginUrl = new URL("/login", window.location.origin);
+  window.location.replace(loginUrl.href);
 }
 
 /**
@@ -312,7 +594,7 @@ function reloadWhenUpdatedServerIsReady(
         if (response.status === 401) {
           storePendingRestartVersion(null);
           set({ pendingRestartVersion: null });
-          window.location.href = "/login";
+          redirectToLogin();
           return;
         }
         if (response.ok) {
@@ -395,12 +677,59 @@ export function numberedCreatedTabRename(
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-let refreshing = false;
-let queued = false;
+const refreshingConnectionKeys = new Set<string>();
+const queuedConnectionKeys = new Set<string>();
 let initialized = false;
+let catalogRequestSeq = 0;
+let appliedCatalogRequestSeq = 0;
+let catalogReadyForConnection = false;
 let focusActionChain: Promise<unknown> = Promise.resolve();
-let paneStatusSnapshotReady = false;
-const paneStatusById = new Map<string, string>();
+type PaneStatusTracker = {
+  ready: boolean;
+  byId: Map<string, string>;
+};
+
+export class TaskCompletionTracker {
+  private readonly byConnection = new Map<string, PaneStatusTracker>();
+
+  clear(): void {
+    this.byConnection.clear();
+  }
+
+  reset(connectionId: string): void {
+    this.byConnection.delete(connectionId);
+  }
+
+  update(connectionId: string, panes: Pane[]): Pane[] {
+    const tracker = this.byConnection.get(connectionId) ?? {
+      ready: false,
+      byId: new Map<string, string>(),
+    };
+    this.byConnection.set(connectionId, tracker);
+    const livePaneIds = new Set<string>();
+    const completed: Pane[] = [];
+    for (const pane of panes) {
+      livePaneIds.add(pane.pane_id);
+      const nextStatus = pane.agent_status;
+      const previousStatus = tracker.byId.get(pane.pane_id);
+      if (
+        tracker.ready &&
+        previousStatus === "working" &&
+        (nextStatus === "done" || nextStatus === "idle")
+      ) {
+        completed.push(pane);
+      }
+      tracker.byId.set(pane.pane_id, nextStatus);
+    }
+    for (const paneId of tracker.byId.keys()) {
+      if (!livePaneIds.has(paneId)) tracker.byId.delete(paneId);
+    }
+    tracker.ready = true;
+    return completed;
+  }
+}
+
+const taskCompletionTracker = new TaskCompletionTracker();
 
 function taskNotificationBody(
   pane: Pane,
@@ -438,20 +767,82 @@ function maybeShowBrowserTaskNotification(
   }
 }
 
-function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
-  if (!state.taskNotificationsEnabled) return;
-  const body = taskNotificationBody(pane, workspaces, tabs);
-  const title = "Herdr task completed";
-  maybeShowBrowserTaskNotification(title, body, `herdr-task-${pane.pane_id}`, {
+export function taskNotificationTarget(
+  connectionId: string,
+  runtimeGeneration: number,
+  pane: Pick<Pane, "workspace_id" | "pane_id">,
+): TaskNotificationTarget {
+  return {
+    connectionId,
+    runtimeGeneration,
     workspaceId: pane.workspace_id,
     paneId: pane.pane_id,
-  });
+  };
+}
+
+export function taskNotificationTargetIsCurrent(
+  snapshot: Pick<State, "connections">,
+  target: Pick<TaskNotificationTarget, "connectionId" | "runtimeGeneration">,
+): boolean {
+  return snapshot.connections.some(
+    (connection) =>
+      connection.id === target.connectionId &&
+      connection.generation === target.runtimeGeneration,
+  );
+}
+
+export function taskNotificationTag(target: TaskNotificationTarget): string {
+  return JSON.stringify([
+    "herdr-task",
+    target.connectionId,
+    target.runtimeGeneration,
+    target.paneId,
+  ]);
+}
+
+export function taskNotificationTargetFromNotice(
+  notice: Pick<
+    Notice,
+    | "actionConnectionId"
+    | "actionRuntimeGeneration"
+    | "actionWorkspaceId"
+    | "actionPaneId"
+  >,
+): TaskNotificationTarget | null {
+  const target = {
+    connectionId: notice.actionConnectionId,
+    runtimeGeneration: notice.actionRuntimeGeneration,
+    workspaceId: notice.actionWorkspaceId,
+    paneId: notice.actionPaneId,
+  };
+  return isTaskNotificationTarget(target) ? target : null;
+}
+
+function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
+  if (!state.taskNotificationsEnabled) return;
+  const runtimeGeneration = state.serverRuntimeGeneration;
+  if (runtimeGeneration === null) return;
+  const body = taskNotificationBody(pane, workspaces, tabs);
+  const title = "Herdr task completed";
+  const target = taskNotificationTarget(
+    state.activeConnectionId,
+    runtimeGeneration,
+    pane,
+  );
+  maybeShowBrowserTaskNotification(
+    title,
+    body,
+    taskNotificationTag(target),
+    target,
+  );
   set({
     notice: {
       kind: "success",
       message: "Task completed",
       detail: body,
       actionLabel: pane.agent ? "Open agent" : "Open workspace",
+      actionConnectionId: state.activeConnectionId,
+      actionRuntimeGeneration: runtimeGeneration,
       actionWorkspaceId: pane.workspace_id,
       actionPaneId: pane.pane_id,
       autoDismissMs: TASK_COMPLETED_TOAST_DISMISS_MS,
@@ -473,36 +864,20 @@ function activePaneIdForTaskNotifications(snapshot: State) {
   );
 }
 
-function trackTaskCompletions(panes: Pane[]) {
-  const livePaneIds = new Set<string>();
-  const completed: Pane[] = [];
-  for (const pane of panes) {
-    livePaneIds.add(pane.pane_id);
-    const nextStatus = pane.agent_status;
-    const previousStatus = paneStatusById.get(pane.pane_id);
-    if (
-      paneStatusSnapshotReady &&
-      previousStatus === "working" &&
-      (nextStatus === "done" || nextStatus === "idle")
-    ) {
-      completed.push(pane);
-    }
-    paneStatusById.set(pane.pane_id, nextStatus);
-  }
-  for (const paneId of paneStatusById.keys()) {
-    if (!livePaneIds.has(paneId)) paneStatusById.delete(paneId);
-  }
-  paneStatusSnapshotReady = true;
-  return completed;
+function trackTaskCompletions(connectionId: string, panes: Pane[]) {
+  return taskCompletionTracker.update(connectionId, panes);
 }
 
 function notifyCompletedTasks(
+  lease: StoreConnectionLease,
   completed: Pane[],
   workspaces: Workspace[],
   tabs: Tab[],
 ) {
+  if (!leaseIsCurrent(lease)) return;
   const activePaneId = activePaneIdForTaskNotifications(state);
   for (const pane of completed) {
+    if (!leaseIsCurrent(lease)) return;
     if (pane.pane_id === activePaneId) continue;
     notifyTaskCompleted(pane, workspaces, tabs);
   }
@@ -514,24 +889,36 @@ function enqueueFocusAction<T>(fn: () => Promise<T>): Promise<T> {
   return task;
 }
 
-async function refreshNow() {
-  if (state.connectionPaused || state.status !== "connected") return;
-  if (refreshing) {
-    queued = true;
+async function refreshNow(lease = captureConnectionLease()) {
+  if (
+    state.connectionPaused ||
+    state.status !== "connected" ||
+    !leaseIsCurrent(lease)
+  ) {
     return;
   }
-  refreshing = true;
+  const refreshKey = `${lease.connectionId}:${lease.generation}`;
+  if (refreshingConnectionKeys.has(refreshKey)) {
+    queuedConnectionKeys.add(refreshKey);
+    return;
+  }
+  refreshingConnectionKeys.add(refreshKey);
   try {
     const [wsRes, tabRes, paneRes] = await Promise.all([
-      bridge.call("workspace.list"),
-      bridge.call("tab.list"),
-      bridge.call("pane.list"),
+      lease.client.call("workspace.list"),
+      lease.client.call("tab.list"),
+      lease.client.call("pane.list"),
     ]);
+    if (!leaseIsCurrent(lease)) return;
     const workspaces: Workspace[] = wsRes?.workspaces ?? [];
     const tabs: Tab[] = tabRes?.tabs ?? [];
     const panes: Pane[] = paneRes?.panes ?? [];
-    forgetTerminalRelayViewportsExcept(new Set(tabs.map((tab) => tab.tab_id)));
-    const completedPanes = trackTaskCompletions(panes);
+    forgetTerminalRelayViewportsExcept(
+      lease.connectionId,
+      lease.generation,
+      new Set(tabs.map((tab) => tab.tab_id)),
+    );
+    const completedPanes = trackTaskCompletions(lease.connectionId, panes);
 
     const next: Partial<State> = {
       workspaces,
@@ -567,9 +954,10 @@ async function refreshNow() {
       panes.find((p) => p.tab_id === activeTabId);
     if (aPane) {
       try {
-        const lr = await bridge.call("pane.layout", {
+        const lr = await lease.client.call("pane.layout", {
           pane_id: aPane.pane_id,
         });
+        if (!leaseIsCurrent(lease)) return;
         const layout = (lr?.layout ?? null) as PaneLayout | null;
         next.layout = layout;
         if (
@@ -586,36 +974,36 @@ async function refreshNow() {
       next.layout = null;
     }
 
-    if (state.connectionPaused) return;
-    set(next);
-    notifyCompletedTasks(completedPanes, workspaces, tabs);
+    if (!setForConnection(lease, next)) return;
+    notifyCompletedTasks(lease, completedPanes, workspaces, tabs);
     // Fetch the visible text for every pane in the layout right away.
-    refreshContents();
-  } catch (e) {
-    if (!state.connectionPaused) set({ error: (e as Error).message });
+    void refreshContents(lease);
+  } catch (error) {
+    setForConnection(lease, { error: (error as Error).message });
   } finally {
-    refreshing = false;
-    if (queued) {
-      queued = false;
-      refreshNow();
+    refreshingConnectionKeys.delete(refreshKey);
+    if (queuedConnectionKeys.delete(refreshKey) && leaseIsCurrent(lease)) {
+      void refreshNow(lease);
     }
   }
 }
 
-function scheduleRefresh() {
-  if (state.connectionPaused) return;
+function scheduleRefresh(lease = captureConnectionLease()) {
+  if (state.connectionPaused || !leaseIsCurrent(lease)) return;
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
-    refreshNow();
+    if (leaseIsCurrent(lease)) void refreshNow(lease);
   }, 80);
 }
 
 async function refreshBridgeStatus() {
   if (state.connectionPaused || state.status !== "connected") return;
+  const requestSeq = ++catalogRequestSeq;
   try {
     const r = await bridge.call("bridge.status");
     if (state.connectionPaused || state.status !== "connected") return;
+    applyConnectionCatalog(r, requestSeq);
     set({
       bridgeStatus: {
         clients: Number(r?.clients ?? 0),
@@ -628,28 +1016,34 @@ async function refreshBridgeStatus() {
 }
 
 /** Read recent scrollback of every pane in the current layout. */
-async function refreshContents() {
-  if (state.connectionPaused || state.status !== "connected") return;
+async function refreshContents(lease = captureConnectionLease()) {
+  if (
+    state.connectionPaused ||
+    state.status !== "connected" ||
+    !leaseIsCurrent(lease)
+  ) {
+    return;
+  }
   const layout = state.layout;
   if (!layout || layout.panes.length === 0) return;
   const next: Record<string, string> = { ...state.paneContents };
   await Promise.all(
-    layout.panes.map(async (lp) => {
+    layout.panes.map(async (layoutPane) => {
       try {
-        const r = await bridge.call("pane.read", {
-          pane_id: lp.pane_id,
+        const result = await lease.client.call("pane.read", {
+          pane_id: layoutPane.pane_id,
           source: "visible",
           lines: 200,
           format: "ansi",
         });
-        next[lp.pane_id] = (r?.read?.text ?? "") as string;
+        next[layoutPane.pane_id] = (result?.read?.text ?? "") as string;
       } catch {
-        // keep last good content for this pane
+        // Keep the last good content for this pane.
       }
+      return undefined;
     }),
   );
-  if (state.connectionPaused) return;
-  set({ paneContents: next });
+  setForConnection(lease, { paneContents: next });
 }
 
 let contentTimer: ReturnType<typeof setInterval> | null = null;
@@ -658,7 +1052,13 @@ let updateTimer: ReturnType<typeof setInterval> | null = null;
 function startContentPolling() {
   if (contentTimer) return;
   contentTimer = setInterval(() => {
-    if (state.status === "connected" && state.layout) refreshContents();
+    if (
+      state.status === "connected" &&
+      catalogReadyForConnection &&
+      state.layout
+    ) {
+      refreshContents();
+    }
   }, 1500);
 }
 
@@ -666,7 +1066,7 @@ function startMetadataPolling() {
   if (metadataTimer) return;
   metadataTimer = setInterval(() => {
     if (state.status === "connected") {
-      scheduleRefresh();
+      if (catalogReadyForConnection) scheduleRefresh();
       void refreshBridgeStatus();
     }
   }, 1000);
@@ -765,7 +1165,7 @@ function stopPolling() {
     clearInterval(updateTimer);
     updateTimer = null;
   }
-  queued = false;
+  queuedConnectionKeys.clear();
 }
 
 function startPolling() {
@@ -774,8 +1174,200 @@ function startPolling() {
   startUpdatePolling();
 }
 
+function selectConnectionNow(connectionId: string, refresh = true): boolean {
+  if (!connectionId || connectionId === state.activeConnectionId) return false;
+  if (
+    state.connections.length > 0 &&
+    !state.connections.some((connection) => connection.id === connectionId)
+  ) {
+    return false;
+  }
+  if (
+    state.activeConnectionId === LEGACY_DEFAULT_CONNECTION_ID &&
+    typeof localStorage !== "undefined"
+  ) {
+    migrateLegacyConnectionStorage(localStorage, connectionId);
+  }
+  stopPolling();
+  disposeTerminalConnection(
+    {
+      connectionId: state.activeConnectionId,
+      generation: state.connectionGeneration,
+    },
+    true,
+  );
+  clearTerminalRelayViewports();
+  focusActionChain = Promise.resolve();
+  const generation = bridge.setActiveConnection(connectionId);
+  state = activateConnectionState(state, connectionId, generation);
+  emit();
+  if (
+    refresh &&
+    initialized &&
+    !state.connectionPaused &&
+    state.status === "connected"
+  ) {
+    startPolling();
+    void refreshNow(captureConnectionLease());
+  }
+  return true;
+}
+
+function resetActiveConnectionLease(
+  connections: ConnectionSummary[],
+  defaultConnectionId: string,
+  reconciliation: CatalogSessionReconciliation,
+) {
+  stopPolling();
+  disposeTerminalConnection(
+    {
+      connectionId: state.activeConnectionId,
+      generation: state.connectionGeneration,
+    },
+    false,
+  );
+  clearTerminalRelayViewports();
+  focusActionChain = Promise.resolve();
+  taskCompletionTracker.reset(state.activeConnectionId);
+  const generation = bridge.advanceActiveConnectionGeneration();
+  const runtimeGeneration =
+    connections.find((connection) => connection.id === state.activeConnectionId)
+      ?.generation ?? null;
+  const activeSession =
+    reconciliation.activeSession ?? emptyServerSessionState(runtimeGeneration);
+  state = {
+    ...state,
+    ...activeSession,
+    connections,
+    defaultConnectionId,
+    connectionGeneration: generation,
+    sessionsByConnectionId: {
+      ...reconciliation.sessionsByConnectionId,
+      [state.activeConnectionId]: activeSession,
+    },
+    notice: null,
+  };
+  emit();
+  if (initialized && !state.connectionPaused && state.status === "connected") {
+    startPolling();
+    void refreshNow(captureConnectionLease());
+  }
+}
+
+export function mergeConnectionCatalog(
+  previous: ConnectionSummary[],
+  values: unknown[],
+): ConnectionSummary[] {
+  return values
+    .map(parseConnectionSummary)
+    .filter(
+      (connection): connection is ConnectionSummary => connection !== null,
+    )
+    .map((connection) => {
+      const prior = previous.find((item) => item.id === connection.id);
+      if (!prior) return connection;
+      if (
+        connection.type !== undefined &&
+        prior.type !== undefined &&
+        connection.type !== prior.type
+      ) {
+        return {
+          ...prior,
+          ...connection,
+          control_socket_path: connection.control_socket_path,
+          client_socket_path: connection.client_socket_path,
+          ssh_destination: connection.ssh_destination,
+          remote_control_socket_path: connection.remote_control_socket_path,
+          remote_client_socket_path: connection.remote_client_socket_path,
+        };
+      }
+      return {
+        ...prior,
+        ...connection,
+        type: connection.type ?? prior.type,
+        read_only: connection.read_only ?? prior.read_only,
+        auto_connect: connection.auto_connect ?? prior.auto_connect,
+        control_socket_path:
+          connection.control_socket_path ?? prior.control_socket_path,
+        client_socket_path:
+          connection.client_socket_path ?? prior.client_socket_path,
+        ssh_destination: connection.ssh_destination ?? prior.ssh_destination,
+        remote_control_socket_path:
+          connection.remote_control_socket_path ??
+          prior.remote_control_socket_path,
+        remote_client_socket_path:
+          connection.remote_client_socket_path ??
+          prior.remote_client_socket_path,
+      };
+    });
+}
+
+function applyConnectionCatalog(result: unknown, requestSeq: number) {
+  if (
+    requestSeq < appliedCatalogRequestSeq ||
+    !result ||
+    typeof result !== "object"
+  ) {
+    return;
+  }
+  appliedCatalogRequestSeq = requestSeq;
+  const catalog = result as {
+    default_connection_id?: unknown;
+    connections?: unknown;
+  };
+  const defaultConnectionId =
+    typeof catalog.default_connection_id === "string" &&
+    catalog.default_connection_id.length > 0
+      ? catalog.default_connection_id
+      : state.defaultConnectionId;
+  const connections = Array.isArray(catalog.connections)
+    ? mergeConnectionCatalog(state.connections, catalog.connections)
+    : state.connections;
+  if (Array.isArray(catalog.connections)) {
+    catalogReadyForConnection = true;
+    bridge.setConnectionRuntimeGenerations(connections);
+  }
+  const nextActive = connections.find(
+    (connection) => connection.id === state.activeConnectionId,
+  );
+  const reconciliation = reconcileConnectionCatalogSessions(state, connections);
+  for (const connectionId of reconciliation.invalidatedConnectionIds) {
+    taskCompletionTracker.reset(connectionId);
+  }
+  if (nextActive && reconciliation.activeRuntimeChanged) {
+    resetActiveConnectionLease(
+      connections,
+      defaultConnectionId,
+      reconciliation,
+    );
+    return;
+  }
+
+  state = {
+    ...state,
+    ...(reconciliation.activeSession ?? {}),
+    connections,
+    defaultConnectionId,
+    sessionsByConnectionId: reconciliation.sessionsByConnectionId,
+  };
+  emit();
+  if (!nextActive) selectConnectionNow(defaultConnectionId);
+}
+
+async function refreshConnectionCatalog(): Promise<boolean> {
+  if (state.connectionPaused || state.status !== "connected") return false;
+  const requestSeq = ++catalogRequestSeq;
+  try {
+    applyConnectionCatalog(await bridge.call("connections.list"), requestSeq);
+    return catalogReadyForConnection && appliedCatalogRequestSeq >= requestSeq;
+  } catch {
+    // The catalog is bridge-global and is retried on the next status poll.
+    return false;
+  }
+}
+
 async function action<T>(
-  fn: () => Promise<T>,
+  fn: (lease: StoreConnectionLease) => Promise<T>,
   options: {
     refresh?: "scheduled" | "immediate" | "none";
     pendingFocusWorkspaceId?: string;
@@ -792,17 +1384,20 @@ async function action<T>(
     });
     return undefined;
   }
+  const lease = captureConnectionLease();
   try {
-    const r = await fn();
+    const result = await fn(lease);
+    if (!leaseIsCurrent(lease)) return undefined;
     if (options.refresh === "immediate") {
-      void refreshNow();
+      void refreshNow(lease);
     } else if (options.refresh !== "none") {
-      scheduleRefresh();
+      scheduleRefresh(lease);
     }
-    return r;
-  } catch (e) {
-    const error = e as Error;
-    set({
+    return result;
+  } catch (caught) {
+    if (!leaseIsCurrent(lease)) return undefined;
+    const error = caught as Error;
+    setForConnection(lease, {
       error: error.message,
       notice: options.failureNotice?.(error) ?? state.notice,
       pendingFocusWorkspaceId:
@@ -927,8 +1522,27 @@ export const store = {
   init() {
     if (initialized) return;
     initialized = true;
+    bridge.onHello((hello) => {
+      const defaultConnectionId = hello.default_connection_id;
+      set({ defaultConnectionId });
+      if (
+        state.activeConnectionId === LEGACY_DEFAULT_CONNECTION_ID &&
+        defaultConnectionId !== state.activeConnectionId
+      ) {
+        selectConnectionNow(defaultConnectionId, false);
+      }
+      if (state.status === "connected" && !state.connectionPaused) {
+        void refreshConnectionCatalog();
+      }
+    });
     bridge.onStatus((s) => {
-      if (s === "disconnected") clearTerminalRelayViewports();
+      if (s === "disconnected") {
+        catalogReadyForConnection = false;
+        bridge.setConnectionRuntimeGenerations([]);
+        clearTerminalRelayViewports();
+        focusActionChain = Promise.resolve();
+        queuedConnectionKeys.clear();
+      }
       const resumed =
         s === "connected" &&
         !state.connectionPaused &&
@@ -938,6 +1552,7 @@ export const store = {
         resumed
           ? {
               status: s,
+              connectionGeneration: state.connectionGeneration,
               notice: {
                 kind: "success",
                 message: "Connection resumed",
@@ -946,19 +1561,41 @@ export const store = {
             }
           : {
               status: s,
+              connectionGeneration:
+                s === "disconnected"
+                  ? bridge.clientGeneration
+                  : state.connectionGeneration,
               bridgeStatus: s === "connected" ? state.bridgeStatus : null,
             },
       );
       if (s === "connected" && !state.connectionPaused) {
-        refreshNow();
-        void refreshBridgeStatus();
+        void refreshConnectionCatalog().then((catalogReady) => {
+          if (
+            !catalogReady ||
+            state.status !== "connected" ||
+            state.connectionPaused
+          ) {
+            return;
+          }
+          void refreshNow();
+          void refreshBridgeStatus();
+        });
         if (state.pendingRestartVersion) {
           void reloadWhenUpdatedServerIsReady(state.pendingRestartVersion);
         }
       }
     });
-    bridge.onEvent(() => {
-      if (!state.connectionPaused) scheduleRefresh();
+    bridge.onEvent((event) => {
+      if (
+        !state.connectionPaused &&
+        connectionEventIsActive(
+          state,
+          event.connection_id,
+          event.connection_generation,
+        )
+      ) {
+        scheduleRefresh();
+      }
     });
     bridge.onControl((control) => {
       if (control.type === "pause_connection") {
@@ -975,7 +1612,7 @@ export const store = {
       cache: "no-store",
     }).then((r) => {
       if (r.status === 401) {
-        location.href = "/login";
+        redirectToLogin();
         return;
       }
       if (state.pendingRestartVersion) {
@@ -990,15 +1627,31 @@ export const store = {
 
   refresh: refreshNow,
 
+  /** Refresh bridge-global profile/status metadata without changing selection. */
+  refreshConnections: refreshConnectionCatalog,
+
+  /** Programmatic switch seam for the M5 selector. */
+  selectConnection(connectionId: string) {
+    return selectConnectionNow(connectionId);
+  },
+
   pauseConnection(
     detail = "This browser will stop syncing until you resume it.",
   ) {
     localStorage.setItem("connectionPaused", "true");
     stopPolling();
+    disposeTerminalConnection(
+      {
+        connectionId: state.activeConnectionId,
+        generation: state.connectionGeneration,
+      },
+      true,
+    );
     bridge.disconnect();
     set({
       connectionPaused: true,
       status: "disconnected",
+      connectionGeneration: bridge.clientGeneration,
       bridgeStatus: null,
       terminalAttachEpoch: state.terminalAttachEpoch + 1,
       notice: {
@@ -1010,10 +1663,10 @@ export const store = {
   },
 
   pauseOtherClients() {
-    return action(async () => {
+    return action(async (lease) => {
       const result = await bridge.call("bridge.pause_others");
       const pausedClients = Number(result?.paused_clients ?? 0);
-      set({
+      setForConnection(lease, {
         notice: {
           kind: pausedClients > 0 ? "success" : "info",
           message:
@@ -1059,15 +1712,19 @@ export const store = {
       state.panes.find((pane) => pane.tab_id === tabId);
     if (workspaceId) set({ pendingFocusWorkspaceId: workspaceId });
     return action(
-      () =>
+      (lease) =>
         enqueueFocusAction(async () => {
-          const relaySize = terminalRelayViewportForTab(tabId);
+          const relaySize = terminalRelayViewportForTab(
+            lease.connectionId,
+            lease.generation,
+            tabId,
+          );
           if (relaySize) {
             // Pre-size background runtimes for the target tab while the current
             // tab's direct attachments are still locked. The bridge confirms the
             // projected viewport through pane.layout before focus proceeds, so
             // the target is stable before it becomes visible.
-            await bridge
+            await lease.client
               .call("terminal.relay_resize", {
                 cols: relaySize.cols,
                 rows: relaySize.rows,
@@ -1076,17 +1733,19 @@ export const store = {
               .catch(() => null);
           }
           if (workspaceId) {
-            await bridge.call("workspace.focus", { workspace_id: workspaceId });
+            await lease.client.call("workspace.focus", {
+              workspace_id: workspaceId,
+            });
           }
-          return bridge.call("tab.focus", { tab_id: tabId });
+          return lease.client.call("tab.focus", { tab_id: tabId });
         }),
       { refresh: "immediate", pendingFocusWorkspaceId: workspaceId },
     );
   },
 
   createTab(workspaceId: string, options: { numberedLabel?: boolean } = {}) {
-    return action(async () => {
-      const result: unknown = await bridge.call("tab.create", {
+    return action(async (lease) => {
+      const result: unknown = await lease.client.call("tab.create", {
         workspace_id: workspaceId,
         focus: true,
       });
@@ -1095,14 +1754,14 @@ export const store = {
       const rename = numberedCreatedTabRename(result);
       if (!rename) return result;
       try {
-        await bridge.call("tab.rename", {
+        await lease.client.call("tab.rename", {
           tab_id: rename.tabId,
           label: rename.label,
         });
       } catch (error) {
         // The tab already exists, so keep the successful create visible while
         // surfacing the non-fatal naming failure to the user.
-        set({
+        setForConnection(lease, {
           notice: {
             kind: "error",
             message: "Tab created, but naming failed",
@@ -1115,32 +1774,49 @@ export const store = {
   },
 
   closeTab(tabId: string) {
-    return action(() => bridge.call("tab.close", { tab_id: tabId }));
+    return action((lease) => lease.client.call("tab.close", { tab_id: tabId }));
   },
 
   renameTab(tabId: string, label: string) {
-    return action(() => bridge.call("tab.rename", { tab_id: tabId, label }));
+    return action((lease) =>
+      lease.client.call("tab.rename", { tab_id: tabId, label }),
+    );
   },
 
   focusWorkspace(workspaceId: string) {
     set({ pendingFocusWorkspaceId: workspaceId });
     return action(
-      () =>
+      (lease) =>
         enqueueFocusAction(() =>
-          bridge.call("workspace.focus", { workspace_id: workspaceId }),
+          lease.client.call("workspace.focus", { workspace_id: workspaceId }),
         ),
       { refresh: "immediate", pendingFocusWorkspaceId: workspaceId },
     );
   },
 
   focusTaskNotificationTarget(target: TaskNotificationTarget) {
+    if (!taskNotificationTargetIsCurrent(state, target)) {
+      return Promise.resolve(undefined);
+    }
+    if (
+      target.connectionId !== state.activeConnectionId &&
+      !selectConnectionNow(target.connectionId)
+    ) {
+      return Promise.resolve(undefined);
+    }
+    if (
+      !taskNotificationTargetIsCurrent(state, target) ||
+      state.serverRuntimeGeneration !== target.runtimeGeneration
+    ) {
+      return Promise.resolve(undefined);
+    }
     set({ pendingFocusWorkspaceId: target.workspaceId });
     return action(
-      () =>
+      (lease) =>
         enqueueFocusAction(async () => {
           let pane: Pane | null = null;
           try {
-            const result = await bridge.call("pane.get", {
+            const result = await lease.client.call("pane.get", {
               pane_id: target.paneId,
             });
             pane = (result?.pane ?? null) as Pane | null;
@@ -1149,16 +1825,18 @@ export const store = {
           }
 
           const workspaceId = pane?.workspace_id ?? target.workspaceId;
-          await bridge.call("workspace.focus", { workspace_id: workspaceId });
+          await lease.client.call("workspace.focus", {
+            workspace_id: workspaceId,
+          });
           if (!pane) return null;
 
           try {
-            await bridge.call("tab.focus", { tab_id: pane.tab_id });
+            await lease.client.call("tab.focus", { tab_id: pane.tab_id });
           } catch {
             // The pane or tab can close between pane.get and tab.focus.
             return null;
           }
-          set({ selectedPaneId: pane.pane_id });
+          setForConnection(lease, { selectedPaneId: pane.pane_id });
           return pane;
         }),
       {
@@ -1169,27 +1847,30 @@ export const store = {
   },
 
   createWorkspace(label?: string, cwd?: string) {
-    return action(() =>
-      bridge.call("workspace.create", { label, cwd, focus: true }),
+    return action((lease) =>
+      lease.client.call("workspace.create", { label, cwd, focus: true }),
     );
   },
 
   renameWorkspace(workspaceId: string, label: string) {
-    return action(() =>
-      bridge.call("workspace.rename", { workspace_id: workspaceId, label }),
+    return action((lease) =>
+      lease.client.call("workspace.rename", {
+        workspace_id: workspaceId,
+        label,
+      }),
     );
   },
 
   closeWorkspace(workspaceId: string) {
-    return action(() =>
-      bridge.call("workspace.close", { workspace_id: workspaceId }),
+    return action((lease) =>
+      lease.client.call("workspace.close", { workspace_id: workspaceId }),
     );
   },
 
   gitPullWorkspace(workspaceId: string) {
     return action(
-      async () => {
-        set({
+      async (lease) => {
+        setForConnection(lease, {
           notice: {
             kind: "info",
             message: "Running git pull",
@@ -1199,7 +1880,7 @@ export const store = {
             loading: true,
           },
         });
-        const result = await bridge.call("git.pull", {
+        const result = await lease.client.call("git.pull", {
           workspace_id: workspaceId,
         });
         const output = [result?.stdout, result?.stderr]
@@ -1209,7 +1890,7 @@ export const store = {
           )
           .join("\n")
           .trim();
-        set({
+        setForConnection(lease, {
           notice: {
             kind: "success",
             message: "Git pull completed",
@@ -1235,8 +1916,8 @@ export const store = {
 
   createWorktree(workspaceId: string, branch: string) {
     return action(
-      async () => {
-        set({
+      async (lease) => {
+        setForConnection(lease, {
           notice: {
             kind: "info",
             message: "Creating worktree",
@@ -1246,7 +1927,7 @@ export const store = {
             loading: true,
           },
         });
-        const result = await bridge.call("worktree.create", {
+        const result = await lease.client.call("worktree.create", {
           workspace_id: workspaceId,
           branch,
           focus: true,
@@ -1258,10 +1939,10 @@ export const store = {
           ? summarizeDirectHookResult(setupHook)
           : null;
         if (setupNotice) {
-          set({ notice: setupNotice });
+          setForConnection(lease, { notice: setupNotice });
         } else {
           const commit = String(result?.base_sync?.commit ?? "").slice(0, 12);
-          set({
+          setForConnection(lease, {
             notice: {
               kind: "success",
               message: "Worktree created",
@@ -1289,8 +1970,8 @@ export const store = {
     const locator = trimmed.startsWith("/")
       ? { path: trimmed }
       : { branch: trimmed };
-    return action(async () => {
-      const result = await bridge.call("worktree.open", {
+    return action(async (lease) => {
+      const result = await lease.client.call("worktree.open", {
         workspace_id: workspaceId,
         ...locator,
         focus,
@@ -1301,7 +1982,7 @@ export const store = {
       const openedNotice = openedHook
         ? summarizeDirectHookResult(openedHook)
         : null;
-      if (openedNotice) set({ notice: openedNotice });
+      if (openedNotice) setForConnection(lease, { notice: openedNotice });
       return result;
     });
   },
@@ -1314,8 +1995,8 @@ export const store = {
     const locator = trimmed.startsWith("/")
       ? { path: trimmed }
       : { branch: trimmed };
-    return action(async () => {
-      const result = await bridge.call("worktree.open", {
+    return action(async (lease) => {
+      const result = await lease.client.call("worktree.open", {
         cwd,
         ...locator,
         focus,
@@ -1326,15 +2007,15 @@ export const store = {
       const openedNotice = openedHook
         ? summarizeDirectHookResult(openedHook)
         : null;
-      if (openedNotice) set({ notice: openedNotice });
+      if (openedNotice) setForConnection(lease, { notice: openedNotice });
       return result;
     });
   },
 
   removeWorktree(workspaceId: string, force = false) {
     return action(
-      async () => {
-        set({
+      async (lease) => {
+        setForConnection(lease, {
           notice: {
             kind: "info",
             message: "Removing worktree",
@@ -1342,7 +2023,7 @@ export const store = {
             loading: true,
           },
         });
-        const result = await bridge.call(
+        const result = await lease.client.call(
           "worktree.remove",
           {
             workspace_id: workspaceId,
@@ -1359,15 +2040,18 @@ export const store = {
         const beforeRemoveNotice = beforeRemoveHook
           ? summarizeDirectHookResult(beforeRemoveHook)
           : null;
-        if (beforeRemoveNotice) set({ notice: beforeRemoveNotice });
+        if (beforeRemoveNotice) {
+          setForConnection(lease, { notice: beforeRemoveNotice });
+        }
         if (result?.skipped_remove) {
-          if (!beforeRemoveNotice) set({ notice: null });
+          if (!beforeRemoveNotice) setForConnection(lease, { notice: null });
           return result;
         }
 
-        await refreshNow();
-        await bridge.call("terminal.detach").catch(() => null);
-        set({ terminalAttachEpoch: state.terminalAttachEpoch + 1 });
+        await refreshNow(lease);
+        setForConnection(lease, {
+          terminalAttachEpoch: state.terminalAttachEpoch + 1,
+        });
         const removedHook = result?.removed_hook as
           | WorktreeHookRunResult
           | undefined;
@@ -1380,9 +2064,9 @@ export const store = {
           removedNotice,
         );
         if (completionNotice) {
-          set({ notice: completionNotice });
+          setForConnection(lease, { notice: completionNotice });
         } else if (!beforeRemoveNotice) {
-          set({
+          setForConnection(lease, {
             notice: {
               kind: "success",
               message: "Worktree removed",
@@ -1402,27 +2086,27 @@ export const store = {
   },
 
   setRepoWorktreeHooksEnabled(key: string, enabled: boolean) {
-    return action(async () => {
-      const result = await bridge.call("settings.update_repo", {
+    return action(async (lease) => {
+      const result = await lease.client.call("settings.update_repo", {
         key,
         settings: { worktree_hooks_enabled: enabled },
       });
-      await refreshNow();
+      await refreshNow(lease);
       return result;
     });
   },
 
   setWorkspaceAutoSyncEnabled(workspaceId: string, enabled: boolean) {
     return action(
-      async () => {
-        const result = await bridge.call(
+      async (lease) => {
+        const result = await lease.client.call(
           "settings.workspace_auto_sync.update",
           {
             workspace_id: workspaceId,
             enabled,
           },
         );
-        set({
+        setForConnection(lease, {
           notice: {
             kind: "success",
             message: enabled
@@ -1449,12 +2133,12 @@ export const store = {
 
   setWorkspaceAutoSyncConfigEnabled(key: string, enabled: boolean) {
     return action(
-      async () => {
-        const result = await bridge.call(
+      async (lease) => {
+        const result = await lease.client.call(
           "settings.workspace_auto_sync.update_key",
           { key, enabled },
         );
-        set({
+        setForConnection(lease, {
           notice: {
             kind: "success",
             message: enabled
@@ -1654,15 +2338,15 @@ export const store = {
   },
 
   sendText(paneId: string, text: string) {
-    return action(() =>
-      bridge.call("pane.send_text", { pane_id: paneId, text }),
+    return action((lease) =>
+      lease.client.call("pane.send_text", { pane_id: paneId, text }),
     );
   },
 
   sendKeys(paneId: string, keys: string) {
     // Herdr expects `keys` to be a sequence of key-combo strings.
-    return action(() =>
-      bridge.call("pane.send_keys", { pane_id: paneId, keys: [keys] }),
+    return action((lease) =>
+      lease.client.call("pane.send_keys", { pane_id: paneId, keys: [keys] }),
     );
   },
 
@@ -1670,15 +2354,16 @@ export const store = {
     const pane = state.panes.find((p) => p.pane_id === paneId);
     if (pane?.workspace_id) set({ pendingFocusWorkspaceId: pane.workspace_id });
     return action(
-      () =>
+      (lease) =>
         enqueueFocusAction(async () => {
           if (pane?.workspace_id) {
-            await bridge.call("workspace.focus", {
+            await lease.client.call("workspace.focus", {
               workspace_id: pane.workspace_id,
             });
           }
-          if (pane) await bridge.call("tab.focus", { tab_id: pane.tab_id });
-          set({ selectedPaneId: paneId });
+          if (pane)
+            await lease.client.call("tab.focus", { tab_id: pane.tab_id });
+          setForConnection(lease, { selectedPaneId: paneId });
           return pane;
         }),
       { refresh: "immediate", pendingFocusWorkspaceId: pane?.workspace_id },
@@ -1686,21 +2371,23 @@ export const store = {
   },
 
   splitPane(paneId: string, direction: "right" | "down") {
-    return action(async () => {
-      const result = await bridge.call("pane.split", {
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.split", {
         target_pane_id: paneId,
         direction,
         focus: true,
       });
       const nextPaneId =
         typeof result?.pane?.pane_id === "string" ? result.pane.pane_id : null;
-      if (nextPaneId) set({ selectedPaneId: nextPaneId });
+      if (nextPaneId) setForConnection(lease, { selectedPaneId: nextPaneId });
       return result;
     });
   },
 
   zoomPane(paneId: string) {
-    return action(() => bridge.call("pane.zoom", { pane_id: paneId }));
+    return action((lease) =>
+      lease.client.call("pane.zoom", { pane_id: paneId }),
+    );
   },
 
   resizePane(
@@ -1708,14 +2395,14 @@ export const store = {
     direction: "left" | "right" | "up" | "down",
     amount: number,
   ) {
-    return action(async () => {
-      const result = await bridge.call("pane.resize", {
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.resize", {
         pane_id: paneId,
         direction,
         amount,
       });
       const layout = result?.resize?.layout;
-      if (layout) set({ layout });
+      if (layout) setForConnection(lease, { layout });
       return result;
     });
   },
@@ -1724,8 +2411,8 @@ export const store = {
     paneId: string,
     direction: "left" | "right" | "up" | "down",
   ) {
-    return action(async () => {
-      const result = await bridge.call("pane.focus_direction", {
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.focus_direction", {
         pane_id: paneId,
         direction,
       });
@@ -1734,15 +2421,42 @@ export const store = {
         typeof focus?.focused_pane_id === "string"
           ? focus.focused_pane_id
           : null;
-      if (focusedPaneId) set({ selectedPaneId: focusedPaneId });
-      if (focus?.layout) set({ layout: focus.layout as PaneLayout });
-      await refreshNow();
+      if (focusedPaneId) {
+        setForConnection(lease, { selectedPaneId: focusedPaneId });
+      }
+      if (focus?.layout) {
+        setForConnection(lease, { layout: focus.layout as PaneLayout });
+      }
+      await refreshNow(lease);
       return result;
     });
   },
 
   closePane(paneId: string) {
-    return action(() => bridge.call("pane.close", { pane_id: paneId }));
+    return action((lease) =>
+      lease.client.call("pane.close", { pane_id: paneId }),
+    );
+  },
+};
+
+/** Test-only singleton seam for deterministic deferred production-store tests. */
+export const __storeTesting = {
+  replaceState(snapshot: State) {
+    stopPolling();
+    refreshingConnectionKeys.clear();
+    queuedConnectionKeys.clear();
+    focusActionChain = Promise.resolve();
+    taskCompletionTracker.clear();
+    state = snapshot;
+    catalogReadyForConnection = snapshot.connections.length > 0;
+    bridge.setConnectionRuntimeGenerations(snapshot.connections);
+  },
+  applyCatalog(connections: ConnectionSummary[], defaultConnectionId: string) {
+    const requestSeq = ++catalogRequestSeq;
+    applyConnectionCatalog(
+      { connections, default_connection_id: defaultConnectionId },
+      requestSeq,
+    );
   },
 };
 

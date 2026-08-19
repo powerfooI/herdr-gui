@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FolderOpen, GitBranch, RefreshCw, Settings, X } from "lucide-react";
-import { bridge } from "../api";
 import { luckyWorktreeBranchName } from "../luckyName";
+import { useConnectionClient } from "../useConnectionClient";
 import { store, useStore } from "../store";
 import type { WorktreeList } from "../types";
 import { resolveWorktreeOpenSource, worktreeCreationSource } from "../worktree";
@@ -40,6 +40,7 @@ export function WorktreeLifecycleDialog({
   onClose: () => void;
 }) {
   const s = useStore();
+  const connectionClient = useConnectionClient();
   const selectedWorkspace = s.workspaces.find(
     (workspace) => workspace.workspace_id === workspaceId,
   );
@@ -72,6 +73,7 @@ export function WorktreeLifecycleDialog({
     promise: Promise<void>;
   } | null>(null);
   const operationRunningRef = useRef(false);
+  const operationIdRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
@@ -87,9 +89,10 @@ export function WorktreeLifecycleDialog({
       if (showLoading) setLoading(true);
       const promise = (async () => {
         try {
-          const worktreeList = (await bridge.call("worktree.list", {
+          const worktreeList = (await connectionClient.call("worktree.list", {
             workspace_id: repositoryWorkspaceId,
           })) as WorktreeList;
+          if (!connectionClient.isCurrent()) return;
           const repoWorkspaces = store
             .get()
             .workspaces.filter(
@@ -97,7 +100,7 @@ export function WorktreeLifecycleDialog({
                 workspace.worktree?.repo_key === worktreeList.source.repo_key,
             );
           const [hookResult, ...syncResults] = await Promise.all([
-            bridge
+            connectionClient
               .call("settings.worktree_hooks.get", {
                 workspace_id: repositoryWorkspaceId,
               })
@@ -107,14 +110,19 @@ export function WorktreeLifecycleDialog({
                 error: (hookError as Error).message,
               })),
             ...repoWorkspaces.map((workspace) =>
-              bridge
+              connectionClient
                 .call("settings.workspace_auto_sync.get", {
                   workspace_id: workspace.workspace_id,
                 })
                 .catch(() => null),
             ),
           ]);
-          if (currentRequest !== requestId.current) return;
+          if (
+            !connectionClient.isCurrent() ||
+            currentRequest !== requestId.current
+          ) {
+            return;
+          }
           const syncByWorkspace: Record<string, WorkspaceAutoSyncInfo> = {};
           for (const result of syncResults) {
             if (!result || typeof result.workspace_id !== "string") continue;
@@ -129,11 +137,19 @@ export function WorktreeLifecycleDialog({
           setAutoSync(syncByWorkspace);
           setError("");
         } catch (loadError) {
-          if (currentRequest === requestId.current) {
+          if (
+            connectionClient.isCurrent() &&
+            currentRequest === requestId.current
+          ) {
             setError((loadError as Error).message);
           }
         } finally {
-          if (currentRequest === requestId.current) setLoading(false);
+          if (
+            connectionClient.isCurrent() &&
+            currentRequest === requestId.current
+          ) {
+            setLoading(false);
+          }
         }
       })();
       inFlightLoad.current = {
@@ -148,7 +164,7 @@ export function WorktreeLifecycleDialog({
         }
       }
     },
-    [repositoryWorkspaceId],
+    [connectionClient, repositoryWorkspaceId],
   );
 
   useEffect(() => {
@@ -157,7 +173,9 @@ export function WorktreeLifecycleDialog({
     setHooks(null);
     setAutoSync({});
     setError("");
-    if (!operationRunningRef.current) setOperation(null);
+    setOperation(null);
+    operationIdRef.current += 1;
+    operationRunningRef.current = false;
     void load(true, true);
     const timer = window.setInterval(() => void load(false), 5_000);
     return () => {
@@ -209,13 +227,16 @@ export function WorktreeLifecycleDialog({
     label: string,
     action: () => Promise<unknown>,
   ) => {
-    if (operationRunningRef.current) return;
+    if (operationRunningRef.current || !connectionClient.isCurrent()) return;
+    const operationId = ++operationIdRef.current;
     operationRunningRef.current = true;
     setOperation({ key, label, status: "running" });
     try {
       const result = await action();
+      if (!connectionClient.isCurrent()) return;
       if (result === undefined) {
         await store.refresh();
+        if (!connectionClient.isCurrent()) return;
         await load(false, true);
         setOperation({
           key,
@@ -226,7 +247,9 @@ export function WorktreeLifecycleDialog({
         return;
       }
       await store.refresh();
+      if (!connectionClient.isCurrent()) return;
       await load(false, true);
+      if (!connectionClient.isCurrent()) return;
       const actionError = lifecycleActionError(result);
       const actionWarning = lifecycleActionWarning(result);
       setOperation({
@@ -240,8 +263,11 @@ export function WorktreeLifecycleDialog({
         detail: actionError ?? actionWarning,
       });
     } catch (actionError) {
+      if (!connectionClient.isCurrent()) return;
       await store.refresh().catch(() => undefined);
+      if (!connectionClient.isCurrent()) return;
       await load(false, true).catch(() => undefined);
+      if (!connectionClient.isCurrent()) return;
       setOperation({
         key,
         label,
@@ -249,7 +275,9 @@ export function WorktreeLifecycleDialog({
         detail: (actionError as Error).message,
       });
     } finally {
-      operationRunningRef.current = false;
+      if (operationIdRef.current === operationId) {
+        operationRunningRef.current = false;
+      }
     }
   };
 

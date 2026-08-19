@@ -1,6 +1,10 @@
 import { basename } from "node:path";
 import type { HerdrCall, SessionFile } from "./session-types";
-import { resolveAgentSession } from "./session-resolver";
+import {
+  createAgentSessionResolverContext,
+  type AgentSessionResolverContext,
+  resolveAgentSession,
+} from "./session-resolver";
 import {
   localAgentSessionFiles,
   type AgentSessionFileAccess,
@@ -11,6 +15,43 @@ import { isRecord } from "./session-utils";
 import { summarizeTokenUsage } from "./token-usage";
 
 const MAX_MESSAGES_PER_AGENT = 200;
+
+export function createAgentSessionHandlers(args: {
+  herdrCall: HerdrCall;
+  files: AgentSessionFileAccess;
+}) {
+  const resolverContext = createAgentSessionResolverContext();
+  return {
+    readHistory: (params: Record<string, unknown>) =>
+      readAgentMessageHistory(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      ),
+    readSummary: (params: Record<string, unknown>) =>
+      readAgentSessionSummary(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      ),
+    downloadFile: (params: Record<string, unknown>) =>
+      downloadAgentSessionFile(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      ),
+    downloadAtif: (params: Record<string, unknown>) =>
+      downloadAgentSessionAtif(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      ),
+  };
+}
 
 function projectSession(
   agent: string,
@@ -58,8 +99,14 @@ export async function readAgentMessageHistory(
   rawParams: Record<string, unknown>,
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
+  resolverContext?: AgentSessionResolverContext,
 ) {
-  const resolved = await resolveAgentSession(rawParams, herdrCall, files);
+  const resolved = await resolveAgentSession(
+    rawParams,
+    herdrCall,
+    files,
+    resolverContext,
+  );
   if (!resolved.file) {
     return {
       ...resolved,
@@ -81,8 +128,14 @@ export async function readAgentSessionSummary(
   rawParams: Record<string, unknown>,
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
+  resolverContext?: AgentSessionResolverContext,
 ) {
-  const resolved = await resolveAgentSession(rawParams, herdrCall, files);
+  const resolved = await resolveAgentSession(
+    rawParams,
+    herdrCall,
+    files,
+    resolverContext,
+  );
   if (!resolved.file) {
     return {
       ...resolved,
@@ -133,8 +186,14 @@ export async function downloadAgentSessionFile(
   rawParams: Record<string, unknown>,
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
+  resolverContext?: AgentSessionResolverContext,
 ) {
-  const resolved = await resolveAgentSession(rawParams, herdrCall, files);
+  const resolved = await resolveAgentSession(
+    rawParams,
+    herdrCall,
+    files,
+    resolverContext,
+  );
   if (!resolved.file) {
     return new Response(resolved.detail || "session file unavailable", {
       status: 404,
@@ -156,8 +215,14 @@ export async function downloadAgentSessionAtif(
   rawParams: Record<string, unknown>,
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
+  resolverContext?: AgentSessionResolverContext,
 ) {
-  const resolved = await resolveAgentSession(rawParams, herdrCall, files);
+  const resolved = await resolveAgentSession(
+    rawParams,
+    herdrCall,
+    files,
+    resolverContext,
+  );
   if (!resolved.file) {
     return new Response(resolved.detail || "session file unavailable", {
       status: 404,

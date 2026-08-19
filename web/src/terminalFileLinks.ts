@@ -65,6 +65,7 @@ export function findTerminalFileLinkCandidates(
 
 type CacheEntry = { path: string | null; expiresAt: number };
 type BatchResolver = (
+  scopeId: string,
   workspaceId: string,
   candidates: string[],
 ) => Promise<ResolvedTerminalFile[]>;
@@ -80,11 +81,12 @@ export class TerminalFileResolutionCache {
       negativeTtlMs?: number;
       maxEntries?: number;
       now?: () => number;
+      isScopeCurrent?: (scopeId: string) => boolean;
     } = {},
   ) {}
 
-  private key(workspaceId: string, candidate: string) {
-    return `${workspaceId}\0${candidate}`;
+  private key(scopeId: string, workspaceId: string, candidate: string) {
+    return `${scopeId}\0${workspaceId}\0${candidate}`;
   }
 
   private remember(key: string, path: string | null) {
@@ -102,7 +104,7 @@ export class TerminalFileResolutionCache {
     }
   }
 
-  async resolve(workspaceId: string, rawCandidates: string[]) {
+  async resolve(scopeId: string, workspaceId: string, rawCandidates: string[]) {
     const candidates = Array.from(new Set(rawCandidates)).slice(
       0,
       MAX_CANDIDATES_PER_LINE,
@@ -113,7 +115,7 @@ export class TerminalFileResolutionCache {
     const now = this.options.now?.() ?? Date.now();
 
     for (const candidate of candidates) {
-      const key = this.key(workspaceId, candidate);
+      const key = this.key(scopeId, workspaceId, candidate);
       const cached = this.entries.get(key);
       if (cached && cached.expiresAt > now) {
         if (cached.path) resolved.set(candidate, cached.path);
@@ -126,22 +128,27 @@ export class TerminalFileResolutionCache {
     }
 
     if (missing.length > 0) {
-      const request = this.resolveBatch(workspaceId, missing).then((files) => {
-        const byCandidate = new Map(
-          files
-            .filter((file) => missing.includes(file.candidate) && file.path)
-            .map((file) => [file.candidate, file.path]),
-        );
-        for (const candidate of missing) {
-          this.remember(
-            this.key(workspaceId, candidate),
-            byCandidate.get(candidate) ?? null,
+      const request = this.resolveBatch(scopeId, workspaceId, missing).then(
+        (files) => {
+          if (this.options.isScopeCurrent?.(scopeId) === false) {
+            return new Map<string, string>();
+          }
+          const byCandidate = new Map(
+            files
+              .filter((file) => missing.includes(file.candidate) && file.path)
+              .map((file) => [file.candidate, file.path]),
           );
-        }
-        return byCandidate;
-      });
+          for (const candidate of missing) {
+            this.remember(
+              this.key(scopeId, workspaceId, candidate),
+              byCandidate.get(candidate) ?? null,
+            );
+          }
+          return byCandidate;
+        },
+      );
       for (const candidate of missing) {
-        const key = this.key(workspaceId, candidate);
+        const key = this.key(scopeId, workspaceId, candidate);
         const item = request.then((files) => files.get(candidate) ?? null);
         this.inFlight.set(key, item);
         item.then(
@@ -158,6 +165,8 @@ export class TerminalFileResolutionCache {
         if (path) resolved.set(candidate, path);
       }),
     );
-    return resolved;
+    return this.options.isScopeCurrent?.(scopeId) === false
+      ? new Map<string, string>()
+      : resolved;
   }
 }

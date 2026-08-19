@@ -1,8 +1,10 @@
-export type TerminalWheelScroll = {
+export type TerminalScroll = {
   direction: "up" | "down";
   lines: number;
-  source: "wheel";
+  source: "wheel" | "page-key";
 };
+
+export type TerminalWheelScroll = TerminalScroll & { source: "wheel" };
 
 const DOM_DELTA_PIXEL = 0;
 const DOM_DELTA_LINE = 1;
@@ -37,7 +39,7 @@ export function terminalPageScroll(
   direction: "up" | "down",
   rows: number,
   amount: "full" | "half" = "full",
-): TerminalWheelScroll {
+): TerminalScroll {
   const viewportLines = Math.max(1, rows - 2);
   return {
     direction,
@@ -45,6 +47,6 @@ export function terminalPageScroll(
       amount === "half"
         ? Math.max(1, Math.floor(viewportLines / 2))
         : viewportLines,
-    source: "wheel",
+    source: amount === "full" ? "page-key" : "wheel",
   };
 }

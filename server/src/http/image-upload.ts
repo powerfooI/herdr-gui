@@ -1,3 +1,5 @@
+import { sshCommandArgv } from "../bridge/ssh-command";
+
 export function createImageUploadHandler(args: {
   sshHost: () => string | undefined;
 }) {
@@ -24,7 +26,7 @@ export function createImageUploadHandler(args: {
 
       if (sshHost) {
         const remotePath = `/tmp/${name}`;
-        const proc = Bun.spawn(["ssh", sshHost, `cat > ${remotePath}`], {
+        const proc = Bun.spawn(sshCommandArgv(sshHost, `cat > ${remotePath}`), {
           stdin: buf,
           stdout: "pipe",
           stderr: "pipe",
