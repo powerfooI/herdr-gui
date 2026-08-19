@@ -87,7 +87,7 @@ describe("HerdrClient one-shot lifecycle", () => {
     });
     const client = new HerdrClient(
       await startServer((socket) => {
-        socket.once("close", resolveClosed);
+        socket.once("close", () => resolveClosed());
       }),
     );
 
