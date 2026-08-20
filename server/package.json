@@ -1,7 +1,7 @@
 {
   "name": "herdr-gui-server",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "license": "MIT",
   "type": "module",
   "scripts": {

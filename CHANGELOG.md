@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.2 - 2026-08-20
+
 ### Added
 
 - Paste text or images into the terminal on mobile from a configurable Paste
