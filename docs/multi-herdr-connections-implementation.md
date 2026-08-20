@@ -55,7 +55,9 @@ Each `ConnectionRuntime` owns its own:
 - immutable connection identity and manager generation;
 - control/render socket paths and `HerdrClient`;
 - terminal bridge, thin clients, viewer maps, and clipboard relay;
-- event subscription and reconnect lifecycle;
+- event subscription and reconnect lifecycle, plus a per-pane
+  `pane.agent_status_changed` subscription that follows agent membership so
+  status transitions reach browsers without waiting for metadata polling;
 - file, Git, worktree, hooks, agent-session, settings, and auto-sync services;
 - local transport or supervised SSH tunnel;
 - cleanup and status publication.
@@ -317,6 +319,8 @@ server seam if Bun exposes one.
 - Profiles/persistence/service: `server/src/connections/profiles.ts`,
   `server/src/connections/profile-service.ts`
 - Runtime composition: `server/src/connections/runtime.ts`
+- Event/agent-status subscriptions: `server/src/connections/subscription-loop.ts`,
+  `server/src/connections/agent-status-subscription.ts`
 - RPC/HTTP protocol: `server/src/connections/protocol.ts`,
   `server/src/connections/rpc-routing.ts`,
   `server/src/connections/http-routing.ts`

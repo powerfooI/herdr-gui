@@ -4,6 +4,11 @@ import * as net from "node:net";
 const MAX_NDJSON_LINE_BYTES = 1024 * 1024;
 const SUBSCRIPTION_ACK_TIMEOUT_MS = 8000;
 
+/** Subscription selector: a bare event type or a parameterized subscription. */
+export type HerdrSubscription =
+  | string
+  | { type: string; [key: string]: unknown };
+
 /**
  * Minimal NDJSON client for the Herdr local socket.
  *
@@ -122,7 +127,7 @@ export class HerdrClient extends EventEmitter {
    * promise that resolves once the subscription is acknowledged.
    */
   subscribe(
-    types: string[],
+    types: HerdrSubscription[],
     ackTimeoutMs = SUBSCRIPTION_ACK_TIMEOUT_MS,
   ): {
     close: () => void;
@@ -175,7 +180,11 @@ export class HerdrClient extends EventEmitter {
         JSON.stringify({
           id: "sub",
           method: "events.subscribe",
-          params: { subscriptions: types.map((t) => ({ type: t })) },
+          params: {
+            subscriptions: types.map((t) =>
+              typeof t === "string" ? { type: t } : t,
+            ),
+          },
         }) + "\n",
       );
     });

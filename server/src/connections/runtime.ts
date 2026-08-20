@@ -27,6 +27,7 @@ import {
   createWorktreeRemovalCoordinator,
   createWorktreeRemovalRuntime,
 } from "../worktree/remove";
+import { createAgentStatusSubscriptionLoop } from "./agent-status-subscription";
 import { sanitizeConnectionError } from "./manager";
 import { createEventSubscriptionLoop } from "./subscription-loop";
 import { type ConnectionIdentity, LEGACY_DEFAULT_CONNECTION } from "./types";
@@ -187,7 +188,27 @@ export function createLegacyConnectionRuntime(args: {
     },
   });
 
-  const onHerdrEvent = (event: unknown) => args.onEvent(event, identity);
+  const agentStatusSubscriptions = createAgentStatusSubscriptionLoop({
+    herdr,
+    connectionId: identity.id,
+    onSubscribeError: (error) =>
+      console.error(
+        `[bridge] agent status subscribe failed connection=${identity.id}:`,
+        sanitizeConnectionError(error),
+        "- retrying",
+      ),
+    onListError: (error) =>
+      console.error(
+        `[bridge] agent status pane list failed connection=${identity.id}:`,
+        sanitizeConnectionError(error),
+      ),
+    log: (message) => console.log(`[bridge] ${message}`),
+  });
+
+  const onHerdrEvent = (event: unknown) => {
+    agentStatusSubscriptions.handleHerdrEvent(event);
+    args.onEvent(event, identity);
+  };
   const onHerdrError = (error: unknown) => args.onError?.(error, identity);
   herdr.on("event", onHerdrEvent);
   herdr.on("error", onHerdrError);
@@ -237,6 +258,7 @@ export function createLegacyConnectionRuntime(args: {
     backgroundStarted = true;
     workspaceAutoSync.start();
     subscriptionLoop.start();
+    agentStatusSubscriptions.start();
   }
 
   function stop() {
@@ -247,12 +269,14 @@ export function createLegacyConnectionRuntime(args: {
     const autoSyncStop = workspaceAutoSync.stop();
     terminalBridge.dispose();
     const subscriptionStop = subscriptionLoop.stop();
+    const agentStatusStop = agentStatusSubscriptions.stop();
     const transportCleanup = sshTunnel.cleanupAutoSshTunnel();
     const transportStop =
       transportStart?.catch(() => undefined) ?? Promise.resolve();
     stopTask = Promise.all([
       autoSyncStop,
       subscriptionStop,
+      agentStatusStop,
       transportCleanup,
       transportStop,
     ])

@@ -1605,6 +1605,22 @@ export const store = {
         );
       }
     });
+    // Browsers throttle timers in hidden tabs, which stalls the metadata
+    // poll that carries agent statuses. Catch up as soon as the page is
+    // visible, focused, or back online instead of waiting out the throttle.
+    const refreshOnReturn = () => {
+      if (state.connectionPaused || state.status !== "connected") return;
+      void refreshNow();
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) refreshOnReturn();
+      });
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", refreshOnReturn);
+      window.addEventListener("online", refreshOnReturn);
+    }
     // If the server requires a password and the session is missing/expired,
     // bounce to the login page instead of spinning on a failing socket.
     fetch("/api/health", {

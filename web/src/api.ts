@@ -162,7 +162,8 @@ export interface HerdrEventMsg {
   connection_id: string;
   connection_generation?: number;
   event: string;
-  data: { type: string; [k: string]: unknown };
+  /** Some Herdr events (e.g. pane.agent_status_changed) omit data.type. */
+  data: { type?: string; [k: string]: unknown };
 }
 
 export interface TerminalPush {
@@ -691,7 +692,6 @@ export class Bridge {
         !msg.data ||
         typeof msg.data !== "object" ||
         Array.isArray(msg.data) ||
-        typeof msg.data.type !== "string" ||
         !this.pushGenerationMatches(
           msg.connection_id,
           msg.connection_generation,

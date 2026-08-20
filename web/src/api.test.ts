@@ -299,6 +299,48 @@ describe("bridge connection lifecycle", () => {
     expect(received).toEqual([{ connection_id: "legacy-default", ...push }]);
   });
 
+  test("dispatches agent status events that omit data.type", async () => {
+    class ManualWebSocket extends HangingWebSocket {
+      static instance: ManualWebSocket;
+
+      constructor() {
+        super();
+        ManualWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ManualWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+    }
+    installBrowserGlobals(ManualWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge();
+    const events: unknown[] = [];
+    bridge.onEvent((event) => events.push(event));
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ManualWebSocket.instance);
+
+    const statusEvent = {
+      event: "pane.agent_status_changed",
+      data: {
+        pane_id: "w1:p1",
+        workspace_id: "w1",
+        agent_status: "working",
+        agent: "pi",
+      },
+    };
+    ManualWebSocket.instance.onmessage?.({
+      data: JSON.stringify({
+        connection_id: "legacy-default",
+        ...statusEvent,
+      }),
+    } as MessageEvent);
+
+    expect(events).toEqual([
+      { connection_id: "legacy-default", ...statusEvent },
+    ]);
+  });
+
   test("keeps event and terminal listeners compatible with scoped pushes", async () => {
     class ManualWebSocket extends HangingWebSocket {
       static instance: ManualWebSocket;

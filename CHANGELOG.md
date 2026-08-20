@@ -16,8 +16,15 @@
 
 ### Fixed
 
-- Recover Apple IME commits when WebKit emits input before or without keydown or
-  reports a different keyup code, without replaying text already sent from
+- Push `pane.agent_status_changed` events from each connection so agent
+  working/idle/done transitions reach the browser immediately instead of
+  waiting for the next metadata poll, which could leave agents looking idle
+  while they work.
+- Refresh workspace metadata as soon as a hidden or unfocused page becomes
+  visible, focused, or back online, so browser timer throttling no longer
+  leaves statuses stale.
+- Recover Apple IME commits when WebKit emits input before or without keydown
+  or reports a different keyup code, without replaying text already sent from
   keypress.
 - Keep connection-scoped RPC, HTTP, terminal, clipboard, file, Git, worktree,
   agent, and settings activity bound to the selected server generation so stale
