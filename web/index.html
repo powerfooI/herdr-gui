@@ -9,6 +9,22 @@
     <link rel="icon" type="image/png" href="/herdr-icon.png" />
     <link rel="apple-touch-icon" href="/herdr-icon.png" />
     <title>herdr-gui</title>
+    <script>
+      // Apply the persisted theme before first paint to avoid a flash of the
+      // default dark theme. "system" resolves via the OS color scheme.
+      try {
+        const storedTheme = localStorage.getItem("theme");
+        const resolvedTheme =
+          storedTheme === "light" || storedTheme === "dark"
+            ? storedTheme
+            : storedTheme === "system" &&
+                window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = resolvedTheme;
+        document.documentElement.style.colorScheme = resolvedTheme;
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

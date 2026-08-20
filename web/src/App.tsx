@@ -26,7 +26,15 @@ import {
   useState,
 } from "react";
 import packageJson from "../package.json";
-import { type AccentColor, normalizeAccentColor } from "./appearance";
+import {
+  type AccentColor,
+  normalizeAccentColor,
+  normalizeThemePreference,
+  type ResolvedTheme,
+  resolveSystemTheme,
+  SYSTEM_THEME_QUERY,
+  type ThemePreference,
+} from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
 import { AgentPanel } from "./components/AgentPanel";
 import { CloseButton } from "./components/CloseButton";
@@ -176,7 +184,7 @@ function ToastMark({
   );
 }
 
-export type Theme = "dark" | "light";
+export type Theme = ThemePreference;
 type SidebarActivity = "workspaces" | "files" | "diff";
 type MobileView = "workspaces" | "session";
 
@@ -242,7 +250,11 @@ function loadSidebarWidth(): number {
 }
 
 function loadTheme(): Theme {
-  return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+  return normalizeThemePreference(localStorage.getItem(THEME_KEY));
+}
+
+function loadSystemTheme(): ResolvedTheme {
+  return resolveSystemTheme(window.matchMedia(SYSTEM_THEME_QUERY));
 }
 
 function loadAccentColor(): AccentColor {
@@ -900,6 +912,9 @@ export default function App() {
     diff: "workspaces",
   });
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() =>
+    loadSystemTheme(),
+  );
   const [accentColor, setAccentColor] = useState<AccentColor>(() =>
     loadAccentColor(),
   );
@@ -1611,13 +1626,22 @@ export default function App() {
     selectPaneJumpIndex,
     toggleFileExplorer,
   ]);
+  useEffect(() => {
+    const media = window.matchMedia(SYSTEM_THEME_QUERY);
+    const onChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(resolveSystemTheme(event));
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
+    const resolvedTheme = theme === "system" ? systemTheme : theme;
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.colorScheme = resolvedTheme;
     localStorage.setItem(THEME_KEY, theme);
     document.documentElement.dataset.accent = accentColor;
     localStorage.setItem(ACCENT_COLOR_KEY, accentColor);
-  }, [accentColor, theme]);
+  }, [accentColor, systemTheme, theme]);
   useEffect(() => {
     localStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,

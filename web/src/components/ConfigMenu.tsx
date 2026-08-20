@@ -15,6 +15,7 @@ import {
   ScrollText,
   Server,
   Sun,
+  SunMoon,
   Users,
   Wifi,
 } from "lucide-react";
@@ -200,7 +201,13 @@ export function ConfigMenu({
               <div className="config-title">Preferences</div>
               <div className="config-preference-row">
                 <span className="config-item-icon">
-                  {theme === "light" ? <Sun size={15} /> : <Moon size={15} />}
+                  {theme === "system" ? (
+                    <SunMoon size={15} />
+                  ) : theme === "light" ? (
+                    <Sun size={15} />
+                  ) : (
+                    <Moon size={15} />
+                  )}
                 </span>
                 <div className="config-item-copy">
                   <strong>Theme</strong>
@@ -224,6 +231,15 @@ export function ConfigMenu({
                     onClick={() => onThemeChange("dark")}
                   >
                     <Moon size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Use system theme"
+                    aria-pressed={theme === "system"}
+                    className={theme === "system" ? "is-active" : ""}
+                    onClick={() => onThemeChange("system")}
+                  >
+                    <SunMoon size={14} />
                   </button>
                 </div>
               </div>

@@ -15,3 +15,28 @@ export function normalizeAccentColor(value: string | null): AccentColor {
     ? (value as AccentColor)
     : "neutral";
 }
+
+export const THEME_OPTIONS = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+] as const;
+
+export type ThemePreference = (typeof THEME_OPTIONS)[number]["value"];
+export type ResolvedTheme = "dark" | "light";
+
+export function normalizeThemePreference(
+  value: string | null,
+): ThemePreference {
+  return value === "light" || value === "dark" || value === "system"
+    ? value
+    : "dark";
+}
+
+export function resolveSystemTheme(
+  media: Pick<MediaQueryList, "matches">,
+): ResolvedTheme {
+  return media.matches ? "light" : "dark";
+}
+
+export const SYSTEM_THEME_QUERY = "(prefers-color-scheme: light)";
