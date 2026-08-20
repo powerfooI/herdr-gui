@@ -31,6 +31,7 @@ import {
 import { store, useStore } from "../store";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
+import { ConfirmDialog } from "./ModalDialogs";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type Draft = {
@@ -493,6 +494,9 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<
     ConnectionSummary | "new-local" | "new-ssh" | null
   >(null);
+  const [removeTarget, setRemoveTarget] = useState<ConnectionSummary | null>(
+    null,
+  );
   const [pending, setPending] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const requestToken = useRef(0);
@@ -547,14 +551,16 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
       }
       if (event.key !== "Escape") return;
       event.preventDefault();
-      if (pending) return;
+      // The removal ConfirmDialog handles its own Escape via its capture
+      // listener; do not close the whole manager behind it.
+      if (pending || removeTarget) return;
       if (editing) closeEditing();
       else onClose();
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
-  }, [closeEditing, editing, onClose, pending]);
+  }, [closeEditing, editing, onClose, pending, removeTarget]);
 
   const performAction = async (
     key: string,
@@ -922,22 +928,7 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
                       type="button"
                       className="danger"
                       disabled={!!pending}
-                      onClick={() => {
-                        if (
-                          !window.confirm(
-                            `Remove connection "${connection.label}"? This disconnects herdr-gui but does not stop the Herdr server.`,
-                          )
-                        )
-                          return;
-                        void performAction(
-                          `remove-${connection.id}`,
-                          () =>
-                            bridge.call("connections.remove", {
-                              id: connection.id,
-                            }),
-                          "Connection removed.",
-                        );
-                      }}
+                      onClick={() => setRemoveTarget(connection)}
                     >
                       Remove
                     </button>
@@ -947,6 +938,28 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
             );
           })}
         </div>
+        <ConfirmDialog
+          open={!!removeTarget}
+          title="Remove Connection"
+          message={
+            removeTarget
+              ? `Remove connection "${removeTarget.label}"? This disconnects herdr-gui but does not stop the Herdr server.`
+              : "Remove this connection?"
+          }
+          confirmLabel="Remove"
+          danger
+          onClose={() => setRemoveTarget(null)}
+          onConfirm={() => {
+            const target = removeTarget;
+            setRemoveTarget(null);
+            if (!target) return;
+            void performAction(
+              `remove-${target.id}`,
+              () => bridge.call("connections.remove", { id: target.id }),
+              "Connection removed.",
+            );
+          }}
+        />
       </div>
     </div>
   );
