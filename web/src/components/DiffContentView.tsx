@@ -13,6 +13,8 @@ import type { ConnectionClient } from "../api";
 import type { FilePreview, GitDiffEntry, GitDiffFile } from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
 import { requestFilePreview } from "./FileExplorerDialog";
+import { diffAutoCollapseInfo } from "./diffAutoCollapse";
+import { highlightDiffCode } from "./syntaxHighlighting";
 
 type DiffViewMode = "split" | "unified";
 
@@ -233,9 +235,9 @@ export function DiffContentView({
   const requestedImagePreviewsRef = useRef<Set<string>>(new Set());
   const imagePreviewRequestSeqRef = useRef(0);
   const imagePreviewRequestByKeyRef = useRef(new Map<string, number>());
-  const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [manualCollapseStates, setManualCollapseStates] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
   const effectiveViewMode: DiffViewMode = mobile ? "unified" : viewMode;
   const wrapEnabled = mobile ? mobileWrap : desktopWrap;
   const activeSearchQuery = searchQuery;
@@ -258,14 +260,19 @@ export function DiffContentView({
           !!diffFile &&
           isPreviewableImagePath(visibleEntry.path) &&
           (!diffFile.diff || isBinaryDiffText(diffFile.diff));
+        const autoCollapse = diffAutoCollapseInfo(visibleEntry, diffFile);
+        const defaultCollapsed = autoCollapse !== null;
+        const collapsed = manualCollapseStates.get(key) ?? defaultCollapsed;
         return {
           key,
           entry: visibleEntry,
           file: diffFile,
           imagePreview,
+          autoCollapse,
+          collapsed,
           error: fileErrors[key] ?? null,
           html:
-            diffFile?.diff && !imagePreview
+            !collapsed && diffFile?.diff && !imagePreview
               ? diffToHtml(diffFile.diff, {
                   drawFileList: false,
                   matching: "lines",
@@ -278,17 +285,27 @@ export function DiffContentView({
               : "",
         };
       }),
-    [effectiveViewMode, fileErrors, filesByKey, visibleEntries],
+    [
+      effectiveViewMode,
+      fileErrors,
+      filesByKey,
+      manualCollapseStates,
+      visibleEntries,
+    ],
   );
   const renderedKey = renderedSections
     .map((section) => `${section.key}:${section.html.length}`)
     .join("|");
   const hasRenderedDiff = renderedSections.some((section) => section.html);
-  const syntaxKey = `${effectiveViewMode}:${renderedKey}`;
+  const collapsedKey = renderedSections
+    .filter((section) => section.collapsed)
+    .map((section) => section.key)
+    .join("|");
+  const syntaxKey = `${effectiveViewMode}:${renderedKey}:${collapsedKey}`;
   const imagePreviewTargets = useMemo(
     () =>
       renderedSections.flatMap((section) =>
-        section.imagePreview && section.file
+        !section.collapsed && section.imagePreview && section.file
           ? [
               {
                 key: imagePreviewKey(connectionClient, section.file),
@@ -362,23 +379,14 @@ export function DiffContentView({
     if (!hasRenderedDiff || !diffRef.current) return;
     if (diffRef.current.dataset.syntaxKey === syntaxKey) return;
     let cancelled = false;
-    void import("diff2html/lib-esm/ui/js/diff2html-ui-slim")
-      .then(({ Diff2HtmlUI }) => {
-        if (cancelled || !diffRef.current) return;
-        const ui = new Diff2HtmlUI(diffRef.current, undefined, {
-          highlight: true,
-          drawFileList: false,
-          outputFormat:
-            effectiveViewMode === "split" ? "side-by-side" : "line-by-line",
-        });
-        ui.highlightCode();
-      })
+    const root = diffRef.current;
+    void highlightDiffCode(root, effectiveViewMode)
       .catch(() => {
         // Syntax highlighting is progressive; plain diff remains usable.
       })
       .finally(() => {
-        if (!cancelled && diffRef.current) {
-          diffRef.current.dataset.syntaxKey = syntaxKey;
+        if (!cancelled && diffRef.current === root) {
+          root.dataset.syntaxKey = syntaxKey;
           setSyntaxVersion((version) => version + 1);
         }
       });
@@ -462,14 +470,16 @@ export function DiffContentView({
     [searchMatchCount],
   );
 
-  const toggleSectionCollapsed = useCallback((key: string) => {
-    setCollapsedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const toggleSectionCollapsed = useCallback(
+    (key: string, collapsed: boolean) => {
+      setManualCollapseStates((current) => {
+        const next = new Map(current);
+        next.set(key, !collapsed);
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -631,7 +641,7 @@ export function DiffContentView({
       {visibleEntries.length ? (
         <div
           ref={diffRef}
-          className={`diff2html-wrapper ${
+          className={`diff2html-wrapper syntax-highlighted ${
             mobile && wrapEnabled ? "is-wrapped" : ""
           } ${!mobile && !wrapEnabled ? "is-nowrap" : ""} ${
             !mobile ? `is-${effectiveViewMode}` : ""
@@ -641,7 +651,7 @@ export function DiffContentView({
             const sectionLoading =
               loading && activeEntryKey === section.key && !section.file;
             const loadingFile = !section.file && !section.error;
-            const collapsed = collapsedKeys.has(section.key);
+            const collapsed = section.collapsed;
             return (
               <article
                 className="diff-file-section"
@@ -652,7 +662,9 @@ export function DiffContentView({
                   <button
                     type="button"
                     className="diff-file-collapse"
-                    onClick={() => toggleSectionCollapsed(section.key)}
+                    onClick={() =>
+                      toggleSectionCollapsed(section.key, collapsed)
+                    }
                     aria-expanded={!collapsed}
                     aria-label={`${collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
                     title={collapsed ? "Expand" : "Collapse"}
@@ -667,7 +679,13 @@ export function DiffContentView({
                     <strong>{section.entry.path}</strong>
                     <span>
                       {section.entry.kind} · {section.entry.status}
+                      {section.autoCollapse
+                        ? ` · ${section.autoCollapse.label}`
+                        : ""}
                       {section.file?.truncated ? " · truncated" : ""}
+                      {collapsed && section.autoCollapse
+                        ? " · auto-collapsed"
+                        : ""}
                     </span>
                   </div>
                   <button
@@ -720,6 +738,7 @@ export function DiffContentView({
                     {section.html ? (
                       <div
                         className="diff-file-html"
+                        data-syntax-path={section.entry.path}
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
                     ) : null}

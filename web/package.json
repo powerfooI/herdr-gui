@@ -44,6 +44,7 @@
     "cmdk": "^1.1.1",
     "codemirror": "^6.0.2",
     "diff2html": "^3.4.56",
+    "highlight.js": "11.11.1",
     "lucide-react": "^1.21.0",
     "marked": "^18.0.5",
     "react": "^18.3.1",

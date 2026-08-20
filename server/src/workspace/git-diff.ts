@@ -13,6 +13,8 @@ import type {
   RunProcessWithCodeTimeout,
 } from "./file-types";
 
+const GIT_ATTRIBUTE_BATCH_SIZE = 100;
+
 export function statusLabel(code: string, kind: GitDiffKind) {
   if (kind === "untracked") return "untracked";
   if (kind === "conflicted") return "conflicted";
@@ -155,6 +157,24 @@ function parseNumstat(output: string) {
   return stats;
 }
 
+export function parseGeneratedAttributes(output: string) {
+  const generatedPaths = new Set<string>();
+  const fields = output.split("\0");
+  for (let index = 0; index + 2 < fields.length; index += 3) {
+    const path = fields[index] ?? "";
+    const attribute = fields[index + 1] ?? "";
+    const value = (fields[index + 2] ?? "").toLowerCase();
+    if (
+      path &&
+      attribute === "linguist-generated" &&
+      (value === "set" || value === "true")
+    ) {
+      generatedPaths.add(path);
+    }
+  }
+  return generatedPaths;
+}
+
 function entryKeyForStats(entry: Pick<GitDiffEntry, "kind" | "path">) {
   return `${entry.kind}:${entry.path}`;
 }
@@ -183,6 +203,38 @@ function runGitShellCommand({
     host ? sshCommandArgv(host, fullCommand) : ["sh", "-lc", fullCommand],
     timeoutMs,
   );
+}
+
+async function collectGeneratedPaths({
+  root,
+  entries,
+  host,
+  shQuote,
+  runProcessWithCodeTimeout,
+}: {
+  root: string;
+  entries: GitDiffEntry[];
+  host?: string;
+  shQuote: (value: string) => string;
+  runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
+}) {
+  const generatedPaths = new Set<string>();
+  const paths = Array.from(new Set(entries.map((entry) => entry.path)));
+  for (let index = 0; index < paths.length; index += GIT_ATTRIBUTE_BATCH_SIZE) {
+    const batch = paths.slice(index, index + GIT_ATTRIBUTE_BATCH_SIZE);
+    const result = await runGitShellCommand({
+      root,
+      command: `check-attr -z linguist-generated -- ${batch.map(shQuote).join(" ")}`,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    });
+    if (result.code !== 0) continue;
+    for (const path of parseGeneratedAttributes(result.stdout)) {
+      generatedPaths.add(path);
+    }
+  }
+  return generatedPaths;
 }
 
 async function collectStats({
@@ -378,18 +430,32 @@ export async function readDiffSummary({
     mode === "branch-main"
       ? parseBranchSummary(result.stdout)
       : parseStatusSummary(result.stdout);
-  const stats = await collectStats({
-    root,
-    mode,
-    base,
-    entries,
-    host,
-    shQuote,
-    runProcessWithCodeTimeout,
-  });
+  const [stats, generatedPaths] = await Promise.all([
+    collectStats({
+      root,
+      mode,
+      base,
+      entries,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    }),
+    collectGeneratedPaths({
+      root,
+      entries,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    }),
+  ]);
   const entriesWithStats = entries.map((entry) => {
-    const value = stats.get(entryKeyForStats(entry));
-    return value ? { ...entry, ...value } : entry;
+    const entryWithStats = {
+      ...entry,
+      ...(stats.get(entryKeyForStats(entry)) ?? {}),
+    };
+    return generatedPaths.has(entry.path)
+      ? { ...entryWithStats, generated: true }
+      : entryWithStats;
   });
   return {
     workspace_id: workspaceId,

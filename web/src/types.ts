@@ -175,6 +175,7 @@ export interface GitDiffEntry {
   status: string;
   additions?: number;
   deletions?: number;
+  generated?: boolean;
 }
 
 export interface GitDiffSummary {

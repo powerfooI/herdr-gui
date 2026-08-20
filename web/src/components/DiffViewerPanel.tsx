@@ -27,6 +27,7 @@ import {
   useConnectionClient,
 } from "../useConnectionClient";
 import { connectionStorageKey } from "../connectionStorage";
+import { diffAutoCollapseInfo } from "./diffAutoCollapse";
 
 export type ActiveDiffSelection = {
   entry: GitDiffEntry | null;
@@ -216,7 +217,11 @@ function resolveSelectedEntry(
     );
     if (match) return match;
   }
-  return entries[0] ?? null;
+  return (
+    entries.find((entry) => diffAutoCollapseInfo(entry) === null) ??
+    entries[0] ??
+    null
+  );
 }
 
 function requestDiffFile(

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { Extension } from "@codemirror/state";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import type { FileExplorerEntry, FilePreview } from "../types";
 import { MarkdownPreview } from "./markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { highlightCodeTokens } from "./syntaxHighlighting";
 
 export type ActiveFilePreviewSelection = {
   entry: FileExplorerEntry | null;
@@ -25,163 +25,23 @@ type CodeMirrorPreviewDeps = Awaited<
 let codeMirrorPreviewDepsPromise: Promise<CodeMirrorPreviewDeps> | null = null;
 
 async function importCodeMirrorPreviewDeps() {
-  const [
-    codemirror,
-    state,
-    view,
-    searchModule,
-    language,
-    highlight,
-    javascriptModule,
-    jsonModule,
-    pythonModule,
-    htmlModule,
-    cssModule,
-    markdownModule,
-    javaModule,
-    cppModule,
-    goModule,
-    rustModule,
-    sqlModule,
-    xmlModule,
-    yamlModule,
-    phpModule,
-    sassModule,
-    vueModule,
-    shellModule,
-    dockerFileModule,
-    tomlModule,
-    rubyModule,
-    luaModule,
-    perlModule,
-    swiftModule,
-    clojureModule,
-    rModule,
-    powerShellModule,
-    legacyCssModule,
-  ] = await Promise.all([
+  const [codemirror, state, view, searchModule] = await Promise.all([
     import("codemirror"),
     import("@codemirror/state"),
     import("@codemirror/view"),
     import("@codemirror/search"),
-    import("@codemirror/language"),
-    import("@lezer/highlight"),
-    import("@codemirror/lang-javascript"),
-    import("@codemirror/lang-json"),
-    import("@codemirror/lang-python"),
-    import("@codemirror/lang-html"),
-    import("@codemirror/lang-css"),
-    import("@codemirror/lang-markdown"),
-    import("@codemirror/lang-java"),
-    import("@codemirror/lang-cpp"),
-    import("@codemirror/lang-go"),
-    import("@codemirror/lang-rust"),
-    import("@codemirror/lang-sql"),
-    import("@codemirror/lang-xml"),
-    import("@codemirror/lang-yaml"),
-    import("@codemirror/lang-php"),
-    import("@codemirror/lang-sass"),
-    import("@codemirror/lang-vue"),
-    import("@codemirror/legacy-modes/mode/shell"),
-    import("@codemirror/legacy-modes/mode/dockerfile"),
-    import("@codemirror/legacy-modes/mode/toml"),
-    import("@codemirror/legacy-modes/mode/ruby"),
-    import("@codemirror/legacy-modes/mode/lua"),
-    import("@codemirror/legacy-modes/mode/perl"),
-    import("@codemirror/legacy-modes/mode/swift"),
-    import("@codemirror/legacy-modes/mode/clojure"),
-    import("@codemirror/legacy-modes/mode/r"),
-    import("@codemirror/legacy-modes/mode/powershell"),
-    import("@codemirror/legacy-modes/mode/css"),
-  ]);
-  const t = highlight.tags;
-  const filePreviewHighlightStyle = language.HighlightStyle.define([
-    { tag: t.comment, color: "var(--syntax-comment)", fontStyle: "italic" },
-    {
-      tag: [t.meta, t.documentMeta, t.processingInstruction],
-      color: "var(--syntax-meta)",
-    },
-    {
-      tag: [t.keyword, t.controlKeyword, t.moduleKeyword],
-      color: "var(--syntax-keyword)",
-    },
-    {
-      tag: [t.string, t.special(t.string), t.regexp],
-      color: "var(--syntax-string)",
-    },
-    { tag: [t.number, t.bool, t.null, t.atom], color: "var(--syntax-number)" },
-    {
-      tag: [t.function(t.variableName), t.function(t.propertyName)],
-      color: "var(--syntax-function)",
-    },
-    {
-      tag: [t.className, t.typeName, t.definition(t.typeName)],
-      color: "var(--syntax-type)",
-    },
-    {
-      tag: [t.propertyName, t.attributeName, t.labelName],
-      color: "var(--syntax-property)",
-    },
-    {
-      tag: [t.variableName, t.namespace, t.macroName],
-      color: "var(--syntax-variable)",
-    },
-    {
-      tag: [t.operator, t.operatorKeyword, t.compareOperator],
-      color: "var(--syntax-operator)",
-    },
-    {
-      tag: [t.punctuation, t.separator, t.bracket],
-      color: "var(--syntax-punctuation)",
-    },
-    {
-      tag: [t.heading, t.strong],
-      color: "var(--text-strong)",
-      fontWeight: "700",
-    },
-    { tag: t.emphasis, fontStyle: "italic" },
-    { tag: t.link, color: "var(--blue)", textDecoration: "underline" },
   ]);
 
   return {
     basicSetup: codemirror.basicSetup,
     Compartment: state.Compartment,
+    Decoration: view.Decoration,
     EditorState: state.EditorState,
     EditorView: view.EditorView,
     keymap: view.keymap,
     openSearchPanel: searchModule.openSearchPanel,
     search: searchModule.search,
     searchKeymap: searchModule.searchKeymap,
-    StreamLanguage: language.StreamLanguage,
-    syntaxHighlighting: language.syntaxHighlighting,
-    filePreviewHighlightStyle,
-    javascript: javascriptModule.javascript,
-    json: jsonModule.json,
-    python: pythonModule.python,
-    html: htmlModule.html,
-    css: cssModule.css,
-    markdown: markdownModule.markdown,
-    java: javaModule.java,
-    cpp: cppModule.cpp,
-    go: goModule.go,
-    rust: rustModule.rust,
-    sql: sqlModule.sql,
-    xml: xmlModule.xml,
-    yaml: yamlModule.yaml,
-    php: phpModule.php,
-    sass: sassModule.sass,
-    vue: vueModule.vue,
-    shell: shellModule.shell,
-    dockerFile: dockerFileModule.dockerFile,
-    toml: tomlModule.toml,
-    ruby: rubyModule.ruby,
-    lua: luaModule.lua,
-    perl: perlModule.perl,
-    swift: swiftModule.swift,
-    clojure: clojureModule.clojure,
-    r: rModule.r,
-    powerShell: powerShellModule.powerShell,
-    less: legacyCssModule.less,
   };
 }
 
@@ -389,7 +249,7 @@ function CodeMirrorPreview({
     void loadCodeMirrorPreviewDeps().then((deps) => {
       if (cancelled || !containerRef.current) return;
       parent.textContent = "";
-      const languageCompartment = new deps.Compartment();
+      const syntaxCompartment = new deps.Compartment();
       view = new deps.EditorView({
         parent,
         state: deps.EditorState.create({
@@ -400,8 +260,7 @@ function CodeMirrorPreview({
             deps.keymap.of(deps.searchKeymap),
             deps.EditorState.readOnly.of(true),
             deps.EditorView.editable.of(false),
-            languageCompartment.of([]),
-            deps.syntaxHighlighting(deps.filePreviewHighlightStyle),
+            syntaxCompartment.of([]),
             deps.EditorView.theme(
               {
                 "&": {
@@ -550,13 +409,26 @@ function CodeMirrorPreview({
         }),
       });
       editorViewRef.current = view;
+      const activeView = view;
 
-      const language = codeMirrorLanguageForPath(path, deps);
-      if (language) {
-        view.dispatch({
-          effects: languageCompartment.reconfigure(language),
+      void highlightCodeTokens(text, path)
+        .then((tokens) => {
+          if (cancelled || view !== activeView) return;
+          const decorations = deps.Decoration.set(
+            tokens.map(({ from, to, className }) =>
+              deps.Decoration.mark({ class: className }).range(from, to),
+            ),
+            true,
+          );
+          activeView.dispatch({
+            effects: syntaxCompartment.reconfigure(
+              deps.EditorView.decorations.of(decorations),
+            ),
+          });
+        })
+        .catch(() => {
+          // Highlighting is progressive; the plain-text preview remains usable.
         });
-      }
     });
 
     return () => {
@@ -566,121 +438,7 @@ function CodeMirrorPreview({
     };
   }, [editorViewRef, path, text, theme]);
 
-  return <div ref={containerRef} className="file-preview-code" />;
-}
-
-function codeMirrorLanguageForPath(
-  path: string,
-  deps: CodeMirrorPreviewDeps,
-): Extension | null {
-  const lower = path.toLowerCase();
-  const name = lower.split("/").pop() ?? lower;
-  const ext = lower.split(".").pop() ?? "";
-  if (name === "dockerfile" || name === "containerfile") {
-    return deps.StreamLanguage.define(deps.dockerFile);
-  }
-  if (name === "makefile" || name.endsWith(".mk")) {
-    return deps.StreamLanguage.define(deps.shell);
-  }
-  if (
-    name === "gemfile" ||
-    name === "rakefile" ||
-    name === "podfile" ||
-    name.endsWith(".gemspec")
-  ) {
-    return deps.StreamLanguage.define(deps.ruby);
-  }
-  if (name === ".env" || name.startsWith(".env.")) {
-    return deps.StreamLanguage.define(deps.shell);
-  }
-  switch (ext) {
-    case "js":
-    case "mjs":
-    case "cjs":
-      return deps.javascript();
-    case "jsx":
-      return deps.javascript({ jsx: true });
-    case "ts":
-      return deps.javascript({ typescript: true });
-    case "tsx":
-      return deps.javascript({ typescript: true, jsx: true });
-    case "json":
-    case "jsonc":
-      return deps.json();
-    case "py":
-      return deps.python();
-    case "html":
-    case "htm":
-      return deps.html();
-    case "css":
-      return deps.css();
-    case "scss":
-      return deps.sass();
-    case "sass":
-      return deps.sass({ indented: true });
-    case "less":
-      return deps.StreamLanguage.define(deps.less);
-    case "md":
-    case "markdown":
-    case "mdx":
-      return deps.markdown();
-    case "java":
-      return deps.java();
-    case "c":
-    case "cc":
-    case "cpp":
-    case "cxx":
-    case "h":
-    case "hpp":
-      return deps.cpp();
-    case "go":
-      return deps.go();
-    case "rs":
-      return deps.rust();
-    case "sql":
-      return deps.sql();
-    case "xml":
-    case "svg":
-      return deps.xml();
-    case "yaml":
-    case "yml":
-      return deps.yaml();
-    case "php":
-    case "phtml":
-      return deps.php();
-    case "vue":
-      return deps.vue();
-    case "sh":
-    case "bash":
-    case "zsh":
-    case "fish":
-    case "ksh":
-      return deps.StreamLanguage.define(deps.shell);
-    case "toml":
-      return deps.StreamLanguage.define(deps.toml);
-    case "rb":
-    case "rake":
-      return deps.StreamLanguage.define(deps.ruby);
-    case "lua":
-      return deps.StreamLanguage.define(deps.lua);
-    case "pl":
-    case "pm":
-    case "t":
-      return deps.StreamLanguage.define(deps.perl);
-    case "swift":
-      return deps.StreamLanguage.define(deps.swift);
-    case "clj":
-    case "cljs":
-    case "cljc":
-    case "edn":
-      return deps.StreamLanguage.define(deps.clojure);
-    case "r":
-      return deps.StreamLanguage.define(deps.r);
-    case "ps1":
-    case "psm1":
-    case "psd1":
-      return deps.StreamLanguage.define(deps.powerShell);
-    default:
-      return null;
-  }
+  return (
+    <div ref={containerRef} className="file-preview-code syntax-highlighted" />
+  );
 }

@@ -4911,60 +4911,67 @@ textarea:focus {
   overflow-wrap: normal;
   white-space: pre;
 }
-.diff2html-wrapper .hljs {
+.syntax-highlighted .hljs {
   background: transparent;
-  color: var(--diff-text);
+  color: inherit;
   padding: 0;
 }
-.diff2html-wrapper .hljs-comment,
-.diff2html-wrapper .hljs-quote {
+.syntax-highlighted .hljs-comment,
+.syntax-highlighted .hljs-quote {
   color: var(--syntax-comment);
   font-style: italic;
 }
-.diff2html-wrapper .hljs-keyword,
-.diff2html-wrapper .hljs-selector-tag,
-.diff2html-wrapper .hljs-doctag,
-.diff2html-wrapper .hljs-name {
+.syntax-highlighted .hljs-meta,
+.syntax-highlighted .hljs-doctag {
+  color: var(--syntax-meta);
+}
+.syntax-highlighted .hljs-keyword,
+.syntax-highlighted .hljs-selector-tag,
+.syntax-highlighted .hljs-name {
   color: var(--syntax-keyword);
 }
-.diff2html-wrapper .hljs-string,
-.diff2html-wrapper .hljs-template-string,
-.diff2html-wrapper .hljs-regexp,
-.diff2html-wrapper .hljs-addition {
+.syntax-highlighted .hljs-string,
+.syntax-highlighted .hljs-template-string,
+.syntax-highlighted .hljs-regexp,
+.syntax-highlighted .hljs-addition {
   color: var(--syntax-string);
 }
-.diff2html-wrapper .hljs-number,
-.diff2html-wrapper .hljs-literal,
-.diff2html-wrapper .hljs-symbol,
-.diff2html-wrapper .hljs-bullet {
+.syntax-highlighted .hljs-number,
+.syntax-highlighted .hljs-literal,
+.syntax-highlighted .hljs-symbol,
+.syntax-highlighted .hljs-bullet {
   color: var(--syntax-number);
 }
-.diff2html-wrapper .hljs-title,
-.diff2html-wrapper .hljs-title.function_,
-.diff2html-wrapper .hljs-function,
-.diff2html-wrapper .hljs-section {
+.syntax-highlighted .hljs-title,
+.syntax-highlighted .hljs-title.function_,
+.syntax-highlighted .hljs-function,
+.syntax-highlighted .hljs-section {
   color: var(--syntax-function);
 }
-.diff2html-wrapper .hljs-variable,
-.diff2html-wrapper .hljs-template-variable,
-.diff2html-wrapper .hljs-attr,
-.diff2html-wrapper .hljs-attribute {
+.syntax-highlighted .hljs-attr,
+.syntax-highlighted .hljs-attribute,
+.syntax-highlighted .hljs-property {
+  color: var(--syntax-property);
+}
+.syntax-highlighted .hljs-variable,
+.syntax-highlighted .hljs-template-variable,
+.syntax-highlighted .hljs-params {
   color: var(--syntax-variable);
 }
-.diff2html-wrapper .hljs-type,
-.diff2html-wrapper .hljs-class .hljs-title,
-.diff2html-wrapper .hljs-built_in {
+.syntax-highlighted .hljs-type,
+.syntax-highlighted .hljs-class .hljs-title,
+.syntax-highlighted .hljs-built_in {
   color: var(--syntax-type);
 }
-.diff2html-wrapper .hljs-operator,
-.diff2html-wrapper .hljs-link {
+.syntax-highlighted .hljs-operator,
+.syntax-highlighted .hljs-link {
   color: var(--syntax-operator);
 }
-.diff2html-wrapper .hljs-punctuation,
-.diff2html-wrapper .hljs-subst {
+.syntax-highlighted .hljs-punctuation,
+.syntax-highlighted .hljs-subst {
   color: var(--syntax-punctuation);
 }
-.diff2html-wrapper .hljs-deletion {
+.syntax-highlighted .hljs-deletion {
   color: var(--danger-text);
 }
 .diff2html-wrapper .d2h-code-line-prefix {
