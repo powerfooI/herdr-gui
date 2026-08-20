@@ -65,6 +65,7 @@ import {
   TerminalImeTextareaFallbackTracker,
 } from "../terminalIme";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
+import { terminalFocusBlockedByOverlay } from "../terminalFocus";
 import {
   TerminalAttachFrameWatchdog,
   TerminalResizeSync,
@@ -579,6 +580,9 @@ export function TerminalView({
         const activeIsTerminalInput = !!activeElement?.closest(".xterm");
         if (!term || (isEditableElement(active) && !activeIsTerminalInput))
           return;
+        // Streaming frames must not steal focus from an open popover, dialog,
+        // or menu: moving focus out of an overlay dismisses it.
+        if (terminalFocusBlockedByOverlay(activeElement, document)) return;
         term.focus();
       }, 0);
     });
