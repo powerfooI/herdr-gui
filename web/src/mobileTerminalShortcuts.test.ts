@@ -23,7 +23,7 @@ describe("mobile terminal shortcuts", () => {
       rows.map((row) => row.map((shortcut) => shortcut?.action ?? null)),
     ).toEqual([
       ["ctrl-c", "ctrl-d", "ctrl-r", "escape", "page-up", null, null, null],
-      ["tab", "enter", "alt-up", "page-down", null, null, null, null],
+      ["tab", "enter", "alt-up", "page-down", "paste", null, null, null],
     ]);
     expect(
       rows.every((row) => row.length <= MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW),
@@ -160,7 +160,7 @@ describe("mobile terminal shortcuts", () => {
     const encoded = serializeMobileTerminalShortcutRows(first);
     const parsed = parseMobileTerminalShortcutRows(encoded);
     expect(parsed[0][0]?.label).toBe("Changed");
-    expect(mobileTerminalShortcutCount(parsed)).toBe(9);
+    expect(mobileTerminalShortcutCount(parsed)).toBe(10);
   });
 
   test("encodes control, navigation, and modified keys", () => {

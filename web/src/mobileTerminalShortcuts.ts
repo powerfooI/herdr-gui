@@ -19,6 +19,7 @@ type MobileTerminalShortcutOptionDefinition = {
     direction: "up" | "down";
     amount: "full" | "half";
   };
+  clipboard?: "paste";
 };
 
 export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
@@ -147,6 +148,13 @@ export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
     defaultButtonLabel: "Bksp",
     group: "Basic",
     bytes: [0x7f],
+  },
+  {
+    id: "paste",
+    label: "Paste (text or image)",
+    defaultButtonLabel: "Paste",
+    group: "Basic",
+    clipboard: "paste",
   },
   {
     id: "delete",
@@ -308,7 +316,7 @@ const defaultRows: MobileTerminalShortcutRows = [
     { id: "default-enter", label: "Enter", action: "enter" },
     { id: "default-alt-up", label: "A-Up", action: "alt-up" },
     { id: "default-page-down", label: "PgDn", action: "page-down" },
-    null,
+    { id: "default-paste", label: "Paste", action: "paste" },
     null,
     null,
     null,
@@ -331,6 +339,12 @@ export function mobileTerminalShortcutOption(
   action: MobileTerminalShortcutAction,
 ) {
   return optionById.get(action) ?? null;
+}
+
+export function mobileTerminalShortcutClipboard(
+  action: MobileTerminalShortcutAction,
+): "paste" | null {
+  return optionById.get(action)?.clipboard ?? null;
 }
 
 export function mobileTerminalShortcutBytes(
