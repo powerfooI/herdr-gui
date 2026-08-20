@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { store } from "../store";
+import { UI_LOCALE } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -134,9 +136,7 @@ export function AutoSyncRepositoriesDialog({
             <h2>Automatic Branch Updates</h2>
             <p>Saved configurations run when their workspace is open</p>
           </div>
-          <button className="ghost" onClick={onClose} aria-label="Close">
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {loading ? (
@@ -260,5 +260,5 @@ function formatLastRun(value?: string) {
   const date = new Date(value);
   return Number.isNaN(date.valueOf())
     ? value
-    : "Last run " + date.toLocaleString();
+    : "Last run " + date.toLocaleString(UI_LOCALE);
 }

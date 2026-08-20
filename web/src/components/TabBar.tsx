@@ -138,7 +138,7 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
                     e.stopPropagation();
                     setPendingCloseTabId(t.tab_id);
                   }}
-                  title="关闭 tab"
+                  title="Close tab"
                 >
                   ×
                 </button>
@@ -148,7 +148,7 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
           <button
             className="tabbar-add"
             onClick={() => store.createTab(focusedWs.workspace_id)}
-            title="新建 tab"
+            title="New tab"
           >
             +
           </button>

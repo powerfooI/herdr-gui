@@ -14,6 +14,7 @@ import {
   type MobileTerminalShortcutRows,
   type MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import {
   Command,
@@ -323,14 +324,7 @@ export function MobileTerminalShortcutsDialog({
               panel and up to four right-side buttons.
             </p>
           </div>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="mobile-shortcut-slot-board" aria-label="Shortcut slots">

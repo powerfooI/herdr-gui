@@ -3,6 +3,7 @@ import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import type { ExistingWorktree, WorktreeList } from "../types";
 import { resolveWorktreeOpenSource } from "../worktree";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 function worktreeTitle(worktree: ExistingWorktree) {
@@ -176,14 +177,7 @@ export function WorktreeOpenDialog({
       >
         <div className="modal-head">
           <h2>Open Worktree</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {list ? (

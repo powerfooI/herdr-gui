@@ -33,6 +33,7 @@ import type {
   GitDiffKind,
   GitDiffSummary,
 } from "../types";
+import { CloseButton } from "./CloseButton";
 import { ConfirmDialog } from "./ModalDialogs";
 import {
   FilePreviewContent,
@@ -1599,16 +1600,7 @@ function FileExplorerContent({
     <>
       <div className="modal-head">
         <h2>File Explorer</h2>
-        {showCloseButton ? (
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
-        ) : null}
+        {showCloseButton ? <CloseButton onClick={onClose} /> : null}
       </div>
 
       {workspace ? (

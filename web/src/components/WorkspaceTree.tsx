@@ -209,7 +209,7 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
             <h2>Workspaces</h2>
             <button
               className="panel-add"
-              title="新建 workspace"
+              title="New workspace"
               onClick={() => setCreateOpen(true)}
             >
               +
@@ -258,7 +258,7 @@ export function WorkspaceTree({ onSelect }: { onSelect?: () => void }) {
             ) : null}
             <button
               className="panel-add"
-              title="新建 workspace"
+              title="New workspace"
               onClick={() => setCreateOpen(true)}
             >
               +

@@ -1,10 +1,14 @@
 import {
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   FileDiff,
   FileText,
   FolderTree,
   History,
+  Info,
+  LoaderCircle,
   MoreHorizontal,
   PanelTop,
   Plug,
@@ -25,6 +29,7 @@ import packageJson from "../package.json";
 import { type AccentColor, normalizeAccentColor } from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
 import { AgentPanel } from "./components/AgentPanel";
+import { CloseButton } from "./components/CloseButton";
 import { CommandCombobox } from "./components/CommandCombobox";
 import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
 import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
@@ -147,6 +152,28 @@ function NoticeDetail({ notice }: { notice: Notice }) {
     );
   }
   return <p>{notice.detail}</p>;
+}
+
+function ToastMark({
+  kind,
+  loading = false,
+}: {
+  kind: Notice["kind"];
+  loading?: boolean;
+}) {
+  const Mark = loading
+    ? LoaderCircle
+    : kind === "success"
+      ? CheckCircle2
+      : kind === "error"
+        ? CircleAlert
+        : Info;
+
+  return (
+    <span className="toast-mark" aria-hidden="true">
+      <Mark size={16} strokeWidth={2.1} />
+    </span>
+  );
 }
 
 export type Theme = "dark" | "light";
@@ -1864,7 +1891,7 @@ export default function App() {
               }`}
               role="status"
             >
-              <span className="toast-mark" />
+              <ToastMark kind="info" loading={s.updateInstalling} />
               <div className="toast-content">
                 <strong>
                   herdr-gui {s.updateInfo.latest_version} is available
@@ -1898,15 +1925,12 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              <button
-                type="button"
-                className="toast-close"
+              <CloseButton
+                variant="toast"
+                label="Dismiss update notification"
                 onClick={() => store.dismissUpdate()}
-                aria-label="Dismiss update notification"
                 disabled={s.updateInstalling}
-              >
-                x
-              </button>
+              />
             </div>
           ) : null}
           {s.notice ? (
@@ -1916,7 +1940,7 @@ export default function App() {
               }`}
               role={s.notice.kind === "error" ? "alert" : "status"}
             >
-              <span className="toast-mark" />
+              <ToastMark kind={s.notice.kind} loading={s.notice.loading} />
               <div className="toast-content">
                 <strong>{s.notice.message}</strong>
                 <NoticeDetail notice={s.notice} />
@@ -1935,14 +1959,11 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
-              <button
-                type="button"
-                className="toast-close"
+              <CloseButton
+                variant="toast"
+                label="Dismiss notification"
                 onClick={() => store.clearNotice()}
-                aria-label="Dismiss notification"
-              >
-                x
-              </button>
+              />
             </div>
           ) : null}
         </div>
@@ -1986,7 +2007,7 @@ export default function App() {
         <div
           className="resizer"
           onPointerDown={startResize}
-          title="拖动调整宽度"
+          title="Drag to resize sidebar"
         />
         <main
           className={`main ${

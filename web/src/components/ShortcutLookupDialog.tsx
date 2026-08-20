@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 type ShortcutGroup = {
@@ -175,14 +176,7 @@ export function ShortcutLookupDialog({
       >
         <div className="modal-head">
           <h2>Shortcut Lookup</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="shortcut-list">

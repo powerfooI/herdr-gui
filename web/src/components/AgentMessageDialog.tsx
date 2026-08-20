@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, X } from "lucide-react";
+import { Copy } from "lucide-react";
+import { UI_LOCALE } from "../uiLocale";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { MarkdownPreview } from "./markdown";
 
@@ -12,7 +14,7 @@ type AgentMessage = {
 function formatMessageTime(sentAt: string) {
   const time = new Date(sentAt);
   if (Number.isNaN(time.getTime())) return sentAt;
-  return time.toLocaleString([], {
+  return time.toLocaleString(UI_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -99,15 +101,7 @@ export function AgentMessageDialog({
             >
               <Copy size={15} />
             </button>
-            <button
-              type="button"
-              className="agent-history-icon"
-              onClick={onClose}
-              aria-label="Close message"
-              title="Close"
-            >
-              <X size={15} />
-            </button>
+            <CloseButton label="Close message" onClick={onClose} />
           </div>
         </div>
         {viewMode === "rendered" ? (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 export function TextInputDialog({
@@ -59,14 +60,7 @@ export function TextInputDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <label className="form-field">
@@ -155,14 +149,7 @@ export function ConfirmDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <p className="modal-body-text">{message}</p>
@@ -239,14 +226,7 @@ export function MessageDialog({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <p className="modal-body-text">{message}</p>

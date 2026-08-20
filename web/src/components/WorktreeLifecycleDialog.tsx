@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, RefreshCw, Settings, X } from "lucide-react";
+import { FolderOpen, GitBranch, RefreshCw, Settings } from "lucide-react";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { useConnectionClient } from "../useConnectionClient";
 import { store, useStore } from "../store";
@@ -17,6 +17,7 @@ import {
   type WorktreeHookInfo,
   type WorktreeLifecycleRow,
 } from "../worktreeLifecycle";
+import { CloseButton } from "./CloseButton";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
 import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
@@ -379,14 +380,7 @@ export function WorktreeLifecycleDialog({
                   className={repositoryLoading ? "is-spinning" : ""}
                 />
               </button>
-              <button
-                type="button"
-                className="ghost lifecycle-icon-button"
-                aria-label="Close"
-                onClick={onClose}
-              >
-                <X size={17} />
-              </button>
+              <CloseButton onClick={onClose} />
             </div>
           </div>
 

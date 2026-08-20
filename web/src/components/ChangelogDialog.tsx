@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import changelog from "../../../CHANGELOG.md?raw";
+import { CloseButton } from "./CloseButton";
 
 export function ChangelogDialog({
   open,
@@ -30,14 +31,7 @@ export function ChangelogDialog({
       >
         <div className="modal-head">
           <h2>Changelog</h2>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
         <pre className="changelog-content">{changelog}</pre>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
+import { CloseButton } from "./CloseButton";
 
 const HOOKS = [
   ["setup", "Setup"],
@@ -133,9 +134,7 @@ export function WorktreeHooksDialog({
       >
         <div className="modal-head">
           <h2>Worktree Hooks</h2>
-          <button className="ghost" onClick={onClose} aria-label="Close">
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
         <p className="hook-doc-note">
           Hooks are loaded from the current repository's <code>paseo.json</code>{" "}

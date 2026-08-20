@@ -3,6 +3,7 @@ import { Bot, Copy, Download, Eye, RefreshCw, X } from "lucide-react";
 import { useStore } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import type { Pane } from "../types";
+import { formatUiRelativeTime, UI_LOCALE } from "../uiLocale";
 import { shortId } from "../utils";
 import { AgentIcon } from "./AgentIcon";
 import { AgentMessageDialog } from "./AgentMessageDialog";
@@ -43,7 +44,7 @@ type AgentHistory = {
 function formatHistoryTime(sentAt: string) {
   const time = new Date(sentAt);
   if (Number.isNaN(time.getTime())) return sentAt;
-  return time.toLocaleString([], {
+  return time.toLocaleString(UI_LOCALE, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -56,13 +57,12 @@ function formatRelativeTime(timestamp: string) {
   if (Number.isNaN(time.getTime())) return "Unknown";
   const seconds = Math.round((time.getTime() - Date.now()) / 1000);
   const absoluteSeconds = Math.abs(seconds);
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (absoluteSeconds < 60) return formatter.format(seconds, "second");
+  if (absoluteSeconds < 60) return formatUiRelativeTime(seconds, "second");
   if (absoluteSeconds < 3600)
-    return formatter.format(Math.round(seconds / 60), "minute");
+    return formatUiRelativeTime(Math.round(seconds / 60), "minute");
   if (absoluteSeconds < 86400)
-    return formatter.format(Math.round(seconds / 3600), "hour");
-  return formatter.format(Math.round(seconds / 86400), "day");
+    return formatUiRelativeTime(Math.round(seconds / 3600), "hour");
+  return formatUiRelativeTime(Math.round(seconds / 86400), "day");
 }
 
 function messageSummary(text: string) {

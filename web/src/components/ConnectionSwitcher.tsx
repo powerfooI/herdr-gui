@@ -29,6 +29,7 @@ import {
   suggestConnectionId,
 } from "../connectionProfiles";
 import { store, useStore } from "../store";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
@@ -704,15 +705,7 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
             <h2 id="connection-manager-title">Manage connections</h2>
             <p>Profiles are shared by authenticated browsers on this bridge.</p>
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={onClose}
-            aria-label="Close"
-            disabled={!!pending}
-          >
-            <X size={16} />
-          </button>
+          <CloseButton onClick={onClose} disabled={!!pending} />
         </div>
         <BrowserTransportStatus />
         <div className="connection-manager-toolbar">

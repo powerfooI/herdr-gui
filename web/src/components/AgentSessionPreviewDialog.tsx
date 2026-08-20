@@ -7,10 +7,10 @@ import {
   FileText,
   Info,
   Wrench,
-  X,
 } from "lucide-react";
 import { useStore } from "../store";
 import type { Pane } from "../types";
+import { UI_LOCALE } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
 import { shortId } from "../utils";
 import { AgentIcon } from "./AgentIcon";
@@ -29,20 +29,24 @@ import {
   groupTrajectoryTurns,
   toolArgumentsPreview,
 } from "./agentSession";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 function formatStepTime(timestamp?: string) {
   if (!timestamp) return "";
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(UI_LOCALE, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatSessionTime(timestamp?: string) {
   if (!timestamp) return "-";
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleString([], {
+  return date.toLocaleString(UI_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -161,15 +165,7 @@ export function AgentSessionPreviewDialog({
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            className="agent-history-icon"
-            onClick={onClose}
-            aria-label="Close Session Inspector"
-            title="Close"
-          >
-            <X size={16} />
-          </button>
+          <CloseButton label="Close Session Inspector" onClick={onClose} />
         </div>
 
         {summary?.status === "ok" ? (

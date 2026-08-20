@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { store } from "../store";
+import { UI_LOCALE } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
+import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -121,9 +123,7 @@ export function WorkspaceAutoSyncDialog({
       >
         <div className="modal-head">
           <h2>Automatic Branch Updates</h2>
-          <button className="ghost" onClick={onClose} aria-label="Close">
-            x
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <p className="auto-sync-description">
@@ -206,7 +206,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function formatLastRun(value?: string) {
   if (!value) return "Not run yet";
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(UI_LOCALE);
 }
 
 function statusLabel(status?: AutoSyncStatus) {
