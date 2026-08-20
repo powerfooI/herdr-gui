@@ -315,6 +315,12 @@ export class ConnectionProfileService<
       const previousRegistry = this.registry;
       const migration =
         !previousRegistry && !this.args.bootstrap.explicitLegacyOverride;
+      // The first persisted profile retires the synthetic legacy default.
+      // Keep the local server in the list by persisting it as a writable
+      // Local profile with the same socket paths instead of dropping it.
+      const migrationSeed = migration
+        ? this.localMigrationSeed(profile.id)
+        : null;
       const nextRegistry: PersistedConnectionRegistry = previousRegistry
         ? {
             ...previousRegistry,
@@ -324,16 +330,25 @@ export class ConnectionProfileService<
         : {
             version: CONNECTION_PROFILE_FILE_VERSION,
             default_connection_id: profile.id,
-            profiles: [profile],
+            profiles: migrationSeed ? [migrationSeed, profile] : [profile],
           };
       await this.args.store.save(nextRegistry);
       try {
+        if (migrationSeed) {
+          this.args.manager.register({
+            identity: connectionIdentityForProfile(migrationSeed),
+            createRuntime: this.args.createRuntime(migrationSeed),
+          });
+        }
         this.args.manager.register({
           identity: connectionIdentityForProfile(profile),
           createRuntime: this.args.createRuntime(profile),
         });
       } catch (error) {
         try {
+          if (migrationSeed && this.args.manager.has(migrationSeed.id)) {
+            await this.args.manager.unregister(migrationSeed.id);
+          }
           if (previousRegistry) await this.args.store.save(previousRegistry);
           else await this.args.store.clear();
         } catch (rollbackError) {
@@ -346,12 +361,21 @@ export class ConnectionProfileService<
         }
         throw error;
       }
+      if (migrationSeed) {
+        this.profiles.set(migrationSeed.id, {
+          profile: migrationSeed,
+          readOnly: false,
+        });
+      }
       this.profiles.set(profile.id, { profile, readOnly: false });
       this.registry = nextRegistry;
       if (migration) {
         this.args.manager.setDefault(profile.id);
         await this.args.manager.unregister(LEGACY_DEFAULT_CONNECTION_ID);
         this.profiles.delete(LEGACY_DEFAULT_CONNECTION_ID);
+      }
+      if (migrationSeed) {
+        await this.startManaged(migrationSeed.id, true).catch(() => undefined);
       }
       if (
         profile.auto_connect ||
@@ -361,6 +385,24 @@ export class ConnectionProfileService<
       }
       return this.item(profile.id);
     });
+  }
+
+  private localMigrationSeed(
+    newProfileId: string,
+  ): LocalConnectionProfile | null {
+    const legacyProfile = this.args.bootstrap.registrations.find(
+      (registration) =>
+        registration.profile.id === LEGACY_DEFAULT_CONNECTION_ID,
+    )?.profile;
+    if (!legacyProfile || legacyProfile.type !== "local") return null;
+    return {
+      id: newProfileId === "local" ? "localhost" : "local",
+      label: "Local",
+      type: "local",
+      control_socket_path: legacyProfile.control_socket_path,
+      client_socket_path: legacyProfile.client_socket_path,
+      auto_connect: true,
+    };
   }
 
   update(

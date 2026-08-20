@@ -76,8 +76,8 @@ function ssh(id: string, autoConnect = false): SshConnectionProfile {
     label: id.toUpperCase(),
     type: "ssh",
     ssh_destination: `operator@${id}`,
-    remote_control_socket_path: `/home/operator/${id}/herdr.sock`,
-    remote_client_socket_path: `/home/operator/${id}/herdr-client.sock`,
+    remote_control_socket_path: `/remote/${id}.sock`,
+    remote_client_socket_path: `/remote/${id}-client.sock`,
     auto_connect: autoConnect,
   };
 }
@@ -388,8 +388,66 @@ describe("connection profile service", () => {
     expect(store.load()).toEqual({
       version: 2,
       default_connection_id: "alpha",
-      profiles: [local("alpha")],
+      profiles: [
+        {
+          id: "local",
+          label: "Local",
+          type: "local",
+          control_socket_path: legacy.control_socket_path,
+          client_socket_path: legacy.client_socket_path,
+          auto_connect: true,
+        },
+        local("alpha"),
+      ],
     });
+    // The seeded local profile keeps the previous default server connected
+    // as an ordinary writable profile.
+    expect(service.list().map(({ id }) => id)).toEqual(["local", "alpha"]);
+    expect(service.list()[0]).toMatchObject({
+      id: "local",
+      label: "Local",
+      state: "ready",
+      read_only: false,
+    });
+  });
+
+  test("first create named local seeds the default server under a distinct id", async () => {
+    const store = new ConnectionProfileStore({ path: tempPath() });
+    const bootstrap = loadConnectionProfileBootstrap({
+      store,
+      legacyProfile: legacy,
+      explicitLegacyOverride: false,
+    });
+    const manager = new ConnectionManager<FakeRuntime>(
+      bootstrap.defaultConnectionId,
+    );
+    const service = new ConnectionProfileService({
+      manager,
+      store,
+      bootstrap,
+      createRuntime: runtimeFactory(new Map()),
+    });
+
+    await expect(service.create(local("local"))).resolves.toMatchObject({
+      id: "local",
+      is_default: true,
+    });
+    expect(store.load()).toEqual({
+      version: 2,
+      default_connection_id: "local",
+      profiles: [
+        {
+          id: "localhost",
+          label: "Local",
+          type: "local",
+          control_socket_path: legacy.control_socket_path,
+          client_socket_path: legacy.client_socket_path,
+          auto_connect: true,
+        },
+        local("local"),
+      ],
+    });
+    expect(service.list().map(({ id }) => id)).toEqual(["localhost", "local"]);
   });
 
   test("first create cannot leave a failed synthetic cleanup reconnectable", async () => {
@@ -430,7 +488,7 @@ describe("connection profile service", () => {
       is_default: true,
     });
     expect(manager.has("legacy-default")).toBeFalse();
-    expect(service.list().map(({ id }) => id)).toEqual(["alpha"]);
+    expect(service.list().map(({ id }) => id)).toEqual(["local", "alpha"]);
     expect(() => manager.start("legacy-default")).toThrow("unknown connection");
   });
 
@@ -1071,8 +1129,8 @@ describe("connection profile service", () => {
       type: "ssh",
       state: "disconnected",
       ssh_destination: "operator@remote",
-      remote_control_socket_path: "/home/operator/remote/herdr.sock",
-      remote_client_socket_path: "/home/operator/remote/herdr-client.sock",
+      remote_control_socket_path: "/remote/remote.sock",
+      remote_client_socket_path: "/remote/remote-client.sock",
       read_only: false,
     });
     expect(store.load()).toEqual({
