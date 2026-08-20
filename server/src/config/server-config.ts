@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
+import { parseAllowedOrigins } from "../http/websocket-origin";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
@@ -10,6 +11,7 @@ type CliArgs = Partial<{
   host: string;
   port: string;
   password: string;
+  "allowed-origins": string;
   "socket-path": string;
   "client-socket-path": string;
   "ssh-host": string;
@@ -26,6 +28,7 @@ export type ServerConfig = {
   port: number;
   password: string;
   authRequired: boolean;
+  allowedOrigins: Set<string>;
   generatedAuthToken?: string;
   generatedAuthTokenPath?: string;
   socketPath: string;
@@ -42,6 +45,7 @@ const cliOptions = {
   host: { type: "string" },
   port: { type: "string" },
   password: { type: "string" },
+  "allowed-origins": { type: "string" },
   "socket-path": { type: "string" },
   "client-socket-path": { type: "string" },
   "ssh-host": { type: "string" },
@@ -85,6 +89,9 @@ Options (flags override env vars):
   --host <addr>              listen address        (env HOST,            default 127.0.0.1)
   --port <n>                 listen port           (env PORT,            default 8787)
   --password <pw>            fixed login password  (env HERDR_GUI_PASSWORD; otherwise a token is generated)
+  --allowed-origins <list>   extra browser origins allowed to open the WebSocket,
+                             comma-separated         (env HERDR_GUI_ALLOWED_ORIGINS;
+                             for reverse proxies that rewrite the Host header)
   --socket-path <path>       control socket        (env HERDR_SOCKET_PATH)
   --client-socket-path <p>   render socket         (env HERDR_CLIENT_SOCKET_PATH)
   --ssh-host <user@host>     remote Herdr over SSH (env HERDR_SSH_HOST)
@@ -122,6 +129,11 @@ Options (flags override env vars):
     process.exit(1);
   }
   const password = configuredPassword || generatedAuthToken || "";
+  const allowedOrigins = parseAllowedOrigins(
+    (typeof args["allowed-origins"] === "string" && args["allowed-origins"]) ||
+      process.env.HERDR_GUI_ALLOWED_ORIGINS ||
+      undefined,
+  );
 
   const sshHostValue =
     (typeof args["ssh-host"] === "string" && args["ssh-host"]) ||
@@ -153,6 +165,7 @@ Options (flags override env vars):
     port,
     password,
     authRequired,
+    allowedOrigins,
     generatedAuthToken,
     generatedAuthTokenPath,
     socketPath,

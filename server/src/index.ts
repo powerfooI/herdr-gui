@@ -1107,7 +1107,7 @@ function main() {
           }
 
           if (url.pathname === "/ws") {
-            if (!isAllowedWebSocketOrigin(req)) {
+            if (!isAllowedWebSocketOrigin(req, config.allowedOrigins)) {
               return new Response("forbidden websocket origin", {
                 status: 403,
               });
