@@ -203,7 +203,6 @@ full list.
 | `--host <addr>` | `HOST` | `127.0.0.1` |
 | `--port <n>` | `PORT` | `8787` |
 | `--password <pw>` | `HERDR_GUI_PASSWORD` | _(generated token for non-localhost)_ |
-| `--allowed-origins <list>` | `HERDR_GUI_ALLOWED_ORIGINS` | _(same-origin WebSocket only)_ |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | `~/.config/herdr/herdr.sock` |
 | `--client-socket-path <p>` | `HERDR_CLIENT_SOCKET_PATH` | `~/.config/herdr/herdr-client.sock` |
 | `--ssh-host <user@host>` | `HERDR_SSH_HOST` | _(auto tunnel remote Herdr sockets)_ |
@@ -218,22 +217,6 @@ Additional runtime settings:
 | `HERDR_GUI_UPDATE_BASE_URL` | Override the latest release asset directory (HTTPS; loopback HTTP allowed) |
 | `HERDR_GUI_DISABLE_UPDATE_CHECK=1` | Disable update checks |
 | `HERDR_GUI_RESTART_SUPERVISOR=0\|1` | Declare or override external supervisor detection |
-
-### Reverse proxies that rewrite the Host header
-
-The bridge accepts browser WebSocket upgrades only when the request `Origin`
-matches the request host. Reverse proxies that terminate TLS and forward to an
-internal address rewrite the `Host` header, which breaks that match and leaves
-the UI stuck at "Browser disconnected from bridge". List each public origin
-the GUI is reached through, for example:
-
-```sh
-HERDR_GUI_ALLOWED_ORIGINS=https://gui.example.com herdr-gui --host 0.0.0.0
-```
-
-Entries are comma-separated origins (scheme + host + optional port); entries
-without a scheme match both `http` and `https` on that host. Prefer
-configuring the proxy to preserve the original `Host` header when possible.
 
 A custom update mirror uses the same flat asset layout as GitHub Releases. It
 must provide each platform archive, its `.sha256` file, and the corresponding

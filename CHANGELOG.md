@@ -4,10 +4,11 @@
 
 ### Fixed
 
-- Allow browser WebSocket connections through reverse proxies that rewrite the
-  `Host` header by configuring `HERDR_GUI_ALLOWED_ORIGINS` (or
-  `--allowed-origins`), so deployments behind such proxies no longer sit at
-  "Browser disconnected from bridge".
+- Remove the WebSocket browser-origin check from 0.4.0: it rejected legitimate
+  browsers behind reverse proxies that rewrite the `Host` header, leaving the
+  UI stuck at "Browser disconnected from bridge". Access control is once again
+  the deployment's responsibility (authentication, HTTPS at the proxy, VPN, or
+  firewall), as documented in SECURITY.md.
 
 ## 0.4.0 - 2026-08-20
 

@@ -64,7 +64,6 @@ import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
 import { createAuthHandlers } from "./http/auth";
 import { serveStatic } from "./http/static-files";
-import { isAllowedWebSocketOrigin } from "./http/websocket-origin";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
@@ -1107,11 +1106,6 @@ function main() {
           }
 
           if (url.pathname === "/ws") {
-            if (!isAllowedWebSocketOrigin(req, config.allowedOrigins)) {
-              return new Response("forbidden websocket origin", {
-                status: 403,
-              });
-            }
             if (server.upgrade(req)) return undefined;
             return new Response("websocket upgrade failed", { status: 400 });
           }
