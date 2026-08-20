@@ -134,15 +134,19 @@ http://192.0.2.23:8781/?token=<token>
 
 标题旁的连接选择器可以添加、测试、连接、断开、编辑和删除 Herdr server。
 Profile 由同一个 bridge 的所有已认证浏览器共享，但每个浏览器独立选择当前展示的
-连接。Local profile 只附着已经存在的 Unix socket，不会启动 Herdr。
+连接。Local profile 只附着已经存在的 Unix socket，不会启动 Herdr。创建首个
+profile 时，默认本地 server 会以可写的 `Local` profile 保留在列表中，而不是被
+移除。
 
 SSH profile 要求远端 Herdr server 已经运行，并填写 OpenSSH Host alias 或
-`user@host`，以及远端 control/render socket 的绝对路径。例如：
+`user@host`。远端 control/render socket 路径可留空：herdr-gui 会在连接时通过
+SSH 解析远端 home 目录下的默认 socket（`~/.config/herdr/herdr.sock` 与
+`~/.config/herdr/herdr-client.sock`）。例如：
 
 ```text
 SSH destination: devbox
-Control socket: /home/dev/.config/herdr/herdr.sock
-Render socket:  /home/dev/.config/herdr/herdr-client.sock
+Control socket: （留空自动推断）
+Render socket:  （留空自动推断）
 ```
 
 端口、跳板机和 identity 等连接参数应放在 `~/.ssh/config`：

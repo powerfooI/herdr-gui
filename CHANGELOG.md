@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Paste text or images into the terminal on mobile from a configurable Paste
+  shortcut button, using the same upload-and-paste-path flow as desktop paste.
+- Render Mermaid diagrams in the file previewer: `.mmd`/`.mermaid` files get a
+  Raw/Rendered toggle, and Mermaid code fences inside Markdown previews render
+  inline as theme-aware SVG diagrams.
+- Appearance: new "System" theme option that follows the OS color scheme
+  (`prefers-color-scheme`) and switches live when the OS theme changes; the
+  persisted preference is applied before first paint to avoid a theme flash.
+- Releases no longer require a manual version-bump PR: the new **Cut Release**
+  workflow (or `bun run release:cut <version>` locally) bumps versions,
+  finalizes the changelog, lands the release commit on `main` through an
+  automated self-merging PR, tags it, and starts the release pipeline in one
+  step. GitHub release notes now come from the version's `CHANGELOG.md`
+  section instead of auto-generated PR lists.
+
+### Changed
+
+- Creating the first connection profile no longer drops the default local
+  server from the list: it is persisted as a writable `Local` profile with the
+  same socket paths and auto-connect enabled, so the localhost Herdr remains
+  available alongside newly added profiles.
+- SSH connection profiles no longer require remote socket paths: leave them
+  empty and the bridge infers the default Herdr sockets under the remote home
+  directory (`~/.config/herdr/herdr.sock` and
+  `~/.config/herdr/herdr-client.sock`) at connect time.
+
+### Fixed
+
+- Use the theme-aware code surface for Markdown fenced code blocks in the file
+  previewer: light mode no longer renders them as a low-contrast dark box
+  (they previously always used the dark terminal background).
+- Replace the browser-native `window.confirm` when removing a connection with
+  the in-app confirmation dialog (Escape/Enter/focus handling included).
+- Keep popovers, dialogs, and menus open while terminal output streams in:
+  frame-driven terminal refocusing no longer steals focus from overlay UI,
+  which previously collapsed the connection menu (and other popovers) the
+  moment a working agent produced output.
+
 ## 0.4.1 - 2026-08-20
 
 ### Fixed

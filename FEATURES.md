@@ -173,7 +173,10 @@ Lifecycle to manage saved per-checkout settings.
 - Search files that have been loaded into the tree.
 - See Git status badges on changed files and directories.
 - Preview text with line numbers, syntax highlighting, and `Cmd/Ctrl+F` search.
-- Render Markdown with a Raw/Rendered toggle.
+- Render Markdown with a Raw/Rendered toggle, including Mermaid code fences
+  rendered as diagrams.
+- Render `.mmd`/`.mermaid` Mermaid sources as diagrams with a Raw/Rendered
+  toggle.
 - Preview common image formats; unsupported binary files remain download-only.
 - Drag files onto the workspace root or a directory to upload them.
 - Download files directly or directories as workspace-scoped `.tar.gz`
@@ -211,6 +214,8 @@ preserved in the browser.
 - Up to four optional terminal side buttons.
 - Shortcut actions for control keys, arrows, Enter variants, and full/half-page
   terminal scrolling.
+- A Paste shortcut that sends clipboard text to the pane and uploads clipboard
+  images, pasting the uploaded path like the desktop paste flow.
 - A mobile pane switcher for tabs containing multiple panes.
 - A bundled glyph-only Nerd Font fallback for common terminal icons.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
@@ -234,7 +239,7 @@ browser and do not change Herdr server configuration.
   count, or pause the other clients.
 - Enable browser task-completion notifications that return directly to the
   relevant pane.
-- Choose light/dark themes and persistent accent colors.
+- Choose light/dark themes (or follow the system color scheme) and persistent accent colors.
 - Install and manage a systemd or launchd user service from the CLI.
 - Check for herdr-gui releases and perform a checksum-verified, one-click binary
   update when running a standalone binary under a supported supervisor.

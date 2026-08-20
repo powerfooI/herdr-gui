@@ -166,21 +166,26 @@ Use the connection selector beside the application title to add, test, connect,
 disconnect, edit, and remove Herdr servers. Profiles are shared by every
 authenticated browser connected to the bridge, while each browser independently
 selects the connection it displays. Local profiles attach to existing Unix
-sockets; they never start Herdr.
+sockets; they never start Herdr. When the first profile is created, the
+default local server is kept as a writable `Local` profile instead of being
+dropped, so the localhost Herdr stays in the list.
 
 ![Connection selector showing local and SSH profiles](docs/screenshots/multi-connection-selector.png)
 
 SSH profiles require an already-running remote Herdr server and accept only an
-OpenSSH alias or `user@host`, plus explicit remote control and render socket
-paths. Configure ports, jump hosts, identities, and other transport details in
+OpenSSH alias or `user@host`. The remote control and render socket paths are
+optional: leave them empty and herdr-gui resolves the default Herdr sockets
+(`~/.config/herdr/herdr.sock` and `~/.config/herdr/herdr-client.sock`) under
+the remote home directory over SSH. Configure ports, jump hosts, identities,
+and other transport details in
 `~/.ssh/config`; herdr-gui uses the normal OpenSSH host-key and agent/Keychain
 policies and does not store passwords, private keys, passphrases, or arbitrary
-SSH options. A typical profile uses:
+SSH options. A typical profile needs only a destination:
 
 ```text
 Destination: workbox
-Control socket: /home/you/.config/herdr/herdr.sock
-Render socket:  /home/you/.config/herdr/herdr-client.sock
+Control socket: (empty - auto)
+Render socket:  (empty - auto)
 ```
 
 Connection profiles are stored atomically in
