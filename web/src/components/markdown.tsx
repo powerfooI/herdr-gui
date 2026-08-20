@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { marked } from "marked";
+import { loadMermaidModule, renderMermaidDiagram } from "../mermaidRender";
 
 const MARKDOWN_ALLOWED_TAGS = new Set([
   "a",
@@ -86,6 +87,15 @@ export function sanitizeMarkdownHtml(html: string) {
     for (const attr of Array.from(element.attributes)) {
       const name = attr.name.toLowerCase();
       if (
+        name === "class" &&
+        tag === "code" &&
+        /^language-[a-z0-9#+.-]{1,40}$/i.test(attr.value.trim())
+      ) {
+        // Keep the fenced-code language hint so mermaid blocks can be found
+        // and replaced with rendered diagrams after sanitization.
+        continue;
+      }
+      if (
         name.startsWith("on") ||
         name === "style" ||
         !MARKDOWN_ALLOWED_ATTRS.has(name)
@@ -135,8 +145,49 @@ export function MarkdownPreview({
   breaks?: boolean;
 }) {
   const html = useMemo(() => renderMarkdown(text, { breaks }), [text, breaks]);
+  const articleRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const root = articleRef.current;
+    if (!root) return;
+    const blocks = Array.from(
+      root.querySelectorAll("pre > code.language-mermaid"),
+    );
+    if (blocks.length === 0) return;
+    let cancelled = false;
+    loadMermaidModule()
+      .then((mermaid) => {
+        if (cancelled) return;
+        for (const codeElement of blocks) {
+          const pre = codeElement.parentElement;
+          if (!pre || pre.tagName !== "PRE" || !pre.isConnected) continue;
+          const code = codeElement.textContent ?? "";
+          if (!code.trim()) continue;
+          const rendered = renderMermaidDiagram(mermaid, code);
+          if (rendered.ok) {
+            const figure = document.createElement("div");
+            figure.className = "mermaid-diagram";
+            figure.setAttribute("role", "img");
+            figure.setAttribute("aria-label", "Mermaid diagram");
+            figure.innerHTML = rendered.svg;
+            pre.replaceWith(figure);
+          } else {
+            const note = document.createElement("div");
+            note.className = "mermaid-diagram-error";
+            note.textContent = `Mermaid render failed: ${rendered.error}`;
+            pre.before(note);
+          }
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+
   return (
     <article
+      ref={articleRef}
       className={`file-preview-markdown ${className}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />

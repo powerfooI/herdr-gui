@@ -3,6 +3,7 @@ import type { Extension } from "@codemirror/state";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import type { FileExplorerEntry, FilePreview } from "../types";
 import { MarkdownPreview } from "./markdown";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 export type ActiveFilePreviewSelection = {
   entry: FileExplorerEntry | null;
@@ -204,6 +205,11 @@ function isMarkdownPath(path: string) {
   );
 }
 
+function isMermaidPath(path: string) {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".mmd") || lower.endsWith(".mermaid");
+}
+
 function currentDocumentTheme(): AppTheme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
@@ -245,7 +251,7 @@ export function FilePreviewContent({
 }) {
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
-  const [markdownMode, setMarkdownMode] = useState<"rendered" | "raw">(
+  const [previewMode, setPreviewMode] = useState<"rendered" | "raw">(
     "rendered",
   );
   const theme = useDocumentTheme();
@@ -253,15 +259,16 @@ export function FilePreviewContent({
   const previewPath = preview?.path ?? "";
   const hasPreviewText = previewText !== null;
   const hasMarkdownPreview = hasPreviewText && isMarkdownPath(previewPath);
-  const renderMarkdownPreview =
-    hasMarkdownPreview && markdownMode === "rendered";
+  const hasMermaidPreview = hasPreviewText && isMermaidPath(previewPath);
+  const hasRichPreview = hasMarkdownPreview || hasMermaidPreview;
+  const renderRichPreview = hasRichPreview && previewMode === "rendered";
 
   useEffect(() => {
-    setMarkdownMode("rendered");
+    setPreviewMode("rendered");
   }, [previewPath]);
 
   useEffect(() => {
-    if (!hasPreviewText || renderMarkdownPreview) return;
+    if (!hasPreviewText || renderRichPreview) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() !== "f") return;
@@ -275,7 +282,7 @@ export function FilePreviewContent({
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
-  }, [hasPreviewText, renderMarkdownPreview]);
+  }, [hasPreviewText, renderRichPreview]);
 
   return (
     <section
@@ -285,7 +292,7 @@ export function FilePreviewContent({
       tabIndex={-1}
       onKeyDownCapture={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
-          if (renderMarkdownPreview) return;
+          if (renderRichPreview) return;
           e.preventDefault();
           e.stopPropagation();
           openPreviewSearch(editorViewRef.current);
@@ -295,17 +302,17 @@ export function FilePreviewContent({
       <div className="file-preview-head">
         <div className="file-preview-title-row">
           <strong>{entry?.name ?? "Preview"}</strong>
-          {hasMarkdownPreview ? (
+          {hasRichPreview ? (
             <button
               type="button"
               className="file-preview-mode-toggle"
               onClick={() =>
-                setMarkdownMode((mode) =>
+                setPreviewMode((mode) =>
                   mode === "rendered" ? "raw" : "rendered",
                 )
               }
             >
-              {markdownMode === "rendered" ? "Raw" : "Rendered"}
+              {previewMode === "rendered" ? "Raw" : "Rendered"}
             </button>
           ) : null}
         </div>
@@ -341,10 +348,13 @@ export function FilePreviewContent({
       {!loading && !error && preview?.truncated ? (
         <div className="file-preview-banner">Preview truncated at 512 KB.</div>
       ) : null}
-      {!loading && !error && hasPreviewText && renderMarkdownPreview ? (
+      {!loading && !error && hasMarkdownPreview && renderRichPreview ? (
         <MarkdownPreview text={previewText} />
       ) : null}
-      {!loading && !error && hasPreviewText && !renderMarkdownPreview ? (
+      {!loading && !error && hasMermaidPreview && renderRichPreview ? (
+        <MermaidDiagram code={previewText} className="file-preview-mermaid" />
+      ) : null}
+      {!loading && !error && hasPreviewText && !renderRichPreview ? (
         <CodeMirrorPreview
           text={previewText}
           path={previewPath}
