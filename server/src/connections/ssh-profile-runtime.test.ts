@@ -12,8 +12,8 @@ function profile(): SshConnectionProfile {
     label: "Secret Host Label",
     type: "ssh",
     ssh_destination: "operator@dev-box",
-    remote_control_socket_path: "/home/operator/.config/herdr/herdr.sock",
-    remote_client_socket_path: "/home/operator/.config/herdr/herdr-client.sock",
+    remote_control_socket_path: "/remote/herdr.sock",
+    remote_client_socket_path: "/remote/herdr-client.sock",
     auto_connect: false,
   };
 }
@@ -44,6 +44,23 @@ describe("SSH profile runtime socket allocation", () => {
       remoteClientSocketPath: profile().remote_client_socket_path,
       hasExplicitSocketPath: true,
       hasExplicitClientSocketPath: true,
+    });
+  });
+
+  test("maps empty profile socket paths to remote home inference", () => {
+    const config = createSshProfileRuntimeConfig({
+      ...profile(),
+      remote_control_socket_path: "",
+      remote_client_socket_path: "",
+    });
+    directories.push(config.ownedRuntimeDirectory!);
+
+    expect(config).toMatchObject({
+      sshHost: "operator@dev-box",
+      hasExplicitSocketPath: false,
+      hasExplicitClientSocketPath: false,
+      remoteSocketPath: undefined,
+      remoteClientSocketPath: undefined,
     });
   });
 

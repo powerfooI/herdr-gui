@@ -92,8 +92,8 @@ describe("local connection profile presentation", () => {
       id: "remote-dev",
       label: "Remote Dev",
       sshDestination: " operator@dev-box ",
-      remoteControlSocketPath: "/home/operator/.config/herdr/herdr.sock",
-      remoteClientSocketPath: "/home/operator/.config/herdr/herdr-client.sock",
+      remoteControlSocketPath: "/remote/herdr.sock",
+      remoteClientSocketPath: "/remote/herdr-client.sock",
       autoConnect: false,
     };
     expect(sshConnectionProfilePayload(input)).toEqual({
@@ -101,9 +101,8 @@ describe("local connection profile presentation", () => {
       label: "Remote Dev",
       type: "ssh",
       ssh_destination: "operator@dev-box",
-      remote_control_socket_path: "/home/operator/.config/herdr/herdr.sock",
-      remote_client_socket_path:
-        "/home/operator/.config/herdr/herdr-client.sock",
+      remote_control_socket_path: "/remote/herdr.sock",
+      remote_client_socket_path: "/remote/herdr-client.sock",
       auto_connect: false,
     });
     for (const sshDestination of [
@@ -130,6 +129,35 @@ describe("local connection profile presentation", () => {
         remoteClientSocketPath: input.remoteControlSocketPath,
       }),
     ).toThrow("must differ");
+  });
+
+  test("allows empty SSH socket paths so the bridge infers them", () => {
+    const input = {
+      id: "remote-dev",
+      label: "Remote Dev",
+      sshDestination: "operator@dev-box",
+      remoteControlSocketPath: " ",
+      remoteClientSocketPath: "",
+      autoConnect: true,
+    };
+    expect(sshConnectionProfilePayload(input)).toEqual({
+      id: "remote-dev",
+      label: "Remote Dev",
+      type: "ssh",
+      ssh_destination: "operator@dev-box",
+      remote_control_socket_path: "",
+      remote_client_socket_path: "",
+      auto_connect: true,
+    });
+    expect(
+      sshConnectionProfilePayload({
+        ...input,
+        remoteControlSocketPath: "/remote/herdr.sock",
+      }),
+    ).toMatchObject({
+      remote_control_socket_path: "/remote/herdr.sock",
+      remote_client_socket_path: "",
+    });
   });
 
   test("protects read-only and default profiles from destructive controls", () => {

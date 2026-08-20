@@ -993,6 +993,22 @@ describe("bridge connection lifecycle", () => {
       remote_control_socket_path: "/remote/herdr.sock",
       remote_client_socket_path: "/remote/herdr-client.sock",
     });
+    expect(
+      parseConnectionSummary({
+        ...base,
+        source: "ssh-profile",
+        type: "ssh",
+        read_only: false,
+        auto_connect: false,
+        ssh_destination: "operator@dev-box",
+        remote_control_socket_path: "",
+        remote_client_socket_path: "",
+      }),
+    ).toMatchObject({
+      type: "ssh",
+      remote_control_socket_path: "",
+      remote_client_socket_path: "",
+    });
     for (const invalidSsh of [
       {
         type: "ssh",

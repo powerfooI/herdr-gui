@@ -40,6 +40,9 @@ export function validateRemoteSocketPath(
   value: unknown,
   field: string,
 ): string {
+  // An empty path asks the bridge to infer the default Herdr socket location
+  // under the remote home directory at connect time.
+  if (value === "") return "";
   if (
     typeof value !== "string" ||
     value.length < 2 ||

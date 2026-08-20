@@ -98,7 +98,11 @@ export function parseConnectionSummary(
         item.remote_client_socket_path,
         "Remote render socket",
       );
-      if (controlPath === clientPath || !destination) return null;
+      if (
+        (controlPath && clientPath && controlPath === clientPath) ||
+        !destination
+      )
+        return null;
     } catch {
       return null;
     }

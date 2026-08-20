@@ -180,7 +180,11 @@ export function sshConnectionProfilePayload(value: {
   validateSshDestination(sshDestination);
   validateRemoteSocketPath(remoteControlSocketPath, "Remote control socket");
   validateRemoteSocketPath(remoteClientSocketPath, "Remote render socket");
-  if (remoteControlSocketPath === remoteClientSocketPath) {
+  if (
+    remoteControlSocketPath &&
+    remoteClientSocketPath &&
+    remoteControlSocketPath === remoteClientSocketPath
+  ) {
     throw new Error("Remote control and render socket paths must differ.");
   }
   return {

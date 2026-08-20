@@ -50,8 +50,8 @@ function ssh(id = "remote") {
     label: "Remote",
     type: "ssh" as const,
     ssh_destination: "operator@dev-box",
-    remote_control_socket_path: "/home/operator/.config/herdr/herdr.sock",
-    remote_client_socket_path: "/home/operator/.config/herdr/herdr-client.sock",
+    remote_control_socket_path: "/remote/herdr.sock",
+    remote_client_socket_path: "/remote/herdr-client.sock",
     auto_connect: false,
   };
 }
@@ -158,6 +158,17 @@ describe("connection profile validation", () => {
         validateSshConnectionProfile({ ...ssh(), [forbidden]: "secret" }),
       ).toThrow(`unknown field: ${forbidden}`);
     }
+  });
+
+  test("accepts empty SSH socket paths for remote home inference", () => {
+    const inferred = {
+      ...ssh(),
+      remote_control_socket_path: "",
+      remote_client_socket_path: "",
+    };
+    expect(validateSshConnectionProfile(inferred)).toEqual(inferred);
+    const mixed = { ...ssh(), remote_client_socket_path: "" };
+    expect(validateSshConnectionProfile(mixed)).toEqual(mixed);
   });
 
   test("rejects reserved IDs, control characters, relative/traversal paths, and unknown fields", () => {

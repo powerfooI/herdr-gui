@@ -36,15 +36,21 @@ export function createSshProfileRuntimeConfig(
         "SSH runtime directory must be a private directory with short socket paths",
       );
     }
+    const remoteControlSocketPath =
+      profile.remote_control_socket_path || undefined;
+    const remoteClientSocketPath =
+      profile.remote_client_socket_path || undefined;
     return {
       socketPath,
       clientSocketPath,
       sshHost: profile.ssh_destination,
       session: undefined,
-      hasExplicitSocketPath: true,
-      hasExplicitClientSocketPath: true,
-      remoteSocketPath: profile.remote_control_socket_path,
-      remoteClientSocketPath: profile.remote_client_socket_path,
+      // Empty profile socket paths mean "infer": the tunnel resolves the
+      // default Herdr sockets under the remote home directory over SSH.
+      hasExplicitSocketPath: remoteControlSocketPath !== undefined,
+      hasExplicitClientSocketPath: remoteClientSocketPath !== undefined,
+      remoteSocketPath: remoteControlSocketPath,
+      remoteClientSocketPath: remoteClientSocketPath,
       ownedRuntimeDirectory: directory,
     };
   } catch (error) {

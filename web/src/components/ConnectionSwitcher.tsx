@@ -414,25 +414,25 @@ function SshProfileForm({
         />
       </label>
       <label className="form-field">
-        <span>Remote control socket path</span>
+        <span>Remote control socket path (optional)</span>
         <input
           value={draft.remoteControlSocketPath}
           onChange={(event) =>
             update("remoteControlSocketPath", event.target.value)
           }
-          placeholder="/home/user/.config/herdr/herdr.sock"
+          placeholder="Auto: ~/.config/herdr/herdr.sock"
           autoCapitalize="none"
           spellCheck={false}
         />
       </label>
       <label className="form-field">
-        <span>Remote render socket path</span>
+        <span>Remote render socket path (optional)</span>
         <input
           value={draft.remoteClientSocketPath}
           onChange={(event) =>
             update("remoteClientSocketPath", event.target.value)
           }
-          placeholder="/home/user/.config/herdr/herdr-client.sock"
+          placeholder="Auto: ~/.config/herdr/herdr-client.sock"
           autoCapitalize="none"
           spellCheck={false}
         />
@@ -446,10 +446,12 @@ function SshProfileForm({
         Connect automatically when herdr-gui starts
       </label>
       <p className="connection-profile-security-note">
-        Authentication comes from the bridge service user&apos;s OpenSSH config,
-        ssh-agent, or system Keychain. Establish host trust outside herdr-gui.
-        Passwords, keys, passphrases, commands, ports, and SSH options are never
-        stored here.
+        Leave the socket paths empty and herdr-gui infers the default Herdr
+        sockets under the remote home directory at connect time. Authentication
+        comes from the bridge service user&apos;s OpenSSH config, ssh-agent, or
+        system Keychain. Establish host trust outside herdr-gui. Passwords,
+        keys, passphrases, commands, ports, and SSH options are never stored
+        here.
       </p>
       {feedback ? (
         <div
@@ -765,11 +767,25 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
                       <code title={connection.ssh_destination}>
                         Destination: {connection.ssh_destination}
                       </code>
-                      <code title={connection.remote_control_socket_path}>
-                        Remote control: {connection.remote_control_socket_path}
+                      <code
+                        title={
+                          connection.remote_control_socket_path ||
+                          "Inferred under the remote home directory"
+                        }
+                      >
+                        Remote control:{" "}
+                        {connection.remote_control_socket_path ||
+                          "auto (~/.config/herdr/herdr.sock)"}
                       </code>
-                      <code title={connection.remote_client_socket_path}>
-                        Remote render: {connection.remote_client_socket_path}
+                      <code
+                        title={
+                          connection.remote_client_socket_path ||
+                          "Inferred under the remote home directory"
+                        }
+                      >
+                        Remote render:{" "}
+                        {connection.remote_client_socket_path ||
+                          "auto (~/.config/herdr/herdr-client.sock)"}
                       </code>
                     </>
                   ) : (

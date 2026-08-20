@@ -164,6 +164,9 @@ export function validateLocalConnectionProfile(
 }
 
 function validateRemoteSocketPath(value: unknown, field: string): string {
+  // An empty path asks the bridge to infer the default Herdr socket location
+  // under the remote home directory at connect time.
+  if (value === "") return "";
   if (
     typeof value !== "string" ||
     value.length < 2 ||
@@ -223,7 +226,11 @@ export function validateSshConnectionProfile(
     value.remote_client_socket_path,
     "remote_client_socket_path",
   );
-  if (remoteControlSocketPath === remoteClientSocketPath) {
+  if (
+    remoteControlSocketPath &&
+    remoteClientSocketPath &&
+    remoteControlSocketPath === remoteClientSocketPath
+  ) {
     throw new Error("remote control and render socket paths must differ");
   }
   return {
