@@ -56,6 +56,22 @@ changes.
 ## Release & Changelog Notes
 
 Keep `CHANGELOG.md` concise: summarize user-visible highlights and important
-fixes only. Before every release, update `CHANGELOG.md`, commit the code, then
-build and publish release archives. Public releases are created from `v*` tags
-by `.github/workflows/release.yml`.
+fixes only, and accumulate entries under `## Unreleased` as changes land.
+
+Cutting a release takes one action, no manual version-bump PR:
+
+- GitHub: run the **Cut Release** workflow from the Actions tab with a version
+  (`X.Y.Z` or `patch`/`minor`/`major`). It runs the precommit gates, bumps the
+  three `package.json` versions, finalizes the changelog section, lands the
+  release commit on `main` through an automated PR that the workflow opens and
+  merges itself (branch protection requires PRs on `main`; no protection
+  changes or extra secrets are needed), tags the merge commit, and starts the
+  Release workflow on the tag.
+- Local: `bun run release:cut <X.Y.Z | patch | minor | major>` from a clean
+  `main` checkout creates the release commit and tag locally. Pushing them is
+  subject to the same branch protection as any other push, so prefer the CI
+  path above.
+
+Public releases are built and published by `.github/workflows/release.yml`
+from `v*` tags, with release notes taken from the version's `CHANGELOG.md`
+section.

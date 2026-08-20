@@ -37,6 +37,8 @@
     "package:linux-arm64": "scripts/package-release.sh linux-arm64",
     "package:darwin-x64": "scripts/package-release.sh darwin-x64",
     "package:darwin-arm64": "scripts/package-release.sh darwin-arm64",
+    "release:cut": "bun scripts/cut-release.ts",
+    "changelog:notes": "bun scripts/changelog-notes.ts",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "eslint .",
