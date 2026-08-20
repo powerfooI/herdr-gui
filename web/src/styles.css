@@ -4147,7 +4147,7 @@ textarea:focus {
   padding: 12px 14px;
   border: 1px solid var(--border-soft);
   border-radius: 7px;
-  background: var(--terminal-bg);
+  background: var(--viewer-code-bg);
   color: var(--text-code);
 }
 .file-preview-markdown pre code {
