@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isTerminalImeCommittedInputType,
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
+  TerminalImeKeyEventTracker,
   TerminalImeTextareaFallbackTracker,
   terminalImeTextareaDelta,
 } from "./terminalIme";
@@ -59,7 +61,69 @@ describe("terminal IME punctuation detection", () => {
   });
 });
 
+describe("terminal IME key-event deduplication", () => {
+  test("does not replay uppercase text xterm emitted from keypress", () => {
+    const tracker = new TerminalImeKeyEventTracker();
+    tracker.begin();
+    tracker.recordXtermData("A");
+
+    expect(tracker.consumeInput({ data: "A", inputType: "insertText" })).toBe(
+      true,
+    );
+    expect(tracker.consumeInput({ data: "A", inputType: "insertText" })).toBe(
+      false,
+    );
+  });
+
+  test("keeps missing and composition-update input eligible for recovery", () => {
+    const tracker = new TerminalImeKeyEventTracker();
+    tracker.begin();
+    expect(tracker.consumeInput({ data: "中", inputType: "insertText" })).toBe(
+      false,
+    );
+
+    tracker.begin();
+    tracker.recordXtermData("，");
+    expect(
+      tracker.consumeInput({
+        data: "，",
+        inputType: "insertCompositionText",
+      }),
+    ).toBe(false);
+  });
+
+  test("resets stale key data on a new key cycle or keyup", () => {
+    const tracker = new TerminalImeKeyEventTracker();
+    tracker.begin();
+    tracker.recordXtermData("A");
+    tracker.begin();
+    tracker.recordXtermData("B");
+    expect(tracker.consumeInput({ data: "B", inputType: "insertText" })).toBe(
+      true,
+    );
+
+    tracker.begin();
+    tracker.recordXtermData("C");
+    tracker.end();
+    expect(tracker.consumeInput({ data: "C", inputType: "insertText" })).toBe(
+      false,
+    );
+  });
+});
+
 describe("terminal IME textarea fallback", () => {
+  test("recognizes committed text without replaying composition updates", () => {
+    expect(isTerminalImeCommittedInputType("insertText")).toBe(true);
+    expect(isTerminalImeCommittedInputType("insertFromComposition")).toBe(true);
+    expect(isTerminalImeCommittedInputType("insertCompositionText")).toBe(
+      false,
+    );
+    expect(isTerminalImeCommittedInputType("insertFromPaste")).toBe(false);
+    expect(isTerminalImeCommittedInputType("deleteContentBackward")).toBe(
+      false,
+    );
+  });
+
   test("extracts append-only ASCII, Chinese, and emoji text", () => {
     expect(terminalImeTextareaDelta("", "hello")).toBe("hello");
     expect(terminalImeTextareaDelta("已有", "已有中文")).toBe("中文");

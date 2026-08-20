@@ -15,6 +15,49 @@ type PendingInput = TimedText & {
   id: number;
 };
 
+/**
+ * Returns whether an input event represents committed text whose textarea
+ * mutation can safely be recovered. Composition updates are intentionally
+ * excluded because replaying them would submit unfinished IME candidates.
+ */
+export function isTerminalImeCommittedInputType(inputType: string): boolean {
+  return inputType === "insertText" || inputType === "insertFromComposition";
+}
+
+/**
+ * Associates xterm data emitted during one physical key cycle with the native
+ * input event that follows it. Safari still dispatches beforeinput/input after
+ * xterm handles some printable keys in keypress, notably uppercase letters.
+ */
+export class TerminalImeKeyEventTracker {
+  private active = false;
+  private xtermData = "";
+
+  begin(): void {
+    this.active = true;
+    this.xtermData = "";
+  }
+
+  recordXtermData(text: string): void {
+    if (this.active) this.xtermData += text;
+  }
+
+  consumeInput(input: Pick<InputEvent, "data" | "inputType">): boolean {
+    const alreadyHandled =
+      this.active &&
+      isTerminalImeCommittedInputType(input.inputType) &&
+      !!input.data &&
+      this.xtermData === input.data;
+    this.end();
+    return alreadyHandled;
+  }
+
+  end(): void {
+    this.active = false;
+    this.xtermData = "";
+  }
+}
+
 function isEastAsianPunctuation(text: string): boolean {
   const characters = Array.from(text);
   return (
@@ -57,9 +100,9 @@ export function terminalImeTextareaDelta(
 }
 
 /**
- * Tracks one iOS keyCode 229 cycle and subtracts any prefix xterm already
- * emitted. A synchronous flush catches short-lived keyup/input mutations; an
- * unchanged cycle stays pending for one final timer fallback.
+ * Tracks one Apple IME textarea-mutation cycle and subtracts any prefix xterm
+ * already emitted. A synchronous flush catches short-lived input/keyup
+ * mutations; an unchanged cycle stays pending for one final timer fallback.
  */
 export type TerminalImeTextareaFlushResult =
   | { status: "pending" }

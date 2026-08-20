@@ -9,8 +9,16 @@
   connection testing, automatic SSH supervision, and a connection manager UI.
 - Reload the current browser page or standalone PWA from the application menu.
 
+### Changed
+
+- Refine dialogs and notifications with consistent icon controls, clearer action
+  hierarchy, and English date and relative-time presentation.
+
 ### Fixed
 
+- Recover Apple IME commits when WebKit emits input before or without keydown or
+  reports a different keyup code, without replaying text already sent from
+  keypress.
 - Keep connection-scoped RPC, HTTP, terminal, clipboard, file, Git, worktree,
   agent, and settings activity bound to the selected server generation so stale
   work cannot cross into a replacement connection.

@@ -26,6 +26,7 @@ import {
   terminalPushMatches,
   type TerminalConnectionIdentity,
 } from "../terminalConnection";
+import { CloseButton } from "./CloseButton";
 import { MessageDialog } from "./ModalDialogs";
 import { requestFilePreview } from "./FileExplorerDialog";
 import { FilePreviewContent } from "./FilePreviewContent";
@@ -56,9 +57,11 @@ import {
   modifiedEnterSequence,
 } from "../terminalKeys";
 import {
+  isTerminalImeCommittedInputType,
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
+  TerminalImeKeyEventTracker,
   TerminalImeTextareaFallbackTracker,
 } from "../terminalIme";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
@@ -878,6 +881,7 @@ export function TerminalView({
     );
 
     const imeFallback = new TerminalImeFallbackTracker();
+    const imeKeyEvent = new TerminalImeKeyEventTracker();
     const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
     const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
       const textarea = term.textarea;
@@ -905,6 +909,7 @@ export function TerminalView({
       if (!shouldSend) return;
       const terminalId = desiredTerminalRef.current;
       if (!terminalId) return;
+      imeKeyEvent.recordXtermData(unsuppressedData);
       const bytes = new TextEncoder().encode(unsuppressedData);
       sendBytes(connectionClient, bytes, terminalId).catch(() => {});
     });
@@ -1099,7 +1104,7 @@ export function TerminalView({
             const items = await withTimeout(
               navigator.clipboard.read(),
               CLIPBOARD_READ_TIMEOUT_MS,
-              "读取剪贴板超时",
+              "Clipboard read timed out",
             );
             for (const item of items) {
               const imageType = item.types.find((type) =>
@@ -1109,7 +1114,7 @@ export function TerminalView({
                 const blob = await withTimeout(
                   item.getType(imageType),
                   CLIPBOARD_READ_TIMEOUT_MS,
-                  "读取剪贴板图片超时",
+                  "Clipboard image read timed out",
                 );
                 await pasteImage(blob, destinationPaneId);
                 return;
@@ -1120,12 +1125,12 @@ export function TerminalView({
                 const blob = await withTimeout(
                   item.getType("text/plain"),
                   CLIPBOARD_READ_TIMEOUT_MS,
-                  "读取剪贴板文本超时",
+                  "Clipboard text read timed out",
                 );
                 const text = await withTimeout(
                   blob.text(),
                   CLIPBOARD_READ_TIMEOUT_MS,
-                  "读取剪贴板文本超时",
+                  "Clipboard text read timed out",
                 );
                 await pasteText(text, destinationPaneId);
                 return;
@@ -1136,7 +1141,7 @@ export function TerminalView({
           const text = await withTimeout(
             navigator.clipboard.readText(),
             CLIPBOARD_READ_TIMEOUT_MS,
-            "读取剪贴板文本超时",
+            "Clipboard text read timed out",
           );
           await pasteText(text, destinationPaneId);
         });
@@ -1147,8 +1152,15 @@ export function TerminalView({
     const applePlatform = isApplePlatform();
     const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
     const shouldHandleCtrlVPaste = !applePlatform;
+    const shouldRecoverCommittedImeInput = (input: InputEvent) =>
+      applePlatform &&
+      !terminalCompositionActive &&
+      isTerminalImeCommittedInputType(input.inputType);
 
     term.attachCustomKeyEventHandler((e) => {
+      if (applePlatform && e.type === "keydown") {
+        imeKeyEvent.begin();
+      }
       if (e.type === "keydown" && e.keyCode !== 229) {
         imeTextareaFallback.cancelPending();
       }
@@ -1187,7 +1199,7 @@ export function TerminalView({
           return false;
         }
         pasteFromBrowserClipboard().catch((err) => {
-          setUploadError(`粘贴失败：${(err as Error).message}`);
+          setUploadError(`Paste failed: ${(err as Error).message}`);
         });
         return false;
       }
@@ -1251,15 +1263,18 @@ export function TerminalView({
       imeTextareaFallback.begin(lastTerminalTextareaSnapshot.value);
     };
     const onTerminalKeyUp = (event: KeyboardEvent) => {
-      if (!applePlatform || event.keyCode !== 229) return;
+      imeKeyEvent.end();
+      if (!applePlatform || !imeTextareaFallback.hasPending()) return;
 
-      // Read synchronously: some third-party iOS keyboards expose the committed
-      // textarea value only during keyup. If it is not visible yet, keep the
-      // cycle pending for one final task, matching xterm's upstream fallback.
+      // A keydown reported as 229 can have a keyup reported as 0 or as the
+      // concrete key code. Flush the pending cycle regardless of keyup code.
+      // If the value is not visible yet, keep it for one final task, matching
+      // xterm's upstream fallback.
       flushTextareaImeFallback(event);
       scheduleImeTextareaFinal(event);
     };
     const onTerminalCompositionStart = () => {
+      imeKeyEvent.end();
       cancelCompositionSettle();
       terminalCompositionActive = true;
       cancelNativePasteFallback();
@@ -1281,6 +1296,7 @@ export function TerminalView({
       }, 0);
     };
     const onTerminalBlur = () => {
+      imeKeyEvent.end();
       cancelCompositionSettle();
       terminalCompositionActive = false;
       cancelNativePasteFallback();
@@ -1299,7 +1315,19 @@ export function TerminalView({
         }
         return;
       }
-      const fallbackText = terminalImeFallbackText(input);
+      if (shouldRecoverCommittedImeInput(input)) {
+        // Some third-party keyboards emit beforeinput/input without a preceding
+        // keydown, or emit input before keydown 229. Capture the pre-mutation
+        // value here so the input/keyup path can recover arbitrary committed
+        // text rather than punctuation only.
+        imeTextareaFallback.begin(readTerminalTextareaSnapshot().value);
+        scheduleImeTextareaFinal(input);
+        return;
+      }
+
+      const fallbackText = terminalCompositionActive
+        ? null
+        : terminalImeFallbackText(input);
       if (!fallbackText || !input.cancelable) return;
       const observedAt = performance.now();
       const eventAt = terminalImeEventTime(input, observedAt);
@@ -1313,10 +1341,11 @@ export function TerminalView({
     };
     const onTerminalTextInput = (e: Event) => {
       const input = e as InputEvent;
+      const xtermHandledCurrentInput = imeKeyEvent.consumeInput(input);
       const textareaSnapshot = readTerminalTextareaSnapshot();
+      const textareaBeforeInput = lastTerminalTextareaSnapshot;
       const hadPasteSnapshot = pasteTextareaBeforeInput !== null;
-      const beforePaste =
-        pasteTextareaBeforeInput ?? lastTerminalTextareaSnapshot;
+      const beforePaste = pasteTextareaBeforeInput ?? textareaBeforeInput;
       const destinationPaneId = hadPasteSnapshot
         ? pastePaneIdBeforeInput
         : (paneIdRef.current ?? null);
@@ -1360,7 +1389,7 @@ export function TerminalView({
         void runPasteOperation(() =>
           pasteText(pastedText, destinationPaneId),
         ).catch((error) => {
-          setUploadError(`文本粘贴失败：${(error as Error).message}`);
+          setUploadError(`Text paste failed: ${(error as Error).message}`);
         });
         return;
       }
@@ -1379,18 +1408,26 @@ export function TerminalView({
       pasteTextareaBeforeInput = null;
       pastePaneIdBeforeInput = null;
 
-      if (
-        applePlatform &&
-        !terminalCompositionActive &&
-        input.inputType === "insertText" &&
-        imeTextareaFallback.hasPending()
-      ) {
+      if (xtermHandledCurrentInput) {
+        // Safari still mutates the helper textarea after xterm handles some
+        // printable keys in keypress. Do not replay that same committed text.
+        imeTextareaFallback.cancelPending();
+        return;
+      }
+
+      if (shouldRecoverCommittedImeInput(input)) {
+        // beforeinput is not guaranteed on every WebKit keyboard. The previous
+        // observed textarea value is the best safe append-only baseline when it
+        // is absent; begin() preserves an earlier keydown/beforeinput baseline.
+        imeTextareaFallback.begin(textareaBeforeInput.value);
         const flushStatus = flushTextareaImeFallback(input);
         scheduleImeTextareaFinal(input);
         if (flushStatus === "handled") return;
       }
 
-      const fallbackText = terminalImeFallbackText(input);
+      const fallbackText = terminalCompositionActive
+        ? null
+        : terminalImeFallbackText(input);
       if (!fallbackText) return;
       const observedAt = performance.now();
       const eventAt = terminalImeEventTime(input, observedAt);
@@ -1453,7 +1490,7 @@ export function TerminalView({
             void runPasteOperation(() =>
               pasteText(text, destinationPaneId),
             ).catch((error) => {
-              setUploadError(`文本粘贴失败：${(error as Error).message}`);
+              setUploadError(`Text paste failed: ${(error as Error).message}`);
             });
           }, 0);
         }
@@ -1475,7 +1512,7 @@ export function TerminalView({
         );
       } catch (err) {
         setUploadError(
-          `${img ? "图片上传" : "文本粘贴"}失败：${(err as Error).message}`,
+          `${img ? "Image upload" : "Text paste"} failed: ${(err as Error).message}`,
         );
       }
     };
@@ -2051,14 +2088,7 @@ export function TerminalView({
           >
             <div className="modal-head">
               <h2>File Preview</h2>
-              <button
-                type="button"
-                className="ghost"
-                aria-label="Close"
-                onClick={closePathPreview}
-              >
-                x
-              </button>
+              <CloseButton onClick={closePathPreview} />
             </div>
             <FilePreviewContent
               entry={pathPreview.entry}
