@@ -27,12 +27,12 @@ describe("terminalFocusBlockedByOverlay", () => {
     );
   });
 
-  test("blocks when focus is inside a modal or menu without any popover", () => {
+  test("blocks when a navigation or resource surface owns focus", () => {
     const doc = docWithOpenPopper(false);
     expect(
       terminalFocusBlockedByOverlay(
         elementMatching([
-          '[data-radix-popper-content-wrapper], .modal-backdrop, [role="dialog"], [role="menu"]',
+          '[data-radix-popper-content-wrapper], .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, [role="dialog"], [role="menu"]',
         ]),
         doc,
       ),

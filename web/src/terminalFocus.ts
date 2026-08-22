@@ -2,12 +2,12 @@
  * Guards the terminal's frame-driven refocusing. Terminal frames refocus the
  * xterm textarea so keyboard input keeps working, but doing so while an
  * overlay owns focus dismisses it: Radix's DismissableLayer treats focusin
- * outside its content as an outside interaction and closes the popover. That
- * is why streaming output (e.g. a working agent) collapsed the connection
- * menu the moment it opened.
+ * outside its content as an outside interaction and closes the popover. The
+ * Workspace Inspector likewise owns keyboard focus while browsing resources.
+ * Streaming output must not steal focus from either surface.
  */
 const TERMINAL_FOCUS_OVERLAY_SELECTOR =
-  '[data-radix-popper-content-wrapper], .modal-backdrop, [role="dialog"], [role="menu"]';
+  '[data-radix-popper-content-wrapper], .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, [role="dialog"], [role="menu"]';
 const RADIX_POPPER_CONTENT_WRAPPER = "[data-radix-popper-content-wrapper]";
 
 type FocusableLike = Pick<Element, "closest">;

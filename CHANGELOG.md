@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+### Added
+
+- Add a checkout-scoped Workspace Inspector with Files, Changes, and agent
+  History tabs, resizable full-height right/bottom docks, expanded and
+  responsive overlay modes, and explicit repository/worktree identity.
+
+### Changed
+
+- Keep the Workspace tree and terminal session mounted while browsing files,
+  reviewing changes, or inspecting agent history. Replace the duplicate
+  Terminal/Files/Changes tab-bar switcher with one Inspector toggle.
+- Route terminal file links and resource caches through their originating
+  workspace and stable checkout identity so linked worktrees cannot leak file
+  or Diff state into each other.
+- Keep the mobile History control visible and route it through the pane that is
+  actually active in the current layout, including completed agents whose
+  status is no longer reported.
+- Keep an open Inspector docked while switching tabs or workspaces, retargeting
+  workspace-scoped resources without losing checkout isolation. Nest active and
+  completed agent sessions under their owning workspace instead of maintaining
+  a separate Agents panel or aggregate workspace agent badge. Keep child rows
+  compact, align their icon with the workspace label column, and show Working,
+  Blocked, and Done while leaving Idle visually quiet.
+- Remove the redundant History button from individual terminal panes. When a
+  tab has multiple panes, show a guarded close action beside split and zoom.
+- Mark agent tabs with their compact Agent icon and a colored work-state dot.
+- Remove inline workspace and agent overflow buttons; right-click and long-press
+  retain the complete contextual action menu while the Inspector remains the
+  primary resource surface.
+- Default to nesting Agents under their workspace, with a persisted footer
+  control that restores the separate Agents panel when preferred.
+- Let Diff search and display controls wrap as groups so Split/Unified and
+  Wrap/No wrap remain accessible in a narrow Inspector.
+- Avoid redundant terminal fit/resize work when switching an already-open
+  Inspector between Files, Changes, and History.
+- Move the mobile Workspaces action from the top bar into the bottom-right quick
+  controls, directly above the expand/collapse toggle.
+- Tighten Workspace Tree hierarchy spacing so linked worktrees and nested agent
+  rows use less horizontal space while retaining aligned columns.
+- Fix checkout-scoped Changes prefetching so expanded files no longer remain
+  stuck on `Loading diff` until selected in the file tree.
+- Show the checkout path in the shared Inspector header for Files, Changes, and
+  History, and remove redundant embedded File Explorer and Diff Viewer titles.
+- Add `Cmd+Shift+B` to toggle the Workspace Inspector.
+- In expanded Files and Changes views, make the file-navigation width draggable
+  and keyboard-adjustable, with independent checkout-scoped widths for each
+  view.
+- Keep confirmation dialogs native-keyboard safe, retire stale Files/Changes
+  prefetches during cleanup and refresh, isolate lifecycle operations across
+  dialog contexts, reset History when an Agent identity changes, and make
+  collapsed mobile controls plus Workspace/Agent rows keyboard-accessible.
+
 ## 0.4.2 - 2026-08-20
 
 ### Added

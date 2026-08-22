@@ -1,12 +1,15 @@
 import {
+  FileDiff,
   Focus as FocusIcon,
   FolderOpen,
+  FolderTree,
   GitBranch,
   GitMerge,
   RefreshCw,
   Trash2,
 } from "lucide-react";
 import { store } from "../store";
+import type { InspectorView } from "../workspaceResource";
 import {
   lifecycleAutoSyncLabel,
   lifecycleGitChangeCount,
@@ -24,6 +27,7 @@ export function WorktreeLifecycleRow({
   runOperation,
   onFocus,
   onOpen,
+  onOpenResource,
   onRemove,
 }: {
   row: LifecycleRow;
@@ -37,6 +41,7 @@ export function WorktreeLifecycleRow({
   ) => void;
   onFocus: (workspaceId: string) => void;
   onOpen: (row: LifecycleRow) => Promise<unknown>;
+  onOpenResource: (row: LifecycleRow, view: InspectorView) => Promise<unknown>;
   onRemove: (row: LifecycleRow) => void;
 }) {
   const workspace = row.workspace;
@@ -107,6 +112,38 @@ export function WorktreeLifecycleRow({
             Open
           </button>
         )}
+        {!workspace && !row.worktree.is_prunable ? (
+          <>
+            <button
+              type="button"
+              className="ghost"
+              title="Open workspace and browse files"
+              disabled={operationRunning}
+              onClick={() =>
+                runOperation(rowKey, "Opening Files", () =>
+                  onOpenResource(row, "files"),
+                )
+              }
+            >
+              <FolderTree size={14} />
+              Files
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              title="Open workspace and review changes"
+              disabled={operationRunning}
+              onClick={() =>
+                runOperation(rowKey, "Opening Changes", () =>
+                  onOpenResource(row, "changes"),
+                )
+              }
+            >
+              <FileDiff size={14} />
+              Changes
+            </button>
+          </>
+        ) : null}
         {workspace ? (
           <button
             type="button"

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { paneJumpEntries, paneJumpTargetId } from "./paneJump";
+import {
+  activePaneIdForSnapshot,
+  paneCanClose,
+  paneJumpEntries,
+  paneJumpTargetId,
+} from "./paneJump";
 import type { Pane, Tab, Workspace } from "./types";
 
 function workspace(workspaceId: string, label: string): Workspace {
@@ -46,6 +51,39 @@ function pane(
 }
 
 describe("recent pane projection", () => {
+  test("falls back from a stale selection to the layout-focused pane", () => {
+    const layout = {
+      focused_pane_id: "mobile-active",
+      panes: [
+        {
+          pane_id: "mobile-active",
+          focused: true,
+          rect: { x: 0, y: 0, width: 1, height: 1 },
+        },
+      ],
+    };
+
+    expect(activePaneIdForSnapshot({ selectedPaneId: "stale", layout })).toBe(
+      "mobile-active",
+    );
+    expect(
+      activePaneIdForSnapshot({ selectedPaneId: "mobile-active", layout }),
+    ).toBe("mobile-active");
+  });
+
+  test("only allows inline close when a pane has a sibling in its tab", () => {
+    const panes = [
+      pane("p1", "w1", "t1"),
+      pane("p2", "w1", "t1"),
+      pane("p3", "w1", "t2"),
+    ];
+
+    expect(paneCanClose(panes, "p1")).toBe(true);
+    expect(paneCanClose(panes, "p2")).toBe(true);
+    expect(paneCanClose(panes, "p3")).toBe(false);
+    expect(paneCanClose(panes, "missing")).toBe(false);
+  });
+
   test("emphasizes the workspace and keeps agent state as metadata", () => {
     const entries = paneJumpEntries(
       {

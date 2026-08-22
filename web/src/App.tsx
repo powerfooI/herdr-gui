@@ -4,7 +4,6 @@ import {
   ChevronRight,
   CircleAlert,
   FileDiff,
-  FileText,
   FolderTree,
   History,
   Info,
@@ -36,42 +35,28 @@ import {
   type ThemePreference,
 } from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
-import { AgentPanel } from "./components/AgentPanel";
+import { paneHasAgentHistory } from "./components/agentSession";
 import { CloseButton } from "./components/CloseButton";
+import { clearDiffContentResourceState } from "./components/DiffContentView";
 import { CommandCombobox } from "./components/CommandCombobox";
 import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
 import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
-import { DiffContentView } from "./components/DiffContentView";
 import {
   type ActiveDiffSelection,
-  type DiffSelectionMeta,
-  DiffViewerPanel,
+  clearDiffViewerResourceCache,
   prefetchDiffViewerWorkspace,
 } from "./components/DiffViewerPanel";
 import {
-  FileExplorerPanel,
+  clearFileExplorerResourceCache,
   prefetchFileExplorerWorkspace,
   requestFilePreview,
 } from "./components/FileExplorerDialog";
-import {
-  type ActiveFilePreviewSelection,
-  FilePreviewContent,
-  type FilePreviewSelectionMeta,
-} from "./components/FilePreviewContent";
+import { type ActiveFilePreviewSelection } from "./components/FilePreviewContent";
 import { GlobalTooltip } from "./components/GlobalTooltip";
 import { requestCloseTab, TabBar } from "./components/TabBar";
+import { WorkspaceInspectorHost } from "./components/WorkspaceInspectorHost";
 import { WorkspaceTree } from "./components/WorkspaceTree";
-import {
-  type ConnectionResourceSelection,
-  connectionStorageKey,
-  DIFF_VIEWER_WORKSPACE_STORAGE_KEY as DIFF_VIEWER_WORKSPACE_KEY,
-  FILE_EXPLORER_WORKSPACE_STORAGE_KEY as FILE_EXPLORER_WORKSPACE_KEY,
-  FILE_PREVIEW_STORAGE_KEY as FILE_PREVIEW_KEY,
-  readConnectionResourceSelection,
-  readStoredFilePreview,
-  type StoredFilePreview,
-  transitionConnectionResourceSelection,
-} from "./connectionStorage";
+import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -84,6 +69,7 @@ import {
   serializeMobileTerminalSideShortcuts,
 } from "./mobileTerminalShortcuts";
 import {
+  activePaneIdForSnapshot,
   type PaneJumpEntry,
   paneJumpEntries,
   paneJumpTargetId,
@@ -97,15 +83,38 @@ import {
   type TaskNotificationTarget,
   taskNotificationTargetFromNotice,
   useStore,
+  WORKTREE_REMOVED_EVENT,
+  type WorktreeRemovedTarget,
 } from "./store";
 import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import { terminalMountKey } from "./terminalConnection";
-import type { FileExplorerEntry } from "./types";
+import type { FileExplorerEntry, Pane } from "./types";
 import {
   connectionClientScopeKey,
   useConnectionClient,
 } from "./useConnectionClient";
+import {
+  inspectorMaximumSize,
+  isWorkspaceInspectorShortcut,
+  INSPECTOR_MIN_BOTTOM,
+  INSPECTOR_MIN_RIGHT,
+  readInspectorPreferences,
+  readResourceFileSelection,
+  relativePathWithinCheckout,
+  resourceOwnerKey,
+  resourceScopeForWorkspace,
+  resourceStateKey,
+  resolveWorkspaceForScope,
+  sameResourceOwner,
+  writeInspectorPreferences,
+  writeResourceFileSelection,
+  type InspectorDock,
+  type InspectorView,
+  WORKSPACE_INSPECTOR_REQUEST_EVENT,
+  type WorkspaceInspectorRequest,
+  type WorkspaceInspectorState,
+} from "./workspaceResource";
 import { agentClass } from "./utils";
 
 const MIN_SIDEBAR = 180;
@@ -113,8 +122,6 @@ const MAX_SIDEBAR = 560;
 const DEFAULT_SIDEBAR = 284;
 const THEME_KEY = "theme";
 const ACCENT_COLOR_KEY = "accentColor";
-const SIDEBAR_ACTIVITY_KEY = "sidebarActivity";
-
 const LazyTerminalView = lazy(() =>
   import("./components/TerminalView").then((module) => ({
     default: module.TerminalView,
@@ -128,6 +135,7 @@ type TerminalViewProps = {
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
   agentHistoryOpen?: boolean;
   onAgentHistoryOpenChange?: (open: boolean) => void;
+  onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
 };
 
 function TerminalLoadingFallback() {
@@ -185,59 +193,14 @@ function ToastMark({
 }
 
 export type Theme = ThemePreference;
-type SidebarActivity = "workspaces" | "files" | "diff";
-type MobileView = "workspaces" | "session";
-
-function SidebarViewSwitcher({
-  className,
-  activity,
-  active,
-  onOpenWorkspaces,
-  onOpenFiles,
-  onOpenDiff,
-}: {
-  className: string;
-  activity: SidebarActivity;
-  active: boolean;
-  onOpenWorkspaces: () => void;
-  onOpenFiles: () => void;
-  onOpenDiff: () => void;
-}) {
-  return (
-    <nav
-      className={`view-switcher ${className}`}
-      aria-label="Application views"
-    >
-      <button
-        type="button"
-        className={active && activity === "workspaces" ? "is-active" : ""}
-        title="Workspaces (Ctrl+Shift+W)"
-        aria-label="Show workspaces"
-        onClick={onOpenWorkspaces}
-      >
-        <PanelTop size={16} />
-      </button>
-      <button
-        type="button"
-        className={active && activity === "files" ? "is-active" : ""}
-        title="Files (Cmd/Ctrl+Shift+E)"
-        aria-label="Show file explorer"
-        onClick={onOpenFiles}
-      >
-        <FolderTree size={16} />
-      </button>
-      <button
-        type="button"
-        className={active && activity === "diff" ? "is-active" : ""}
-        title="Diff Viewer (Ctrl+Shift+G)"
-        aria-label="Show Diff Viewer"
-        onClick={onOpenDiff}
-      >
-        <FileDiff size={16} />
-      </button>
-    </nav>
-  );
-}
+type MobileView = "workspaces" | "session" | InspectorView;
+type OpenInspectorOptions = {
+  entry?: FileExplorerEntry;
+  path?: string;
+  initialDirectory?: string;
+  originPaneId?: string;
+  focusInspector?: boolean;
+};
 
 function normalizeSidebarWidth(value: number): number {
   return Number.isFinite(value) && value >= MIN_SIDEBAR && value <= MAX_SIDEBAR
@@ -283,11 +246,6 @@ function loadMobileTerminalSideShortcuts(): MobileTerminalSideShortcuts {
   );
 }
 
-function loadSidebarActivity(): SidebarActivity {
-  const value = localStorage.getItem(SIDEBAR_ACTIVITY_KEY);
-  return value === "files" || value === "diff" ? value : "workspaces";
-}
-
 function emptyActiveDiffSelection(): ActiveDiffSelection {
   return {
     entry: null,
@@ -307,21 +265,6 @@ function emptyActiveFilePreviewSelection(): ActiveFilePreviewSelection {
     preview: null,
     loading: false,
     error: null,
-  };
-}
-
-function storedFilePreviewFromSelection(
-  selection: ActiveFilePreviewSelection,
-  fileExplorerWorkspaceId: string | undefined,
-): StoredFilePreview | undefined {
-  const entry = selection.entry;
-  const workspaceId =
-    selection.preview?.workspace_id ?? fileExplorerWorkspaceId;
-  if (!entry?.path || !workspaceId) return undefined;
-  return {
-    workspaceId,
-    path: entry.path,
-    name: entry.name,
   };
 }
 
@@ -657,11 +600,13 @@ function TerminalPaneLayout({
   mobileSideShortcuts,
   agentHistoryOpen,
   onAgentHistoryOpenChange,
+  onOpenWorkspaceFile,
 }: {
   mobileShortcuts: MobileTerminalShortcutRows;
   mobileSideShortcuts: MobileTerminalSideShortcuts;
   agentHistoryOpen: boolean;
   onAgentHistoryOpenChange: (open: boolean) => void;
+  onOpenWorkspaceFile: (request: TerminalWorkspaceFileRequest) => void;
 }) {
   const s = useStore();
   const mobile = useMobileLayout();
@@ -698,6 +643,7 @@ function TerminalPaneLayout({
         mobileSideShortcuts={mobileSideShortcuts}
         agentHistoryOpen={agentHistoryOpen}
         onAgentHistoryOpenChange={onAgentHistoryOpenChange}
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
       />
     );
   }
@@ -755,6 +701,7 @@ function TerminalPaneLayout({
           mobileSideShortcuts={mobileSideShortcuts}
           agentHistoryOpen={agentHistoryOpen}
           onAgentHistoryOpenChange={onAgentHistoryOpenChange}
+          onOpenWorkspaceFile={onOpenWorkspaceFile}
         />
       </div>
     );
@@ -856,6 +803,7 @@ function TerminalPaneLayout({
               mobileSideShortcuts={mobileSideShortcuts}
               agentHistoryOpen={isActive ? agentHistoryOpen : false}
               onAgentHistoryOpenChange={onAgentHistoryOpenChange}
+              onOpenWorkspaceFile={onOpenWorkspaceFile}
             />
           </div>
         );
@@ -893,24 +841,10 @@ function TerminalPaneLayout({
 export default function App() {
   const s = useStore();
   const connectionClient = useConnectionClient();
-  const initialResourceSelectionRef =
-    useRef<ConnectionResourceSelection | null>(null);
-  if (initialResourceSelectionRef.current === null) {
-    initialResourceSelectionRef.current = readConnectionResourceSelection(
-      localStorage,
-      s.activeConnectionId,
-    );
-  }
-  const initialResourceSelection = initialResourceSelectionRef.current;
   useVisualViewportCssVars();
   const mobile = useMobileLayout();
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [mobileView, setMobileView] = useState<MobileView>("session");
-  const mobileViewByActivityRef = useRef<Record<SidebarActivity, MobileView>>({
-    workspaces: "session",
-    files: "workspaces",
-    diff: "workspaces",
-  });
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() =>
     loadSystemTheme(),
@@ -924,54 +858,32 @@ export default function App() {
     useState<MobileTerminalSideShortcuts>(loadMobileTerminalSideShortcuts);
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
-  const [agentHistoryOpen, setAgentHistoryOpen] = useState(false);
   const [paneJumpOpen, setPaneJumpOpen] = useState(false);
   const [paneJumpIndex, setPaneJumpIndex] = useState(0);
   const paneJumpCtrlDownRef = useRef(false);
   const paneJumpIndexRef = useRef(0);
-  const [sidebarActivity, setSidebarActivity] = useState<SidebarActivity>(() =>
-    loadSidebarActivity(),
+  const [inspectorState, setInspectorState] =
+    useState<WorkspaceInspectorState | null>(null);
+  const inspectorStateRef = useRef<WorkspaceInspectorState | null>(null);
+  const inspectorReturnFocusRef = useRef<HTMLElement | null>(null);
+  const pendingInspectorRequestRef = useRef<WorkspaceInspectorRequest | null>(
+    null,
   );
-  const [fileExplorerWorkspaceId, setFileExplorerWorkspaceId] = useState<
-    string | undefined
-  >(() => initialResourceSelection.fileExplorerWorkspaceId);
-  const [diffViewerWorkspaceId, setDiffViewerWorkspaceId] = useState<
-    string | undefined
-  >(() => initialResourceSelection.diffViewerWorkspaceId);
+  const inspectorStageRef = useRef<HTMLDivElement | null>(null);
+  const inspectorResizeFrameRef = useRef<number | null>(null);
   const [activeDiff, setActiveDiff] = useState<ActiveDiffSelection>(
     emptyActiveDiffSelection,
   );
   const [activeFilePreview, setActiveFilePreview] =
     useState<ActiveFilePreviewSelection>(emptyActiveFilePreviewSelection);
   const fileQuickOpenRequestRef = useRef(0);
-  const restoredFilePreviewKeyRef = useRef<string | null>(null);
-  const resourceScopeRef = useRef({
-    connectionId: s.activeConnectionId,
-    generation: s.connectionGeneration,
-  });
-  const resourceStateScopeRef = useRef({
-    connectionId: s.activeConnectionId,
-    generation: s.connectionGeneration,
-  });
-  const pendingResourceScopeRef = useRef<{
-    connectionId: string;
-    generation: number;
-  } | null>(null);
-  const resourceSelectionRef = useRef<{
-    fileExplorerWorkspaceId?: string;
-    filePreview?: StoredFilePreview;
-    diffViewerWorkspaceId?: string;
-  }>({});
   const resourceUiKey = connectionClientScopeKey(
     connectionClient,
     "resource-ui",
   );
-  const focusedWorkspaceId = s.workspaces.find((w) => w.focused)?.workspace_id;
-  const activePaneId =
-    s.selectedPaneId &&
-    s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
-      ? s.selectedPaneId
-      : s.layout?.focused_pane_id;
+  const resourceRuntimeKeyRef = useRef(resourceUiKey);
+  const focusedWorkspace = s.workspaces.find((w) => w.focused);
+  const activePaneId = activePaneIdForSnapshot(s);
   const activePane = activePaneId
     ? s.panes.find((pane) => pane.pane_id === activePaneId)
     : undefined;
@@ -989,77 +901,94 @@ export default function App() {
       ),
     [activePaneId, s.layout, s.panes, s.recentPaneIds, s.tabs, s.workspaces],
   );
-  const activePaneHasAgent =
-    !!activePane?.agent && activePane.agent_status !== "unknown";
-  const mobileListLabel =
-    sidebarActivity === "files"
-      ? "Files"
-      : sidebarActivity === "diff"
-        ? "Files"
-        : "Workspaces";
-  const mobileContentLabel =
-    sidebarActivity === "diff"
-      ? "Diff"
-      : sidebarActivity === "files"
-        ? "Preview"
-        : "Session";
+  const activePaneHasAgent = paneHasAgentHistory(activePane);
+  const historyInspectorOpen =
+    inspectorState?.open === true && inspectorState.view === "history";
+  const agentHistoryOpen =
+    historyInspectorOpen &&
+    (!inspectorState.originPaneId ||
+      inspectorState.originPaneId === activePane?.pane_id);
+  const inspectorOriginPane = inspectorState?.originPaneId
+    ? s.panes.find((pane) => pane.pane_id === inspectorState.originPaneId)
+    : undefined;
+  const inspectorHistoryPaneCandidate =
+    inspectorOriginPane ??
+    (inspectorState?.view === "history" && inspectorState.originPaneId
+      ? undefined
+      : activePane);
+  const inspectorWorkspace = inspectorState
+    ? resolveWorkspaceForScope(inspectorState.scope, s.workspaces)
+    : undefined;
+  const inspectorHistoryPane =
+    inspectorHistoryPaneCandidate?.workspace_id ===
+    inspectorWorkspace?.workspace_id
+      ? inspectorHistoryPaneCandidate
+      : undefined;
+  const inspectorResourceStateKey = inspectorState
+    ? resourceStateKey(inspectorState.scope)
+    : null;
 
+  const commitInspectorState = useCallback(
+    (next: WorkspaceInspectorState | null) => {
+      inspectorStateRef.current = next;
+      setInspectorState(next);
+    },
+    [],
+  );
+  const updateInspectorState = useCallback(
+    (
+      update: (
+        current: WorkspaceInspectorState | null,
+      ) => WorkspaceInspectorState | null,
+    ) => {
+      const next = update(inspectorStateRef.current);
+      inspectorStateRef.current = next;
+      setInspectorState(next);
+    },
+    [],
+  );
+  const activateTerminalSurface = useCallback(() => {
+    updateInspectorState((current) =>
+      current ? { ...current, open: false, expanded: false } : current,
+    );
+    setMobileView("session");
+    if (!mobile) {
+      requestAnimationFrame(() => {
+        document
+          .querySelector<HTMLElement>(
+            ".pane-layout-cell.is-active .xterm-helper-textarea, .pane-switcher-layout .xterm-helper-textarea, .workspace-terminal-surface > .terminal-shell .xterm-helper-textarea",
+          )
+          ?.focus();
+      });
+    }
+  }, [mobile, updateInspectorState]);
   const toggleSidebar = () => {
     setMobileView("session");
     setSidebarHidden((value) => !value);
   };
-  const restoreMobileViewForActivity = useCallback(
-    (activity: SidebarActivity, fallback: MobileView = "workspaces") => {
-      if (!mobile) return;
-      setMobileView(mobileViewByActivityRef.current[activity] ?? fallback);
-    },
-    [mobile],
-  );
-  const openFileExplorer = useCallback(
-    (workspaceId?: string) => {
-      const focusedWorkspaceId = store
-        .get()
-        .workspaces.find((w) => w.focused)?.workspace_id;
-      const targetWorkspaceId = workspaceId ?? focusedWorkspaceId;
-      if (targetWorkspaceId !== fileExplorerWorkspaceId) {
-        localStorage.removeItem(
-          connectionStorageKey(connectionClient.connectionId, FILE_PREVIEW_KEY),
-        );
-        restoredFilePreviewKeyRef.current = null;
-        setActiveFilePreview({
-          entry: null,
-          preview: null,
-          loading: false,
-          error: null,
-        });
-      }
-      setFileExplorerWorkspaceId(targetWorkspaceId);
-      setSidebarActivity("files");
-      setSidebarHidden(false);
-      restoreMobileViewForActivity("files");
-    },
-    [
-      connectionClient.connectionId,
-      fileExplorerWorkspaceId,
-      restoreMobileViewForActivity,
-    ],
-  );
-  const openFileExplorerFile = useCallback(
+  const openWorkspaces = useCallback(() => {
+    setSidebarHidden(false);
+    if (mobile) {
+      setMobileView("workspaces");
+      return;
+    }
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(".workspace-tree-panel")?.focus();
+    });
+  }, [mobile]);
+  const loadInspectorFilePreview = useCallback(
     (workspaceId: string, entry: FileExplorerEntry) => {
       const requestId = fileQuickOpenRequestRef.current + 1;
       fileQuickOpenRequestRef.current = requestId;
-      setFileExplorerWorkspaceId(workspaceId);
-      setSidebarActivity("files");
-      setSidebarHidden(false);
       setActiveFilePreview({
         entry,
         preview: null,
         loading: true,
         error: null,
       });
-      if (mobile) setMobileView("session");
       void requestFilePreview(workspaceId, entry.path, {
         client: connectionClient,
+        refresh: true,
       })
         .then((preview) => {
           if (
@@ -1075,7 +1004,7 @@ export default function App() {
             error: null,
           });
         })
-        .catch((e) => {
+        .catch((error) => {
           if (
             !connectionClient.isCurrent() ||
             fileQuickOpenRequestRef.current !== requestId
@@ -1086,84 +1015,358 @@ export default function App() {
             entry,
             preview: null,
             loading: false,
-            error: (e as Error).message,
+            error: error instanceof Error ? error.message : String(error),
           });
         });
     },
-    [connectionClient, mobile],
+    [connectionClient],
+  );
+  const openInspector = useCallback(
+    (
+      view: InspectorView,
+      workspaceId?: string,
+      options: OpenInspectorOptions = {},
+    ) => {
+      const snapshot = store.get();
+      const workspace = workspaceId
+        ? snapshot.workspaces.find(
+            (candidate) => candidate.workspace_id === workspaceId,
+          )
+        : snapshot.workspaces.find((candidate) => candidate.focused);
+      if (!workspace) {
+        store.notify({
+          kind: "error",
+          message: `Cannot open ${
+            view === "files"
+              ? "Files"
+              : view === "changes"
+                ? "Changes"
+                : "History"
+          }`,
+          detail: "The target workspace is no longer open.",
+        });
+        return;
+      }
+
+      const focusInspector = options.focusInspector ?? true;
+      inspectorReturnFocusRef.current =
+        focusInspector && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      const scope = resourceScopeForWorkspace(
+        connectionClient.connectionId,
+        workspace,
+      );
+      const current = inspectorStateRef.current;
+      const sameOwner = !!current && sameResourceOwner(current.scope, scope);
+      const stageWidth = inspectorStageRef.current?.clientWidth ?? 0;
+      const preferences = readInspectorPreferences(localStorage, scope, {
+        rightSize: stageWidth > 0 ? stageWidth * 0.42 : undefined,
+      });
+      const dock = sameOwner ? current.dock : preferences.dock;
+      const preferredSize = sameOwner
+        ? current.size
+        : dock === "right"
+          ? preferences.rightSize
+          : preferences.bottomSize;
+      const stageHeight = inspectorStageRef.current?.clientHeight ?? 0;
+      const clampToDock =
+        (dock === "right" && stageWidth >= 1000) ||
+        (dock === "bottom" && stageHeight > 0);
+      const size = clampToDock
+        ? Math.min(
+            preferredSize,
+            inspectorMaximumSize(dock, stageWidth, stageHeight),
+          )
+        : preferredSize;
+      const originPane = options.originPaneId
+        ? snapshot.panes.find((pane) => pane.pane_id === options.originPaneId)
+        : snapshot.panes.find(
+            (pane) =>
+              pane.workspace_id === workspace.workspace_id && pane.focused,
+          );
+      const returnTabId =
+        originPane?.tab_id ?? workspace.active_tab_id ?? current?.returnTabId;
+      const nextState: WorkspaceInspectorState = {
+        scope,
+        open: true,
+        view,
+        dock,
+        size,
+        expanded: sameOwner ? current.expanded : false,
+        returnTabId,
+        originPaneId: options.originPaneId,
+        initialDirectory: options.initialDirectory,
+      };
+
+      if (!workspace.focused) void store.focusWorkspace(workspace.workspace_id);
+      if (!sameOwner) {
+        fileQuickOpenRequestRef.current += 1;
+        setActiveDiff(emptyActiveDiffSelection());
+        setActiveFilePreview(emptyActiveFilePreviewSelection());
+      }
+      commitInspectorState(nextState);
+      writeInspectorPreferences(localStorage, nextState);
+      setSidebarHidden(false);
+      if (mobile) setMobileView(view);
+      if (focusInspector) {
+        requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLElement>(
+              '.workspace-inspector-tabs [role="tab"][aria-selected="true"]',
+            )
+            ?.focus();
+        });
+      }
+
+      const selectedPath =
+        options.path ??
+        (view === "files" && options.initialDirectory === undefined
+          ? readResourceFileSelection(localStorage, scope)
+          : undefined);
+      if (view === "files" && !selectedPath) {
+        setActiveFilePreview(emptyActiveFilePreviewSelection());
+      }
+      if (view !== "files" || !selectedPath) return;
+      const entry =
+        options.entry ??
+        ({
+          name: selectedPath.split("/").filter(Boolean).pop() ?? selectedPath,
+          path: selectedPath,
+          type: "file",
+          size: 0,
+          mtime_ms: 0,
+          hidden:
+            selectedPath.split("/").filter(Boolean).pop()?.startsWith(".") ??
+            false,
+        } satisfies FileExplorerEntry);
+      loadInspectorFilePreview(workspace.workspace_id, entry);
+    },
+    [
+      commitInspectorState,
+      connectionClient.connectionId,
+      loadInspectorFilePreview,
+      mobile,
+    ],
+  );
+  const openFileExplorer = useCallback(
+    (workspaceId?: string, focusInspector = true) =>
+      openInspector("files", workspaceId, { focusInspector }),
+    [openInspector],
+  );
+  const openFileExplorerFile = useCallback(
+    (workspaceId: string, entry: FileExplorerEntry, originPaneId?: string) =>
+      openInspector("files", workspaceId, {
+        entry,
+        path: entry.path,
+        originPaneId,
+      }),
+    [openInspector],
   );
   const openDiffViewer = useCallback(
-    (workspaceId?: string) => {
-      const focusedWorkspaceId = store
-        .get()
-        .workspaces.find((w) => w.focused)?.workspace_id;
-      setDiffViewerWorkspaceId(workspaceId ?? focusedWorkspaceId);
-      setSidebarActivity("diff");
-      setSidebarHidden(false);
-      restoreMobileViewForActivity("diff");
-    },
-    [restoreMobileViewForActivity],
+    (workspaceId?: string, focusInspector = true) =>
+      openInspector("changes", workspaceId, { focusInspector }),
+    [openInspector],
   );
-  const openWorkspaces = useCallback(() => {
-    setSidebarActivity("workspaces");
-    setSidebarHidden(false);
-    restoreMobileViewForActivity("workspaces", "session");
-  }, [restoreMobileViewForActivity]);
-  const toggleFileExplorer = useCallback(() => {
-    const showingFiles = sidebarActivity === "files" && !sidebarHidden;
-    if (showingFiles) {
-      openWorkspaces();
+  const closeInspector = useCallback(() => {
+    const current = inspectorStateRef.current;
+    if (!current) return;
+    const returnFocus = inspectorReturnFocusRef.current;
+    inspectorReturnFocusRef.current = null;
+    commitInspectorState({ ...current, open: false, expanded: false });
+    setMobileView("session");
+    const snapshot = store.get();
+    const returnTab = current.returnTabId
+      ? snapshot.tabs.find((tab) => tab.tab_id === current.returnTabId)
+      : undefined;
+    const workspace = resolveWorkspaceForScope(
+      current.scope,
+      snapshot.workspaces,
+    );
+    const tabId = returnTab?.tab_id ?? workspace?.active_tab_id;
+    const restoreControlFocus = () => {
+      if (!returnFocus?.isConnected) return;
+      requestAnimationFrame(() => returnFocus.focus());
+    };
+    if (tabId) {
+      void Promise.resolve(store.focusTab(tabId)).finally(restoreControlFocus);
+    } else {
+      restoreControlFocus();
+    }
+  }, [commitInspectorState]);
+  const setAgentHistoryInspectorOpen = useCallback(
+    (open: boolean, pane?: Pane) => {
+      const current = inspectorStateRef.current;
+      if (!open) {
+        if (current?.open && current.view === "history") closeInspector();
+        return;
+      }
+      const snapshot = store.get();
+      const paneId = pane?.pane_id ?? activePaneIdForSnapshot(snapshot);
+      const targetPane = paneId
+        ? snapshot.panes.find((candidate) => candidate.pane_id === paneId)
+        : undefined;
+      if (
+        !paneHasAgentHistory(targetPane) ||
+        !snapshot.workspaces.some(
+          (workspace) => workspace.workspace_id === targetPane.workspace_id,
+        )
+      ) {
+        store.notify({
+          kind: "error",
+          message: "Cannot open History",
+          detail: "Select an active agent pane first.",
+        });
+        return;
+      }
+      openInspector("history", targetPane.workspace_id, {
+        originPaneId: targetPane.pane_id,
+      });
+    },
+    [closeInspector, openInspector],
+  );
+  const toggleWorkspaceInspector = useCallback(() => {
+    const current = inspectorStateRef.current;
+    if (current?.open) {
+      closeInspector();
       return;
     }
-    const focusedWorkspaceId = store
-      .get()
-      .workspaces.find((w) => w.focused)?.workspace_id;
-    if (focusedWorkspaceId !== fileExplorerWorkspaceId) {
-      localStorage.removeItem(
-        connectionStorageKey(connectionClient.connectionId, FILE_PREVIEW_KEY),
-      );
-      restoredFilePreviewKeyRef.current = null;
-      setActiveFilePreview({
-        entry: null,
-        preview: null,
-        loading: false,
-        error: null,
-      });
+    const snapshot = store.get();
+    const workspace = snapshot.workspaces.find(
+      (candidate) => candidate.focused,
+    );
+    if (!workspace) return;
+    const scope = resourceScopeForWorkspace(
+      connectionClient.connectionId,
+      workspace,
+    );
+    const sameOwner = !!current && sameResourceOwner(current.scope, scope);
+    const view = sameOwner
+      ? current.view
+      : readInspectorPreferences(localStorage, scope).view;
+    const historyPaneId =
+      sameOwner && current.originPaneId
+        ? current.originPaneId
+        : activePaneIdForSnapshot(snapshot);
+    const historyPane = historyPaneId
+      ? snapshot.panes.find((pane) => pane.pane_id === historyPaneId)
+      : undefined;
+    if (
+      view === "history" &&
+      (!paneHasAgentHistory(historyPane) ||
+        historyPane?.workspace_id !== workspace.workspace_id)
+    ) {
+      openInspector("files", workspace.workspace_id);
+      return;
     }
-    setFileExplorerWorkspaceId(focusedWorkspaceId);
-    setSidebarActivity("files");
-    setSidebarHidden(false);
-    restoreMobileViewForActivity("files");
-  }, [
-    connectionClient.connectionId,
-    fileExplorerWorkspaceId,
-    openWorkspaces,
-    restoreMobileViewForActivity,
-    sidebarActivity,
-    sidebarHidden,
-  ]);
-  const handleDiffSelectionChange = useCallback(
-    (selection: ActiveDiffSelection, meta?: DiffSelectionMeta) => {
-      setActiveDiff(selection);
-      if (mobile && selection.entry && meta?.userInitiated) {
-        setMobileView("session");
+    openInspector(view, workspace.workspace_id, {
+      originPaneId: view === "history" ? historyPane?.pane_id : undefined,
+    });
+  }, [closeInspector, connectionClient.connectionId, openInspector]);
+  const keepInspectorForWorkspace = useCallback(
+    (workspaceId: string, originPane?: Pane) => {
+      const current = inspectorStateRef.current;
+      if (!current?.open) {
+        activateTerminalSurface();
+        return;
       }
+      const snapshot = store.get();
+      const explicitPane = originPane
+        ? snapshot.panes.find(
+            (candidate) => candidate.pane_id === originPane.pane_id,
+          )
+        : undefined;
+      const activePaneId = activePaneIdForSnapshot(snapshot);
+      const workspacePanes = snapshot.panes.filter(
+        (pane) => pane.workspace_id === workspaceId,
+      );
+      const routedPane =
+        explicitPane ??
+        workspacePanes.find((pane) => pane.pane_id === activePaneId) ??
+        workspacePanes.find((pane) => pane.focused);
+      const historyPane = paneHasAgentHistory(routedPane)
+        ? routedPane
+        : workspacePanes.find(paneHasAgentHistory);
+      const view =
+        current.view === "history" && !historyPane ? "files" : current.view;
+      openInspector(view, workspaceId, {
+        focusInspector: false,
+        originPaneId:
+          explicitPane?.pane_id ??
+          (view === "history" ? historyPane?.pane_id : undefined),
+      });
     },
-    [mobile],
+    [activateTerminalSurface, openInspector],
+  );
+  const toggleFileExplorer = useCallback(() => {
+    const snapshot = store.get();
+    const workspace = snapshot.workspaces.find(
+      (candidate) => candidate.focused,
+    );
+    if (!workspace) return;
+    const scope = resourceScopeForWorkspace(
+      connectionClient.connectionId,
+      workspace,
+    );
+    const current = inspectorStateRef.current;
+    if (
+      current?.open &&
+      current.view === "files" &&
+      sameResourceOwner(current.scope, scope)
+    ) {
+      closeInspector();
+      return;
+    }
+    openFileExplorer(workspace.workspace_id, false);
+  }, [closeInspector, connectionClient.connectionId, openFileExplorer]);
+  const toggleDiffViewer = useCallback(() => {
+    const snapshot = store.get();
+    const workspace = snapshot.workspaces.find(
+      (candidate) => candidate.focused,
+    );
+    if (!workspace) return;
+    const scope = resourceScopeForWorkspace(
+      connectionClient.connectionId,
+      workspace,
+    );
+    const current = inspectorStateRef.current;
+    if (
+      current?.open &&
+      current.view === "changes" &&
+      sameResourceOwner(current.scope, scope)
+    ) {
+      closeInspector();
+      return;
+    }
+    openDiffViewer(workspace.workspace_id, false);
+  }, [closeInspector, connectionClient.connectionId, openDiffViewer]);
+  const handleDiffSelectionChange = useCallback(
+    (stateKey: string, selection: ActiveDiffSelection) => {
+      const current = inspectorStateRef.current;
+      if (!current || resourceStateKey(current.scope) !== stateKey) return;
+      setActiveDiff(selection);
+    },
+    [],
+  );
+  const handleFilePreviewChange = useCallback(
+    (stateKey: string, selection: ActiveFilePreviewSelection) => {
+      const current = inspectorStateRef.current;
+      if (!current || resourceStateKey(current.scope) !== stateKey) return;
+      setActiveFilePreview(selection);
+    },
+    [],
   );
   const openDiffFileInExplorer = useCallback(
     (entry: ActiveDiffSelection["entry"]) => {
-      if (!entry) return;
-      const diffKey = `${entry.kind}:${entry.path}`;
-      const workspaceId =
-        activeDiff.files[diffKey]?.workspace_id ??
-        activeDiff.file?.workspace_id ??
-        diffViewerWorkspaceId ??
-        store.get().workspaces.find((workspace) => workspace.focused)
-          ?.workspace_id;
-      if (!workspaceId) return;
+      const current = inspectorStateRef.current;
+      if (!entry || !current) return;
+      const workspace = resolveWorkspaceForScope(
+        current.scope,
+        store.get().workspaces,
+      );
+      if (!workspace) return;
       const name = entry.path.split("/").filter(Boolean).pop() ?? entry.path;
-      openFileExplorerFile(workspaceId, {
+      openFileExplorerFile(workspace.workspace_id, {
         name,
         path: entry.path,
         type: "file",
@@ -1172,33 +1375,67 @@ export default function App() {
         hidden: name.startsWith("."),
       });
     },
-    [
-      activeDiff.file?.workspace_id,
-      activeDiff.files,
-      diffViewerWorkspaceId,
-      openFileExplorerFile,
-    ],
+    [openFileExplorerFile],
   );
-  const handleFilePreviewChange = useCallback(
-    (
-      selection: ActiveFilePreviewSelection,
-      meta?: FilePreviewSelectionMeta,
-    ) => {
-      setActiveFilePreview(selection);
-      if (mobile && selection.entry && meta?.userInitiated) {
-        setMobileView("session");
-      }
+  const browseFilesForPane = useCallback(
+    (pane: Pane) => {
+      const workspace = store
+        .get()
+        .workspaces.find(
+          (candidate) => candidate.workspace_id === pane.workspace_id,
+        );
+      if (!workspace) return;
+      const root = workspace.worktree?.checkout_path ?? workspace.cwd;
+      const initialDirectory = root
+        ? relativePathWithinCheckout(root, pane.foreground_cwd ?? pane.cwd)
+        : undefined;
+      openInspector("files", workspace.workspace_id, {
+        originPaneId: pane.pane_id,
+        initialDirectory,
+      });
     },
-    [mobile],
+    [openInspector],
+  );
+  const reviewChangesForPane = useCallback(
+    (pane: Pane) =>
+      openInspector("changes", pane.workspace_id, {
+        originPaneId: pane.pane_id,
+      }),
+    [openInspector],
+  );
+  const handleTerminalWorkspaceFile = useCallback(
+    (request: TerminalWorkspaceFileRequest) => {
+      if (
+        request.connectionId !== connectionClient.connectionId ||
+        request.connectionGeneration !== connectionClient.generation ||
+        !connectionClient.isCurrent()
+      ) {
+        return;
+      }
+      const name =
+        request.path.split("/").filter(Boolean).pop() ?? request.path;
+      openFileExplorerFile(
+        request.workspaceId,
+        {
+          name,
+          path: request.path,
+          type: "file",
+          size: 0,
+          mtime_ms: 0,
+          hidden: name.startsWith("."),
+        },
+        request.paneId,
+      );
+    },
+    [connectionClient, openFileExplorerFile],
   );
   const openNotificationTarget = useCallback(
     (target: TaskNotificationTarget) => {
-      setSidebarActivity("workspaces");
+      if (!inspectorStateRef.current?.open) activateTerminalSurface();
       setSidebarHidden(false);
-      setMobileView("session");
       void store.focusTaskNotificationTarget(target);
     },
-    [],
+    [activateTerminalSurface],
   );
   const handleNoticeAction = useCallback(
     (notice: Notice) => {
@@ -1251,6 +1488,96 @@ export default function App() {
         handleSystemNotification,
       );
   }, [openNotificationTarget]);
+  useEffect(() => {
+    const handleInspectorRequest = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceInspectorRequest>).detail;
+      if (
+        !detail ||
+        detail.connectionId !== connectionClient.connectionId ||
+        detail.generation !== connectionClient.generation ||
+        !connectionClient.isCurrent()
+      ) {
+        return;
+      }
+      const workspaceOpen = store
+        .get()
+        .workspaces.some(
+          (workspace) => workspace.workspace_id === detail.workspaceId,
+        );
+      if (!workspaceOpen) {
+        pendingInspectorRequestRef.current = detail;
+        return;
+      }
+      pendingInspectorRequestRef.current = null;
+      openInspector(detail.view, detail.workspaceId);
+    };
+    window.addEventListener(
+      WORKSPACE_INSPECTOR_REQUEST_EVENT,
+      handleInspectorRequest,
+    );
+    return () =>
+      window.removeEventListener(
+        WORKSPACE_INSPECTOR_REQUEST_EVENT,
+        handleInspectorRequest,
+      );
+  }, [connectionClient, openInspector]);
+  useEffect(() => {
+    const pending = pendingInspectorRequestRef.current;
+    if (!pending) return;
+    if (
+      pending.connectionId !== connectionClient.connectionId ||
+      pending.generation !== connectionClient.generation
+    ) {
+      pendingInspectorRequestRef.current = null;
+      return;
+    }
+    if (
+      !s.workspaces.some(
+        (workspace) => workspace.workspace_id === pending.workspaceId,
+      )
+    ) {
+      return;
+    }
+    pendingInspectorRequestRef.current = null;
+    openInspector(pending.view, pending.workspaceId);
+  }, [connectionClient, openInspector, s.workspaces]);
+  useEffect(() => {
+    const handleWorktreeRemoved = (event: Event) => {
+      const detail = (event as CustomEvent<WorktreeRemovedTarget>).detail;
+      if (
+        !detail ||
+        detail.connectionId !== connectionClient.connectionId ||
+        detail.generation !== connectionClient.generation ||
+        !connectionClient.isCurrent()
+      ) {
+        return;
+      }
+      const scope = resourceScopeForWorkspace(
+        detail.connectionId,
+        detail.workspace,
+      );
+      const resourceKey = resourceOwnerKey(scope);
+      clearFileExplorerResourceCache(
+        connectionClient,
+        resourceKey,
+        localStorage,
+      );
+      clearDiffContentResourceState(resourceStateKey(scope));
+      clearDiffViewerResourceCache(connectionClient, resourceKey, localStorage);
+      writeResourceFileSelection(localStorage, scope, null);
+      const current = inspectorStateRef.current;
+      if (!current || !sameResourceOwner(current.scope, scope)) return;
+      fileQuickOpenRequestRef.current += 1;
+      inspectorReturnFocusRef.current = null;
+      commitInspectorState(null);
+      setActiveDiff(emptyActiveDiffSelection());
+      setActiveFilePreview(emptyActiveFilePreviewSelection());
+      setMobileView("session");
+    };
+    window.addEventListener(WORKTREE_REMOVED_EVENT, handleWorktreeRemoved);
+    return () =>
+      window.removeEventListener(WORKTREE_REMOVED_EVENT, handleWorktreeRemoved);
+  }, [commitInspectorState, connectionClient]);
   const closePaneJump = useCallback(() => {
     paneJumpCtrlDownRef.current = false;
     setPaneJumpOpen(false);
@@ -1269,7 +1596,7 @@ export default function App() {
       const targetPaneId = paneJumpTargetId(paneJumpOptions, index);
       closePaneJump();
       if (!targetPaneId) return;
-      setMobileView("session");
+      if (!inspectorStateRef.current?.open) setMobileView("session");
       void store.focusPane(targetPaneId);
     },
     [closePaneJump, paneJumpOptions],
@@ -1287,69 +1614,45 @@ export default function App() {
     return previousPaneIndex >= 0 ? previousPaneIndex : 0;
   }, [paneJumpOptions]);
 
-  // Keep the outgoing resource snapshot separate from the active bridge
-  // identity. The transition effect saves this snapshot under the old ID
-  // before restoring the target ID, preventing alpha values from being
-  // persisted under beta during the switch render.
   useLayoutEffect(() => {
-    resourceSelectionRef.current = {
-      fileExplorerWorkspaceId,
-      filePreview: storedFilePreviewFromSelection(
-        activeFilePreview,
-        fileExplorerWorkspaceId,
-      ),
-      diffViewerWorkspaceId,
-    };
-  }, [activeFilePreview, diffViewerWorkspaceId, fileExplorerWorkspaceId]);
-  useLayoutEffect(() => {
-    const pendingScope = pendingResourceScopeRef.current;
-    if (!pendingScope) return;
-    resourceStateScopeRef.current = pendingScope;
-    pendingResourceScopeRef.current = null;
-  });
-  useLayoutEffect(() => {
-    const previousScope = resourceScopeRef.current;
-    if (
-      previousScope.connectionId === connectionClient.connectionId &&
-      previousScope.generation === connectionClient.generation
-    ) {
-      return;
-    }
-
-    const targetSelection = transitionConnectionResourceSelection(
-      localStorage,
-      previousScope.connectionId,
-      resourceSelectionRef.current,
-      connectionClient.connectionId,
-    );
-    const targetScope = {
-      connectionId: connectionClient.connectionId,
-      generation: connectionClient.generation,
-    };
-    resourceScopeRef.current = targetScope;
-    pendingResourceScopeRef.current = targetScope;
+    if (resourceRuntimeKeyRef.current === resourceUiKey) return;
+    resourceRuntimeKeyRef.current = resourceUiKey;
     fileQuickOpenRequestRef.current += 1;
-    restoredFilePreviewKeyRef.current = null;
-    paneJumpCtrlDownRef.current = false;
-    paneJumpIndexRef.current = 0;
-    setFileExplorerWorkspaceId(targetSelection.fileExplorerWorkspaceId);
-    setDiffViewerWorkspaceId(targetSelection.diffViewerWorkspaceId);
+    pendingInspectorRequestRef.current = null;
+    inspectorReturnFocusRef.current = null;
+    commitInspectorState(null);
     setActiveDiff(emptyActiveDiffSelection());
     setActiveFilePreview(emptyActiveFilePreviewSelection());
-    setAgentHistoryOpen(false);
     setPaneJumpOpen(false);
     setPaneJumpIndex(0);
-  }, [connectionClient]);
+    setMobileView("session");
+  }, [commitInspectorState, resourceUiKey]);
 
   useEffect(() => {
     store.init();
   }, []);
   useEffect(() => {
-    mobileViewByActivityRef.current[sidebarActivity] = mobileView;
-  }, [mobileView, sidebarActivity]);
-  useEffect(() => {
-    if (!activePaneHasAgent && agentHistoryOpen) setAgentHistoryOpen(false);
-  }, [activePaneHasAgent, agentHistoryOpen]);
+    if (!mobile) return;
+    const current = inspectorStateRef.current;
+    setMobileView(current?.open ? current.view : "session");
+  }, [mobile]);
+  useLayoutEffect(() => {
+    const current = inspectorStateRef.current;
+    if (!current?.open || !focusedWorkspace || s.pendingFocusWorkspaceId) {
+      return;
+    }
+    const routedWorkspace = resolveWorkspaceForScope(
+      current.scope,
+      s.workspaces,
+    );
+    if (routedWorkspace?.workspace_id === focusedWorkspace.workspace_id) return;
+    keepInspectorForWorkspace(focusedWorkspace.workspace_id);
+  }, [
+    focusedWorkspace,
+    keepInspectorForWorkspace,
+    s.pendingFocusWorkspaceId,
+    s.workspaces,
+  ]);
   useEffect(() => {
     if (paneJumpOpen && paneJumpOptions.length === 0) closePaneJump();
     if (paneJumpIndexRef.current >= paneJumpOptions.length) {
@@ -1361,74 +1664,76 @@ export default function App() {
     paneJumpOptions.length,
     selectPaneJumpIndex,
   ]);
-  useEffect(() => {
-    if (sidebarActivity === "files") {
-      setFileExplorerWorkspaceId((current) => current ?? focusedWorkspaceId);
+  useLayoutEffect(() => {
+    const current = inspectorStateRef.current;
+    if (!current) return;
+    const workspace = resolveWorkspaceForScope(current.scope, s.workspaces);
+    if (!workspace) {
+      if (s.status === "connected" && s.lastRefresh > 0) {
+        fileQuickOpenRequestRef.current += 1;
+        inspectorReturnFocusRef.current = null;
+        commitInspectorState(null);
+        setActiveDiff(emptyActiveDiffSelection());
+        setActiveFilePreview(emptyActiveFilePreviewSelection());
+        setMobileView("session");
+      }
+      return;
     }
-    if (sidebarActivity === "diff") {
-      setDiffViewerWorkspaceId(focusedWorkspaceId);
-      setActiveDiff({
-        entry: null,
-        file: null,
-        loading: false,
-        error: null,
-        entries: [],
-        files: {},
-        fileErrors: {},
-        summaryLoading: false,
-      });
-    }
-    // Follow focus only when the focus target actually changes; this preserves
-    // context-menu opens for a non-focused workspace until the user switches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedWorkspaceId]);
-  useEffect(() => {
-    if (sidebarActivity !== "files") return;
-    const stored = readStoredFilePreview(
-      localStorage,
+    if (workspace.workspace_id === current.scope.workspaceId) return;
+    const scope = resourceScopeForWorkspace(
       connectionClient.connectionId,
+      workspace,
     );
-    if (!stored) return;
-    if (
-      fileExplorerWorkspaceId &&
-      fileExplorerWorkspaceId !== stored.workspaceId
-    ) {
-      return;
+    commitInspectorState({ ...current, scope });
+    if (current.view === "files" && activeFilePreview.entry) {
+      loadInspectorFilePreview(workspace.workspace_id, activeFilePreview.entry);
     }
-    if (
-      !s.workspaces.some(
-        (workspace) => workspace.workspace_id === stored.workspaceId,
-      )
-    ) {
-      return;
-    }
-    const restoreKey = `${stored.workspaceId}:${stored.path}`;
-    if (restoredFilePreviewKeyRef.current === restoreKey) return;
-    restoredFilePreviewKeyRef.current = restoreKey;
-    openFileExplorerFile(stored.workspaceId, {
-      name: stored.name,
-      path: stored.path,
-      type: "file",
-      size: 0,
-      mtime_ms: 0,
-      hidden: stored.name.startsWith("."),
-    });
   }, [
+    activeFilePreview.entry,
+    commitInspectorState,
     connectionClient,
-    fileExplorerWorkspaceId,
-    openFileExplorerFile,
+    loadInspectorFilePreview,
+    s.lastRefresh,
+    s.status,
     s.workspaces,
-    sidebarActivity,
   ]);
   useEffect(() => {
-    if (!focusedWorkspaceId) return;
-    if (sidebarActivity !== "files") {
-      void prefetchFileExplorerWorkspace(focusedWorkspaceId, connectionClient);
+    const current = inspectorStateRef.current;
+    if (!current || !activeFilePreview.entry?.path) return;
+    writeResourceFileSelection(
+      localStorage,
+      current.scope,
+      activeFilePreview.entry.path,
+    );
+  }, [activeFilePreview.entry?.path, inspectorResourceStateKey]);
+  useEffect(() => {
+    if (!focusedWorkspace) return;
+    const scope = resourceScopeForWorkspace(
+      connectionClient.connectionId,
+      focusedWorkspace,
+    );
+    const resourceKey = resourceOwnerKey(scope);
+    if (
+      !inspectorState?.open ||
+      !sameResourceOwner(inspectorState.scope, scope)
+    ) {
+      void prefetchFileExplorerWorkspace(
+        focusedWorkspace.workspace_id,
+        connectionClient,
+        resourceKey,
+      );
     }
-    if (sidebarActivity !== "diff") {
-      void prefetchDiffViewerWorkspace(focusedWorkspaceId, connectionClient);
+    if (
+      !inspectorState?.open ||
+      !sameResourceOwner(inspectorState.scope, scope)
+    ) {
+      void prefetchDiffViewerWorkspace(
+        focusedWorkspace.workspace_id,
+        connectionClient,
+        resourceKey,
+      );
     }
-  }, [connectionClient, focusedWorkspaceId, sidebarActivity]);
+  }, [connectionClient, focusedWorkspace, inspectorState]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (paneJumpOpen) {
@@ -1473,7 +1778,14 @@ export default function App() {
         return;
       }
       if (e.key === "Escape") {
-        if (document.getElementById(CONFIG_MENU_ID)) return;
+        if (
+          document.getElementById(CONFIG_MENU_ID) ||
+          document.querySelector(
+            ".context-menu, .command-popover, .modal-backdrop",
+          )
+        ) {
+          return;
+        }
         const current = store.get();
         const canDismissUpdate =
           current.updateInfo?.update_available && !current.updateInstalling;
@@ -1482,6 +1794,21 @@ export default function App() {
           e.stopPropagation();
           if (current.notice) store.clearNotice();
           if (canDismissUpdate) store.dismissUpdate();
+          return;
+        }
+        const inspector = inspectorStateRef.current;
+        if (inspector?.expanded) {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = { ...inspector, expanded: false };
+          commitInspectorState(next);
+          writeInspectorPreferences(localStorage, next);
+          return;
+        }
+        if (inspector?.open) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeInspector();
         }
         return;
       }
@@ -1529,7 +1856,6 @@ export default function App() {
 
         const targetTabId = adjacentTabId(tabs, activeTabId, tabAction);
         if (!targetTabId || targetTabId === activeTabId) return;
-        setMobileView("session");
         store.focusTab(targetTabId);
         return;
       }
@@ -1545,8 +1871,14 @@ export default function App() {
         if (!targetTab) return;
         e.preventDefault();
         e.stopPropagation();
-        setMobileView("session");
         store.focusTab(targetTab.tab_id);
+        return;
+      }
+      if (isWorkspaceInspectorShortcut(e)) {
+        if (isEditableElement(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleWorkspaceInspector();
         return;
       }
       const fileExplorerShortcut =
@@ -1584,7 +1916,7 @@ export default function App() {
         if (isEditableElement(e.target)) return;
         e.preventDefault();
         e.stopPropagation();
-        openDiffViewer();
+        toggleDiffViewer();
         return;
       }
       if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -1615,16 +1947,20 @@ export default function App() {
       window.removeEventListener("blur", onBlur);
     };
   }, [
+    activateTerminalSurface,
+    closeInspector,
     closePaneJump,
+    commitInspectorState,
     commitPaneJump,
     defaultPaneJumpIndex,
     movePaneJumpSelection,
-    openDiffViewer,
     openWorkspaces,
     paneJumpOpen,
     paneJumpOptions.length,
     selectPaneJumpIndex,
+    toggleDiffViewer,
     toggleFileExplorer,
+    toggleWorkspaceInspector,
   ]);
   useEffect(() => {
     const media = window.matchMedia(SYSTEM_THEME_QUERY);
@@ -1669,53 +2005,6 @@ export default function App() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_ACTIVITY_KEY, sidebarActivity);
-  }, [sidebarActivity]);
-  useEffect(() => {
-    const key = connectionStorageKey(
-      resourceStateScopeRef.current.connectionId,
-      FILE_EXPLORER_WORKSPACE_KEY,
-    );
-    if (fileExplorerWorkspaceId) {
-      localStorage.setItem(key, fileExplorerWorkspaceId);
-    } else {
-      localStorage.removeItem(key);
-    }
-  }, [fileExplorerWorkspaceId]);
-  useEffect(() => {
-    const entry = activeFilePreview.entry;
-    const workspaceId =
-      activeFilePreview.preview?.workspace_id ?? fileExplorerWorkspaceId;
-    if (entry?.path && workspaceId) {
-      localStorage.setItem(
-        connectionStorageKey(
-          resourceStateScopeRef.current.connectionId,
-          FILE_PREVIEW_KEY,
-        ),
-        JSON.stringify({
-          workspaceId,
-          path: entry.path,
-          name: entry.name,
-        }),
-      );
-    }
-  }, [
-    activeFilePreview.entry,
-    activeFilePreview.preview?.workspace_id,
-    fileExplorerWorkspaceId,
-  ]);
-  useEffect(() => {
-    const key = connectionStorageKey(
-      resourceStateScopeRef.current.connectionId,
-      DIFF_VIEWER_WORKSPACE_KEY,
-    );
-    if (diffViewerWorkspaceId) {
-      localStorage.setItem(key, diffViewerWorkspaceId);
-    } else {
-      localStorage.removeItem(key);
-    }
-  }, [diffViewerWorkspaceId]);
   const notice = s.notice;
   useEffect(() => {
     if (!notice) return;
@@ -1735,6 +2024,132 @@ export default function App() {
     }
     localStorage.setItem("sidebarWidth", String(normalizedWidth));
   }, [sidebarWidth]);
+
+  const setInspectorView = (view: InspectorView) => {
+    const current = inspectorStateRef.current;
+    if (!current) return;
+    if (view === "history" && !paneHasAgentHistory(inspectorHistoryPane)) {
+      return;
+    }
+    const next = {
+      ...current,
+      open: true,
+      view,
+      originPaneId:
+        view === "history"
+          ? inspectorHistoryPane?.pane_id
+          : current.originPaneId,
+    };
+    commitInspectorState(next);
+    writeInspectorPreferences(localStorage, next);
+    if (mobile) setMobileView(view);
+  };
+  const setInspectorDock = (dock: InspectorDock) => {
+    const current = inspectorStateRef.current;
+    if (!current || current.dock === dock) return;
+    const preferences = readInspectorPreferences(localStorage, current.scope);
+    const next = {
+      ...current,
+      dock,
+      size: dock === "right" ? preferences.rightSize : preferences.bottomSize,
+      expanded: false,
+    };
+    commitInspectorState(next);
+    writeInspectorPreferences(localStorage, next);
+  };
+  const setInspectorExpanded = (expanded: boolean) => {
+    const current = inspectorStateRef.current;
+    if (!current) return;
+    const next = { ...current, expanded };
+    commitInspectorState(next);
+    writeInspectorPreferences(localStorage, next);
+  };
+  const clearInspectorDetail = () => {
+    const current = inspectorStateRef.current;
+    if (current?.view === "files") {
+      setActiveFilePreview(emptyActiveFilePreviewSelection());
+    } else {
+      setActiveDiff(emptyActiveDiffSelection());
+    }
+  };
+  const resizeInspectorWithKeyboard = (e: React.KeyboardEvent) => {
+    const current = inspectorStateRef.current;
+    const stage = inspectorStageRef.current;
+    if (!current || !stage || current.expanded) return;
+    const increase =
+      current.dock === "right" ? e.key === "ArrowLeft" : e.key === "ArrowUp";
+    const decrease =
+      current.dock === "right" ? e.key === "ArrowRight" : e.key === "ArrowDown";
+    if (!increase && !decrease) return;
+    e.preventDefault();
+    const bounds = stage.getBoundingClientRect();
+    const minimum =
+      current.dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM;
+    const maximum = inspectorMaximumSize(
+      current.dock,
+      bounds.width,
+      bounds.height,
+    );
+    const next = {
+      ...current,
+      size: Math.min(
+        maximum,
+        Math.max(minimum, current.size + (increase ? 24 : -24)),
+      ),
+    };
+    commitInspectorState(next);
+    writeInspectorPreferences(localStorage, next);
+  };
+  const startInspectorResize = (e: React.PointerEvent) => {
+    const current = inspectorStateRef.current;
+    const stage = inspectorStageRef.current;
+    if (!current || !stage || current.expanded) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startSize = current.size;
+    const dock = current.dock;
+    const bounds = stage.getBoundingClientRect();
+    const maxSize = inspectorMaximumSize(dock, bounds.width, bounds.height);
+    let finalSize = startSize;
+    const onMove = (event: PointerEvent) => {
+      finalSize = Math.min(
+        maxSize,
+        Math.max(
+          dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM,
+          startSize +
+            (dock === "right"
+              ? startX - event.clientX
+              : startY - event.clientY),
+        ),
+      );
+      if (inspectorResizeFrameRef.current !== null) return;
+      inspectorResizeFrameRef.current = requestAnimationFrame(() => {
+        inspectorResizeFrameRef.current = null;
+        updateInspectorState((value) =>
+          value ? { ...value, size: finalSize } : value,
+        );
+      });
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (inspectorResizeFrameRef.current !== null) {
+        cancelAnimationFrame(inspectorResizeFrameRef.current);
+        inspectorResizeFrameRef.current = null;
+      }
+      const latest = inspectorStateRef.current;
+      if (!latest) return;
+      const next = { ...latest, size: finalSize };
+      commitInspectorState(next);
+      writeInspectorPreferences(localStorage, next);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -1769,14 +2184,6 @@ export default function App() {
           </div>
           <ConnectionSwitcher />
         </div>
-        <SidebarViewSwitcher
-          className="topbar-view-switcher"
-          activity={sidebarActivity}
-          active={!sidebarHidden}
-          onOpenWorkspaces={openWorkspaces}
-          onOpenFiles={() => openFileExplorer()}
-          onOpenDiff={() => openDiffViewer()}
-        />
         <div className="topbar-actions">
           {s.connectionPaused || s.status === "disconnected" ? (
             <button
@@ -1816,73 +2223,78 @@ export default function App() {
         </div>
       </header>
 
-      <SidebarViewSwitcher
-        className="mobile-sidebar-view-switcher"
-        activity={sidebarActivity}
-        active={!sidebarHidden}
-        onOpenWorkspaces={openWorkspaces}
-        onOpenFiles={() => openFileExplorer()}
-        onOpenDiff={() => openDiffViewer()}
-      />
-
-      <nav className="mobile-nav" aria-label="Mobile view switcher">
-        <button
-          type="button"
-          className={mobileView === "workspaces" ? "active" : ""}
-          title={mobileListLabel}
-          aria-label={`Show ${mobileListLabel.toLowerCase()}`}
-          onClick={() => {
-            setAgentHistoryOpen(false);
-            setMobileView("workspaces");
-          }}
-        >
-          {sidebarActivity === "files" || sidebarActivity === "diff" ? (
-            <FolderTree size={16} />
-          ) : (
-            <PanelTop size={16} />
-          )}
-          <span className="mobile-nav-label">{mobileListLabel}</span>
-        </button>
+      <nav
+        className="mobile-nav"
+        aria-label="Workspace view switcher"
+        aria-hidden={mobileControlsCollapsed}
+      >
         <button
           type="button"
           className={
             mobileView === "session" && !agentHistoryOpen ? "active" : ""
           }
-          title={mobileContentLabel}
-          aria-label={`Show ${mobileContentLabel.toLowerCase()}`}
-          onClick={() => {
-            setAgentHistoryOpen(false);
-            setMobileView("session");
-          }}
+          title="Session"
+          aria-label="Show terminal session"
+          tabIndex={mobileControlsCollapsed ? -1 : 0}
+          onClick={activateTerminalSurface}
         >
-          {sidebarActivity === "diff" ? (
-            <FileDiff size={16} />
-          ) : sidebarActivity === "files" ? (
-            <FileText size={16} />
-          ) : (
-            <SquareTerminal size={16} />
-          )}
-          <span className="mobile-nav-label">{mobileContentLabel}</span>
+          <SquareTerminal size={16} />
+          <span className="mobile-nav-label">Session</span>
         </button>
-        {activePaneHasAgent ? (
-          <button
-            type="button"
-            className={
-              mobileView === "session" && agentHistoryOpen ? "active" : ""
-            }
-            title="History"
-            aria-label="Show agent message history"
-            aria-pressed={agentHistoryOpen}
-            onClick={() => {
-              setMobileView("session");
-              setAgentHistoryOpen((value) => !value);
-            }}
-          >
-            <History size={16} />
-            <span className="mobile-nav-label">History</span>
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={mobileView === "files" ? "active" : ""}
+          title="Files"
+          aria-label="Show workspace files"
+          tabIndex={mobileControlsCollapsed ? -1 : 0}
+          onClick={() => openFileExplorer()}
+        >
+          <FolderTree size={16} />
+          <span className="mobile-nav-label">Files</span>
+        </button>
+        <button
+          type="button"
+          className={mobileView === "changes" ? "active" : ""}
+          title="Changes"
+          aria-label="Show workspace changes"
+          tabIndex={mobileControlsCollapsed ? -1 : 0}
+          onClick={() => openDiffViewer()}
+        >
+          <FileDiff size={16} />
+          <span className="mobile-nav-label">Changes</span>
+        </button>
+        <button
+          type="button"
+          className={mobileView === "history" ? "active" : ""}
+          title={
+            activePaneHasAgent || historyInspectorOpen
+              ? "History"
+              : "Select an agent pane to view History"
+          }
+          aria-label="Show agent message history"
+          aria-pressed={historyInspectorOpen}
+          tabIndex={mobileControlsCollapsed ? -1 : 0}
+          disabled={!activePaneHasAgent && !historyInspectorOpen}
+          onClick={() => setAgentHistoryInspectorOpen(!historyInspectorOpen)}
+        >
+          <History size={16} />
+          <span className="mobile-nav-label">History</span>
+        </button>
       </nav>
+      <button
+        type="button"
+        className={`mobile-workspace-shortcut ${
+          mobileView === "workspaces" ? "is-active" : ""
+        }`}
+        title="Workspaces"
+        aria-label="Show workspaces"
+        aria-pressed={mobileView === "workspaces"}
+        aria-hidden={mobileControlsCollapsed}
+        tabIndex={mobileControlsCollapsed ? -1 : 0}
+        onClick={openWorkspaces}
+      >
+        <PanelTop size={17} />
+      </button>
       <button
         type="button"
         className="mobile-controls-toggle"
@@ -1999,33 +2411,26 @@ export default function App() {
       >
         <div className="sidebar">
           <div className="sidebar-content">
-            {sidebarActivity === "workspaces" ? (
-              <>
-                <WorkspaceTree
-                  key={`${resourceUiKey}:workspaces`}
-                  onSelect={() => setMobileView("session")}
-                />
-                <AgentPanel
-                  key={`${resourceUiKey}:agents`}
-                  onSelect={() => setMobileView("session")}
-                />
-              </>
-            ) : sidebarActivity === "files" ? (
-              <FileExplorerPanel
-                key={`${resourceUiKey}:files`}
-                open
-                workspaceId={fileExplorerWorkspaceId}
-                activePath={activeFilePreview.entry?.path}
-                onClose={() => setSidebarActivity("workspaces")}
-                onPreviewChange={handleFilePreviewChange}
-              />
-            ) : (
-              <DiffViewerPanel
-                key={`${resourceUiKey}:diff-sidebar`}
-                workspaceId={diffViewerWorkspaceId}
-                onSelectionChange={handleDiffSelectionChange}
-              />
-            )}
+            <WorkspaceTree
+              key={`${resourceUiKey}:workspaces`}
+              onSelect={(workspace) =>
+                keepInspectorForWorkspace(workspace.workspace_id)
+              }
+              onBrowseFiles={(workspace) =>
+                openFileExplorer(workspace.workspace_id)
+              }
+              onReviewChanges={(workspace) =>
+                openDiffViewer(workspace.workspace_id)
+              }
+              onSelectAgent={(pane) =>
+                keepInspectorForWorkspace(pane.workspace_id, pane)
+              }
+              onBrowseFilesForAgent={browseFilesForPane}
+              onReviewChangesForAgent={reviewChangesForPane}
+              onViewAgentHistory={(pane) =>
+                setAgentHistoryInspectorOpen(true, pane)
+              }
+            />
           </div>
         </div>
         <div
@@ -2033,60 +2438,85 @@ export default function App() {
           onPointerDown={startResize}
           title="Drag to resize sidebar"
         />
-        <main
-          className={`main ${
-            sidebarActivity === "diff" || sidebarActivity === "files"
-              ? "main-diff-mode"
-              : ""
-          }`}
-        >
+        <main className="main">
+          <TabBar
+            key={`${resourceUiKey}:tabs`}
+            mobile={mobile}
+            inspectorOpen={inspectorState?.open === true}
+            onToggleInspector={toggleWorkspaceInspector}
+          />
           <div
-            className={`main-view main-view-terminal ${
-              sidebarActivity === "diff" || sidebarActivity === "files"
-                ? "is-hidden"
+            ref={inspectorStageRef}
+            className={`workspace-stage ${
+              inspectorState?.open
+                ? `has-inspector inspector-dock-${inspectorState.dock}`
                 : ""
-            }`}
+            } ${inspectorState?.expanded ? "is-inspector-expanded" : ""}`}
           >
-            <TabBar key={`${resourceUiKey}:tabs`} mobile={mobile} />
-            <TerminalPaneLayout
-              mobileShortcuts={mobileTerminalShortcuts}
-              mobileSideShortcuts={mobileTerminalSideShortcuts}
-              agentHistoryOpen={agentHistoryOpen}
-              onAgentHistoryOpenChange={setAgentHistoryOpen}
-            />
-          </div>
-          <div
-            className={`main-view ${
-              sidebarActivity === "diff" ? "" : "is-hidden"
-            }`}
-          >
-            <DiffContentView
-              key={`${resourceUiKey}:diff-content`}
-              entry={activeDiff.entry}
-              file={activeDiff.file}
-              loading={activeDiff.loading}
-              error={activeDiff.error}
-              entries={activeDiff.entries}
-              files={activeDiff.files}
-              fileErrors={activeDiff.fileErrors}
-              summaryLoading={activeDiff.summaryLoading}
-              mobile={mobile}
-              connectionClient={connectionClient}
-              onOpenFile={openDiffFileInExplorer}
-            />
-          </div>
-          <div
-            className={`main-view ${
-              sidebarActivity === "files" ? "" : "is-hidden"
-            }`}
-          >
-            <FilePreviewContent
-              key={`${resourceUiKey}:file-preview`}
-              entry={activeFilePreview.entry}
-              preview={activeFilePreview.preview}
-              loading={activeFilePreview.loading}
-              error={activeFilePreview.error}
-            />
+            <div className="workspace-terminal-surface">
+              <TerminalPaneLayout
+                mobileShortcuts={mobileTerminalShortcuts}
+                mobileSideShortcuts={mobileTerminalSideShortcuts}
+                agentHistoryOpen={agentHistoryOpen}
+                onAgentHistoryOpenChange={setAgentHistoryInspectorOpen}
+                onOpenWorkspaceFile={handleTerminalWorkspaceFile}
+              />
+            </div>
+            {inspectorState?.open && !inspectorState.expanded ? (
+              <div
+                className="workspace-inspector-resizer"
+                role="separator"
+                aria-label={`Resize ${inspectorState.dock} Inspector`}
+                aria-orientation={
+                  inspectorState.dock === "right" ? "vertical" : "horizontal"
+                }
+                tabIndex={0}
+                onKeyDown={resizeInspectorWithKeyboard}
+                onPointerDown={startInspectorResize}
+              />
+            ) : null}
+            {inspectorState ? (
+              <div
+                className={`workspace-inspector-slot ${
+                  inspectorState.open ? "" : "is-closed"
+                }`}
+                style={
+                  inspectorState.expanded
+                    ? undefined
+                    : inspectorState.dock === "right"
+                      ? { width: inspectorState.size }
+                      : { height: inspectorState.size }
+                }
+              >
+                <WorkspaceInspectorHost
+                  key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
+                  state={inspectorState}
+                  workspace={inspectorWorkspace}
+                  historyPane={inspectorHistoryPane}
+                  fileSelection={activeFilePreview}
+                  diffSelection={activeDiff}
+                  connectionClient={connectionClient}
+                  onFileSelectionChange={(selection) =>
+                    handleFilePreviewChange(
+                      resourceStateKey(inspectorState.scope),
+                      selection,
+                    )
+                  }
+                  onDiffSelectionChange={(selection) =>
+                    handleDiffSelectionChange(
+                      resourceStateKey(inspectorState.scope),
+                      selection,
+                    )
+                  }
+                  onOpenDiffFile={openDiffFileInExplorer}
+                  onViewChange={setInspectorView}
+                  onDockChange={setInspectorDock}
+                  onExpandedChange={setInspectorExpanded}
+                  onClose={closeInspector}
+                  onBack={clearInspectorDetail}
+                />
+              </div>
+            ) : null}
           </div>
         </main>
       </div>

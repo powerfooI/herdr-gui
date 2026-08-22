@@ -15,9 +15,10 @@ import {
 } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
-import { Columns2, History, Keyboard, Maximize2, Rows2 } from "lucide-react";
+import { Columns2, Keyboard, Maximize2, Rows2, X } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { store, useStore } from "../store";
+import { paneCanClose } from "../paneJump";
 import { bridge, type ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import {
@@ -26,13 +27,8 @@ import {
   terminalPushMatches,
   type TerminalConnectionIdentity,
 } from "../terminalConnection";
-import { CloseButton } from "./CloseButton";
-import { MessageDialog } from "./ModalDialogs";
-import { requestFilePreview } from "./FileExplorerDialog";
-import { FilePreviewContent } from "./FilePreviewContent";
-import type { FileExplorerEntry, FilePreview } from "../types";
-import { focusDialogElement } from "./dialogFocus";
-import { AgentHistoryDrawer } from "./AgentHistoryDrawer";
+import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
+import { paneHasAgentHistory } from "./agentSession";
 import {
   findTerminalHttpLinks,
   sanitizeTerminalHttpUrl,
@@ -407,6 +403,14 @@ function withTimeout<T>(
   });
 }
 
+export type TerminalWorkspaceFileRequest = {
+  connectionId: string;
+  connectionGeneration: number;
+  workspaceId: string;
+  paneId?: string;
+  path: string;
+};
+
 export function TerminalView({
   paneId,
   showMobileKeys = true,
@@ -414,6 +418,7 @@ export function TerminalView({
   mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
   agentHistoryOpen: controlledAgentHistoryOpen,
   onAgentHistoryOpenChange,
+  onOpenWorkspaceFile,
 }: {
   paneId?: string;
   showMobileKeys?: boolean;
@@ -421,6 +426,7 @@ export function TerminalView({
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
   agentHistoryOpen?: boolean;
   onAgentHistoryOpenChange?: (open: boolean) => void;
+  onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
 }) {
   const s = useStore();
   const terminalIdentity = useMemo<TerminalConnectionIdentity>(
@@ -471,18 +477,8 @@ export function TerminalView({
   const [pasteLoading, setPasteLoading] = useState(false);
   const [attachRetry, setAttachRetry] = useState(0);
   const [mobileKeysOpen, setMobileKeysOpen] = useState(false);
+  const [closePaneRequested, setClosePaneRequested] = useState(false);
   const [localAgentHistoryOpen, setLocalAgentHistoryOpen] = useState(false);
-  const [pathPreview, setPathPreview] = useState<{
-    entry: FileExplorerEntry | null;
-    preview: FilePreview | null;
-    loading: boolean;
-    error: string | null;
-  }>({
-    entry: null,
-    preview: null,
-    loading: false,
-    error: null,
-  });
   const containerRef = useCallback(
     (el: HTMLDivElement | null) => setContainer(el),
     [],
@@ -502,23 +498,6 @@ export function TerminalView({
   }
   const attachTimeoutCountRef = useRef(0);
   const attachTimeoutTerminalRef = useRef<string | null>(null);
-  const pathPreviewDialogRef = useRef<HTMLDivElement | null>(null);
-  const pathPreviewRequestSeqRef = useRef(0);
-  const closePathPreview = useCallback(() => {
-    pathPreviewRequestSeqRef.current += 1;
-    setPathPreview({
-      entry: null,
-      preview: null,
-      loading: false,
-      error: null,
-    });
-  }, []);
-  useEffect(
-    () => () => {
-      pathPreviewRequestSeqRef.current += 1;
-    },
-    [],
-  );
   const selectedPaneInLayout =
     s.selectedPaneId &&
     s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
@@ -532,8 +511,8 @@ export function TerminalView({
   const activePaneId =
     selectedPaneInLayout ?? s.layout?.focused_pane_id ?? null;
   const isActivePane = !!pane && (!paneId || pane.pane_id === activePaneId);
-  const canShowAgentHistory =
-    isActivePane && !!pane?.agent && pane.agent_status !== "unknown";
+  const canShowAgentHistory = isActivePane && paneHasAgentHistory(pane);
+  const canClosePane = !!pane && paneCanClose(s.panes, pane.pane_id);
   const agentHistoryOpen = controlledAgentHistoryOpen ?? localAgentHistoryOpen;
   const setAgentHistoryOpen = useCallback(
     (open: boolean) => {
@@ -703,73 +682,27 @@ export function TerminalView({
     e.currentTarget.blur();
   };
 
-  const previewPathInDialog = useCallback(
+  const openPathInInspector = useCallback(
     (path: string) => {
-      const requestSeq = ++pathPreviewRequestSeqRef.current;
       if (!connectionClient.isCurrent()) return;
       const workspaceId = previewWorkspaceIdRef.current;
       if (!workspaceId) {
         store.notify({
           kind: "error",
-          message: "Cannot preview file",
+          message: "Cannot browse file",
           detail: "No active workspace is available.",
         });
         return;
       }
-      const initialEntry: FileExplorerEntry = {
-        name: path.split("/").filter(Boolean).pop() ?? path,
+      onOpenWorkspaceFile?.({
+        connectionId: terminalIdentity.connectionId,
+        connectionGeneration: terminalIdentity.generation,
+        workspaceId,
+        paneId: paneIdRef.current ?? undefined,
         path,
-        type: "file",
-        size: 0,
-        mtime_ms: 0,
-        hidden: false,
-      };
-      setPathPreview({
-        entry: initialEntry,
-        preview: null,
-        loading: true,
-        error: null,
       });
-      requestFilePreview(workspaceId, path, { client: connectionClient })
-        .then((preview) => {
-          if (
-            !connectionClient.isCurrent() ||
-            pathPreviewRequestSeqRef.current !== requestSeq
-          ) {
-            return;
-          }
-          const entry: FileExplorerEntry = {
-            ...initialEntry,
-            name:
-              preview.path.split("/").filter(Boolean).pop() ??
-              initialEntry.name,
-            path: preview.path,
-            size: preview.size,
-            mtime_ms: preview.mtime_ms,
-          };
-          setPathPreview({
-            entry,
-            preview,
-            loading: false,
-            error: null,
-          });
-        })
-        .catch((e) => {
-          if (
-            !connectionClient.isCurrent() ||
-            pathPreviewRequestSeqRef.current !== requestSeq
-          ) {
-            return;
-          }
-          setPathPreview({
-            entry: initialEntry,
-            preview: null,
-            loading: false,
-            error: (e as Error).message,
-          });
-        });
     },
-    [connectionClient],
+    [connectionClient, onOpenWorkspaceFile, terminalIdentity],
   );
 
   const resolveRelativeFilePaths = useCallback(
@@ -788,31 +721,6 @@ export function TerminalView({
     },
     [connectionClient, connectionScopeKey, terminalFileResolutionCache],
   );
-
-  useEffect(() => {
-    if (!pathPreview.entry) return;
-    const cancelFocus = focusDialogElement(pathPreviewDialogRef.current);
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target instanceof Node ? e.target : null;
-      const isInsideDialog =
-        !!target && !!pathPreviewDialogRef.current?.contains(target);
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        closePathPreview();
-        return;
-      }
-      if (!isInsideDialog) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKey, { capture: true });
-    };
-  }, [closePathPreview, pathPreview.entry]);
 
   // init xterm once the container element is available
   useEffect(() => {
@@ -881,7 +789,7 @@ export function TerminalView({
     fitRef.current = fit;
     const linkProvider = registerTerminalLinkProvider(
       term,
-      previewPathInDialog,
+      openPathInInspector,
       resolveRelativeFilePaths,
     );
 
@@ -1719,7 +1627,7 @@ export function TerminalView({
     container,
     fitVisibleTerminal,
     focusTerminalSoon,
-    previewPathInDialog,
+    openPathInInspector,
     relayViewportFor,
     resolveRelativeFilePaths,
     scrollPage,
@@ -1863,15 +1771,6 @@ export function TerminalView({
     connectionClient,
   ]);
 
-  useEffect(() => {
-    if (!termRef.current || !fitRef.current) return;
-    const frame = requestAnimationFrame(() => {
-      const size = fitVisibleTerminal();
-      if (size) resizeSyncRef.current?.schedule(size);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [agentHistoryOpen, fitVisibleTerminal]);
-
   const runMobileShortcut = (shortcut: MobileTerminalShortcut) => {
     const execution = mobileTerminalShortcutExecution(shortcut.action);
     if (!execution) return;
@@ -1913,40 +1812,8 @@ export function TerminalView({
 
   return (
     <>
-      <div
-        className={`terminal-shell ${
-          canShowAgentHistory ? "has-agent-history" : ""
-        } ${agentHistoryOpen && canShowAgentHistory ? "history-open" : ""}`}
-      >
+      <div className="terminal-shell">
         <div ref={containerRef} className="terminal-view" />
-        {canShowAgentHistory ? (
-          <>
-            <button
-              type="button"
-              className="terminal-history-toggle"
-              title={
-                agentHistoryOpen
-                  ? "Hide agent message history"
-                  : "Show agent message history"
-              }
-              aria-label={
-                agentHistoryOpen
-                  ? "Hide agent message history"
-                  : "Show agent message history"
-              }
-              aria-expanded={agentHistoryOpen}
-              onPointerDown={preventPaneActionFocus}
-              onClick={() => setAgentHistoryOpen(!agentHistoryOpen)}
-            >
-              <History size={15} />
-            </button>
-            <AgentHistoryDrawer
-              pane={pane}
-              open={agentHistoryOpen}
-              onOpenChange={setAgentHistoryOpen}
-            />
-          </>
-        ) : null}
         {showMobileKeys &&
         visibleMobileShortcutRows.some((row) => row.length > 0) ? (
           <div
@@ -2059,6 +1926,18 @@ export function TerminalView({
           >
             <Maximize2 size={14} />
           </button>
+          {canClosePane ? (
+            <button
+              type="button"
+              className="terminal-pane-action is-danger"
+              title="Close pane"
+              aria-label="Close pane"
+              onPointerDown={preventPaneActionFocus}
+              onClick={() => setClosePaneRequested(true)}
+            >
+              <X size={14} />
+            </button>
+          ) : null}
         </div>
         {s.connectionPaused ? (
           <div className="terminal-loading" role="status" aria-live="polite">
@@ -2080,39 +1959,21 @@ export function TerminalView({
           </div>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={closePaneRequested}
+        title="Close Pane"
+        message="Close this terminal pane?"
+        confirmLabel="Close"
+        danger
+        onClose={() => setClosePaneRequested(false)}
+        onConfirm={() => store.closePane(pane.pane_id)}
+      />
       <MessageDialog
         open={!!uploadError}
         title="Upload Failed"
         message={uploadError}
         onClose={() => setUploadError("")}
       />
-      {pathPreview.entry ? (
-        <div
-          className="modal-backdrop terminal-preview-backdrop"
-          onMouseDown={closePathPreview}
-        >
-          <div
-            ref={pathPreviewDialogRef}
-            className="modal terminal-preview-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="File preview"
-            tabIndex={-1}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modal-head">
-              <h2>File Preview</h2>
-              <CloseButton onClick={closePathPreview} />
-            </div>
-            <FilePreviewContent
-              entry={pathPreview.entry}
-              preview={pathPreview.preview}
-              loading={pathPreview.loading}
-              error={pathPreview.error}
-            />
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

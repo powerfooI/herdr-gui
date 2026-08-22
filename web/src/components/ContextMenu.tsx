@@ -9,6 +9,7 @@ import { WorkspaceAutoSyncDialog } from "./WorkspaceAutoSyncDialog";
 import { worktreeCreationSource } from "../worktree";
 import { WorktreeLifecycleDialog } from "./WorktreeLifecycleDialog";
 import { isWorkspacePinned } from "../workspacePins";
+import { copyTextFromUserGesture } from "../terminalClipboard";
 
 export interface ContextMenuState {
   x: number;
@@ -48,11 +49,15 @@ export function ContextMenu({
   state,
   pinnedWorkspaceKeys,
   onPinnedChange,
+  onBrowseFiles,
+  onReviewChanges,
   onClose,
 }: {
   state: ContextMenuState | null;
   pinnedWorkspaceKeys: ReadonlySet<string>;
   onPinnedChange: (workspace: Workspace, pinned: boolean) => void;
+  onBrowseFiles?: (workspace: Workspace) => void;
+  onReviewChanges?: (workspace: Workspace) => void;
   onClose: () => void;
 }) {
   const workspaces = useStore().workspaces;
@@ -214,11 +219,41 @@ export function ContextMenu({
 
   const items: Item[] = [
     {
+      label: "Open Files in Inspector",
+      action: () => onBrowseFiles?.(w),
+    },
+    {
+      label: "Open Changes in Inspector",
+      action: () => onReviewChanges?.(w),
+    },
+    {
       label: `${pinned ? "Unpin" : "Pin"} ${isLinked ? "worktree" : "workspace"}`,
       action: () => onPinnedChange(w, !pinned),
     },
   ];
   if (w.worktree) {
+    items.push({
+      label: "Copy checkout path",
+      action: () => {
+        const path = w.worktree?.checkout_path;
+        if (!path) return;
+        void copyTextFromUserGesture(path).then(
+          () =>
+            store.notify({
+              kind: "success",
+              message: "Checkout path copied",
+              detail: path,
+              autoDismissMs: 5000,
+            }),
+          (error) =>
+            store.notify({
+              kind: "error",
+              message: "Failed to copy checkout path",
+              detail: error instanceof Error ? error.message : String(error),
+            }),
+        );
+      },
+    });
     items.push({
       label: "Worktree lifecycle…",
       action: () => {

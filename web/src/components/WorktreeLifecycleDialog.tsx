@@ -4,8 +4,13 @@ import { FolderOpen, GitBranch, RefreshCw, Settings } from "lucide-react";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { useConnectionClient } from "../useConnectionClient";
 import { store, useStore } from "../store";
-import type { WorktreeList } from "../types";
+import type { Workspace, WorktreeList } from "../types";
 import { resolveWorktreeOpenSource, worktreeCreationSource } from "../worktree";
+import {
+  type InspectorView,
+  WORKSPACE_INSPECTOR_REQUEST_EVENT,
+  type WorkspaceInspectorRequest,
+} from "../workspaceResource";
 import {
   buildWorktreeLifecycleRows,
   lifecycleActionError,
@@ -13,6 +18,7 @@ import {
   lifecycleGitChangeCount,
   lifecycleOpenedWorkspaceId,
   lifecycleWorktreeTitle,
+  removeTemporaryWorkspaceSafely,
   type WorkspaceAutoSyncInfo,
   type WorktreeHookInfo,
   type WorktreeLifecycleRow,
@@ -30,6 +36,46 @@ type LifecycleOperation = {
   status: "running" | "succeeded" | "warning" | "failed";
   detail?: string;
 };
+
+function removalWorkspaceHint(
+  result: unknown,
+  row: WorktreeLifecycleRow,
+  list: WorktreeList | null,
+  workspaceId: string,
+): Workspace {
+  const openedValue =
+    result && typeof result === "object" && "workspace" in result
+      ? (result as { workspace?: unknown }).workspace
+      : undefined;
+  const opened =
+    openedValue && typeof openedValue === "object"
+      ? (openedValue as Partial<Workspace>)
+      : undefined;
+  const source = list?.source;
+  const fallbackWorktree = source
+    ? {
+        repo_key: source.repo_key,
+        repo_name: source.repo_name,
+        repo_root: source.repo_root,
+        checkout_path: row.worktree.path,
+        is_linked_worktree: row.worktree.is_linked_worktree,
+      }
+    : undefined;
+  return {
+    workspace_id: workspaceId,
+    number: typeof opened?.number === "number" ? opened.number : 0,
+    label: opened?.label || row.worktree.label || workspaceId,
+    focused: opened?.focused === true,
+    pane_count: typeof opened?.pane_count === "number" ? opened.pane_count : 0,
+    tab_count: typeof opened?.tab_count === "number" ? opened.tab_count : 0,
+    agent_status: opened?.agent_status || "unknown",
+    ...(opened?.cwd ? { cwd: opened.cwd } : {}),
+    ...(opened?.active_tab_id ? { active_tab_id: opened.active_tab_id } : {}),
+    ...(fallbackWorktree || opened?.worktree
+      ? { worktree: { ...fallbackWorktree!, ...opened?.worktree } }
+      : {}),
+  };
+}
 
 export function WorktreeLifecycleDialog({
   open,
@@ -182,6 +228,8 @@ export function WorktreeLifecycleDialog({
     return () => {
       window.clearInterval(timer);
       requestId.current += 1;
+      operationIdRef.current += 1;
+      operationRunningRef.current = false;
       inFlightLoad.current = null;
     };
   }, [load, open, repositoryWorkspaceId]);
@@ -230,15 +278,18 @@ export function WorktreeLifecycleDialog({
   ) => {
     if (operationRunningRef.current || !connectionClient.isCurrent()) return;
     const operationId = ++operationIdRef.current;
+    const operationIsCurrent = () =>
+      connectionClient.isCurrent() && operationIdRef.current === operationId;
     operationRunningRef.current = true;
     setOperation({ key, label, status: "running" });
     try {
       const result = await action();
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       if (result === undefined) {
         await store.refresh();
-        if (!connectionClient.isCurrent()) return;
+        if (!operationIsCurrent()) return;
         await load(false, true);
+        if (!operationIsCurrent()) return;
         setOperation({
           key,
           label,
@@ -248,9 +299,9 @@ export function WorktreeLifecycleDialog({
         return;
       }
       await store.refresh();
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       await load(false, true);
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       const actionError = lifecycleActionError(result);
       const actionWarning = lifecycleActionWarning(result);
       setOperation({
@@ -264,11 +315,11 @@ export function WorktreeLifecycleDialog({
         detail: actionError ?? actionWarning,
       });
     } catch (actionError) {
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       await store.refresh().catch(() => undefined);
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       await load(false, true).catch(() => undefined);
-      if (!connectionClient.isCurrent()) return;
+      if (!operationIsCurrent()) return;
       setOperation({
         key,
         label,
@@ -295,16 +346,9 @@ export function WorktreeLifecycleDialog({
 
   const setHooksEnabled = (enabled: boolean) => {
     if (!hooks?.key) return;
-    void runOperation("hooks", "Updating hook policy", async () => {
-      const result = await store.setRepoWorktreeHooksEnabled(
-        hooks.key!,
-        enabled,
-      );
-      if (result !== undefined) {
-        setHooks((current) => (current ? { ...current, enabled } : current));
-      }
-      return result;
-    });
+    void runOperation("hooks", "Updating hook policy", () =>
+      store.setRepoWorktreeHooksEnabled(hooks.key!, enabled),
+    );
   };
 
   const openWorktree = (row: WorktreeLifecycleRow, focus = true) => {
@@ -325,8 +369,38 @@ export function WorktreeLifecycleDialog({
     return store.openWorktreeFromCwd(openSource.cwd, row.worktree.path, focus);
   };
 
+  const openWorktreeResource = async (
+    row: WorktreeLifecycleRow,
+    view: InspectorView,
+  ) => {
+    const result = await openWorktree(row, true);
+    const targetWorkspaceId = lifecycleOpenedWorkspaceId(result);
+    if (!targetWorkspaceId) {
+      throw new Error(
+        "Herdr opened the checkout without returning a workspace ID.",
+      );
+    }
+    window.dispatchEvent(
+      new CustomEvent<WorkspaceInspectorRequest>(
+        WORKSPACE_INSPECTOR_REQUEST_EVENT,
+        {
+          detail: {
+            connectionId: connectionClient.connectionId,
+            generation: connectionClient.generation,
+            workspaceId: targetWorkspaceId,
+            view,
+          },
+        },
+      ),
+    );
+    window.setTimeout(onClose, 0);
+    return result;
+  };
+
   const removeWorktree = async (row: WorktreeLifecycleRow) => {
     let targetWorkspaceId = row.workspace?.workspace_id;
+    let workspaceHint = row.workspace;
+    let temporaryWorkspace = false;
     if (!targetWorkspaceId) {
       const opened = await openWorktree(row, false);
       targetWorkspaceId = lifecycleOpenedWorkspaceId(opened);
@@ -335,8 +409,29 @@ export function WorktreeLifecycleDialog({
           "Herdr opened the checkout without returning a workspace ID.",
         );
       }
+      workspaceHint = removalWorkspaceHint(
+        opened,
+        row,
+        list,
+        targetWorkspaceId,
+      );
+      temporaryWorkspace = true;
     }
-    return store.removeWorktree(targetWorkspaceId, false);
+
+    return removeTemporaryWorkspaceSafely({
+      workspaceId: targetWorkspaceId,
+      temporary: temporaryWorkspace,
+      remove: () =>
+        store.removeWorktree(targetWorkspaceId, false, workspaceHint),
+      close: async (workspaceId) => {
+        if (!connectionClient.isCurrent()) {
+          throw new Error(
+            "Connection changed before the temporary workspace could be closed.",
+          );
+        }
+        await store.closeWorkspace(workspaceId);
+      },
+    });
   };
 
   return createPortal(
@@ -534,6 +629,7 @@ export function WorktreeLifecycleDialog({
                         onClose();
                       }}
                       onOpen={(targetRow) => openWorktree(targetRow)}
+                      onOpenResource={openWorktreeResource}
                       onRemove={setRemoveRow}
                     />
                   );

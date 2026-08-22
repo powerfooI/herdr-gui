@@ -21,6 +21,11 @@ type DiffViewMode = "split" | "unified";
 const DIFF_VIEW_MODE_KEY = "diffViewMode";
 const DESKTOP_DIFF_WRAP_KEY = "desktopDiffWrap";
 const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
+const diffCollapseStateCache = new Map<string, ReadonlyMap<string, boolean>>();
+
+export function clearDiffContentResourceState(resourceKey: string) {
+  diffCollapseStateCache.delete(resourceKey);
+}
 const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
@@ -200,6 +205,7 @@ export function DiffContentView({
   fileErrors = {},
   summaryLoading = false,
   mobile = false,
+  resourceKey = "default",
   connectionClient,
   onOpenFile,
 }: {
@@ -212,6 +218,7 @@ export function DiffContentView({
   fileErrors?: Record<string, string>;
   summaryLoading?: boolean;
   mobile?: boolean;
+  resourceKey?: string;
   connectionClient: ConnectionClient;
   onOpenFile?: (entry: GitDiffEntry) => void;
 }) {
@@ -237,7 +244,7 @@ export function DiffContentView({
   const imagePreviewRequestByKeyRef = useRef(new Map<string, number>());
   const [manualCollapseStates, setManualCollapseStates] = useState<
     ReadonlyMap<string, boolean>
-  >(() => new Map());
+  >(() => new Map(diffCollapseStateCache.get(resourceKey)));
   const effectiveViewMode: DiffViewMode = mobile ? "unified" : viewMode;
   const wrapEnabled = mobile ? mobileWrap : desktopWrap;
   const activeSearchQuery = searchQuery;
@@ -475,10 +482,11 @@ export function DiffContentView({
       setManualCollapseStates((current) => {
         const next = new Map(current);
         next.set(key, !collapsed);
+        diffCollapseStateCache.set(resourceKey, next);
         return next;
       });
     },
-    [],
+    [resourceKey],
   );
 
   useEffect(() => {
@@ -534,67 +542,69 @@ export function DiffContentView({
           </button>
         ) : null}
         <div className="diff-content-actions">
-          <label className="diff-search">
-            <Search size={13} />
-            <input
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  goToSearchMatch(e.shiftKey ? -1 : 1);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSearchQuery("");
-                }
-              }}
-              placeholder="Search diff"
-              disabled={!hasRenderedDiff}
-            />
-          </label>
-          <span className="diff-search-count">
-            {activeSearchQuery && searchMatchCount
-              ? `${searchIndex + 1}/${searchMatchCount}`
-              : activeSearchQuery
-                ? "No results"
-                : ""}
-          </span>
-          <button
-            type="button"
-            className="diff-search-button"
-            onClick={() => goToSearchMatch(-1)}
-            disabled={!searchMatchCount}
-            aria-label="Previous diff search match"
-          >
-            <ChevronUp size={14} />
-          </button>
-          <button
-            type="button"
-            className="diff-search-button"
-            onClick={() => goToSearchMatch(1)}
-            disabled={!searchMatchCount}
-            aria-label="Next diff search match"
-          >
-            <ChevronDown size={14} />
-          </button>
-          {searchQuery ? (
+          <div className="diff-search-controls">
+            <label className="diff-search">
+              <Search size={13} />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    goToSearchMatch(e.shiftKey ? -1 : 1);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchQuery("");
+                  }
+                }}
+                placeholder="Search diff"
+                disabled={!hasRenderedDiff}
+              />
+            </label>
+            <span className="diff-search-count">
+              {activeSearchQuery && searchMatchCount
+                ? `${searchIndex + 1}/${searchMatchCount}`
+                : activeSearchQuery
+                  ? "No results"
+                  : ""}
+            </span>
             <button
               type="button"
               className="diff-search-button"
-              onClick={() => {
-                setSearchQuery("");
-                focusSearch();
-              }}
-              aria-label="Clear diff search"
+              onClick={() => goToSearchMatch(-1)}
+              disabled={!searchMatchCount}
+              aria-label="Previous diff search match"
             >
-              <X size={14} />
+              <ChevronUp size={14} />
             </button>
-          ) : null}
+            <button
+              type="button"
+              className="diff-search-button"
+              onClick={() => goToSearchMatch(1)}
+              disabled={!searchMatchCount}
+              aria-label="Next diff search match"
+            >
+              <ChevronDown size={14} />
+            </button>
+            {searchQuery ? (
+              <button
+                type="button"
+                className="diff-search-button"
+                onClick={() => {
+                  setSearchQuery("");
+                  focusSearch();
+                }}
+                aria-label="Clear diff search"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </div>
           {!mobile ? (
-            <>
+            <div className="diff-display-controls">
               <div className="diff-view-toggle" aria-label="Diff view mode">
                 <button
                   type="button"
@@ -621,7 +631,7 @@ export function DiffContentView({
               >
                 {desktopWrap ? "Wrap" : "No wrap"}
               </button>
-            </>
+            </div>
           ) : null}
         </div>
       </div>

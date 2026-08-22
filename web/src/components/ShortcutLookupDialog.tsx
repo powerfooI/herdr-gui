@@ -20,6 +20,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
         description: "Run a numbered command menu action",
       },
       { keys: "Cmd+B", description: "Toggle the sidebar on desktop" },
+      { keys: "Cmd+Shift+B", description: "Toggle the Workspace Inspector" },
       {
         keys: "Ctrl+Tab / Ctrl+Shift+Tab",
         description: "Open the recent pane switcher",

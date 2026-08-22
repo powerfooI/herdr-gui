@@ -155,10 +155,12 @@ function AgentHistoryMessageCard({
 export function AgentHistoryDrawer({
   pane,
   open,
+  embedded = false,
   onOpenChange,
 }: {
   pane: Pane;
   open: boolean;
+  embedded?: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const appState = useStore();
@@ -261,7 +263,7 @@ export function AgentHistoryDrawer({
     setPreviewError("");
     setLoading(false);
     setError("");
-  }, [connectionClient, pane.pane_id]);
+  }, [connectionClient, pane.agent, pane.pane_id, pane.workspace_id]);
 
   useEffect(() => {
     if (open) loadHistory();
@@ -352,7 +354,9 @@ export function AgentHistoryDrawer({
   return (
     <>
       <aside
-        className={`agent-history-drawer ${open ? "is-open" : ""}`}
+        className={`agent-history-drawer ${open ? "is-open" : ""} ${
+          embedded ? "is-embedded" : ""
+        }`}
         aria-label="Agent session"
         aria-hidden={!open}
       >
@@ -383,15 +387,17 @@ export function AgentHistoryDrawer({
             >
               <RefreshCw size={14} />
             </button>
-            <button
-              type="button"
-              className="agent-history-icon"
-              onClick={() => onOpenChange(false)}
-              aria-label="Close session"
-              title="Close"
-            >
-              <X size={14} />
-            </button>
+            {!embedded ? (
+              <button
+                type="button"
+                className="agent-history-icon"
+                onClick={() => onOpenChange(false)}
+                aria-label="Close session"
+                title="Close"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -589,7 +595,7 @@ export function AgentHistoryDrawer({
                   onClick={openSessionPreview}
                 >
                   <Eye size={14} />
-                  Open Inspector
+                  Open transcript
                 </button>
                 <button
                   type="button"

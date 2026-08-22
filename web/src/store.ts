@@ -146,6 +146,13 @@ export function emptyServerSessionState(
 
 export const TASK_NOTIFICATION_ACTIVATE_EVENT =
   "herdr:task-notification-activate";
+export const WORKTREE_REMOVED_EVENT = "herdr:worktree-removed";
+
+export interface WorktreeRemovedTarget {
+  connectionId: string;
+  generation: number;
+  workspace: Workspace;
+}
 
 export function noticeAutoDismissDelay(notice: Notice): number | null {
   if (notice.loading) return null;
@@ -2028,9 +2035,17 @@ export const store = {
     });
   },
 
-  removeWorktree(workspaceId: string, force = false) {
+  removeWorktree(
+    workspaceId: string,
+    force = false,
+    workspaceHint?: Workspace,
+  ) {
     return action(
       async (lease) => {
+        const removedWorkspace =
+          state.workspaces.find(
+            (workspace) => workspace.workspace_id === workspaceId,
+          ) ?? workspaceHint;
         setForConnection(lease, {
           notice: {
             kind: "info",
@@ -2068,6 +2083,17 @@ export const store = {
         setForConnection(lease, {
           terminalAttachEpoch: state.terminalAttachEpoch + 1,
         });
+        if (removedWorkspace && typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent<WorktreeRemovedTarget>(WORKTREE_REMOVED_EVENT, {
+              detail: {
+                connectionId: lease.connectionId,
+                generation: lease.generation,
+                workspace: removedWorkspace,
+              },
+            }),
+          );
+        }
         const removedHook = result?.removed_hook as
           | WorktreeHookRunResult
           | undefined;

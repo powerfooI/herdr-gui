@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
+import { dialogKeyAction } from "./dialogKeyboard";
 
 export function TextInputDialog({
   open,
@@ -102,6 +103,11 @@ export function ConfirmDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onConfirmRef = useRef(onConfirm);
+  const onCloseRef = useRef(onClose);
+
+  onConfirmRef.current = onConfirm;
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -109,20 +115,14 @@ export function ConfirmDialog({
     const onKey = (e: KeyboardEvent) => {
       const target = e.target instanceof Node ? e.target : null;
       const isInsideDialog = !!target && !!dialogRef.current?.contains(target);
-      if (e.key === "Escape") {
+      const action = dialogKeyAction(e.key, isInsideDialog);
+      if (action === "close") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        onConfirm();
-        onClose();
-        return;
-      }
-      if (!isInsideDialog) {
+      if (action === "contain") {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -132,7 +132,7 @@ export function ConfirmDialog({
       cancelFocus();
       window.removeEventListener("keydown", onKey, { capture: true });
     };
-  }, [onClose, onConfirm, open]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -162,8 +162,8 @@ export function ConfirmDialog({
             type="button"
             className={danger ? "danger" : ""}
             onClick={() => {
-              onConfirm();
-              onClose();
+              onConfirmRef.current();
+              onCloseRef.current();
             }}
           >
             {confirmLabel}

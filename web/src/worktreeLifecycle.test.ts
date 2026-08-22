@@ -7,6 +7,7 @@ import {
   lifecycleAutoSyncLabel,
   lifecycleGitChangeCount,
   lifecycleOpenedWorkspaceId,
+  removeTemporaryWorkspaceSafely,
 } from "./worktreeLifecycle";
 
 const list: WorktreeList = {
@@ -158,5 +159,86 @@ describe("worktree lifecycle rows", () => {
         running: false,
       }),
     ).toBe("Sync origin/main every 15 min");
+  });
+});
+
+describe("temporary workspace removal", () => {
+  test("closes a temporary workspace when removal is refused", async () => {
+    const closed: string[] = [];
+    const result = await removeTemporaryWorkspaceSafely({
+      workspaceId: "temporary",
+      temporary: true,
+      remove: async () => ({ skipped_remove: true }),
+      close: async (workspaceId) => {
+        closed.push(workspaceId);
+      },
+    });
+
+    expect(result).toEqual({ skipped_remove: true });
+    expect(closed).toEqual(["temporary"]);
+  });
+
+  test("closes a temporary workspace after a removal failure", async () => {
+    const closed: string[] = [];
+    await expect(
+      removeTemporaryWorkspaceSafely({
+        workspaceId: "temporary",
+        temporary: true,
+        remove: async () => {
+          throw new Error("hook failed");
+        },
+        close: async (workspaceId) => {
+          closed.push(workspaceId);
+        },
+      }),
+    ).rejects.toThrow("hook failed");
+    expect(closed).toEqual(["temporary"]);
+  });
+
+  test("closes a temporary workspace when the store reports no result", async () => {
+    const closed: string[] = [];
+    await expect(
+      removeTemporaryWorkspaceSafely({
+        workspaceId: "temporary",
+        temporary: true,
+        remove: async () => undefined,
+        close: async (workspaceId) => {
+          closed.push(workspaceId);
+        },
+      }),
+    ).rejects.toThrow("Worktree removal did not complete.");
+    expect(closed).toEqual(["temporary"]);
+  });
+
+  test("reports when temporary workspace cleanup also fails", async () => {
+    await expect(
+      removeTemporaryWorkspaceSafely({
+        workspaceId: "temporary",
+        temporary: true,
+        remove: async () => {
+          throw new Error("remove failed");
+        },
+        close: async () => {
+          throw new Error("close failed");
+        },
+      }),
+    ).rejects.toThrow(
+      "remove failed\nTemporary workspace cleanup failed: close failed",
+    );
+  });
+
+  test("leaves no successful removal workspace to close", async () => {
+    let closeCalls = 0;
+    await expect(
+      removeTemporaryWorkspaceSafely({
+        workspaceId: "temporary",
+        temporary: true,
+        remove: async () => ({ removed: true }),
+        close: async () => {
+          closeCalls += 1;
+        },
+      }),
+    ).resolves.toEqual({ removed: true });
+    expect(closeCalls).toBe(0);
   });
 });

@@ -1,8 +1,11 @@
 import { useStore, store } from "../store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { PanelRight } from "lucide-react";
 import type { Tab } from "../types";
+import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
+import { summarizeTabAgents } from "./agentSession";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -36,7 +39,15 @@ export function requestCloseTab(tabId: string) {
  * Desktop keeps the strip visible even with one tab, while mobile hides it when
  * there is no real tab choice to save vertical terminal space.
  */
-export function TabBar({ mobile = false }: { mobile?: boolean }) {
+export function TabBar({
+  mobile = false,
+  inspectorOpen = false,
+  onToggleInspector,
+}: {
+  mobile?: boolean;
+  inspectorOpen?: boolean;
+  onToggleInspector?: () => void;
+}) {
   const s = useStore();
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(
     null,
@@ -50,6 +61,13 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
   const pendingCloseTab = s.tabs.find((t) => t.tab_id === pendingCloseTabId);
   const pendingCloseTabName = tabName(pendingCloseTab);
   const showTabStrip = !!focusedWs && (!mobile || tabs.length > 1);
+  const gitStatus = focusedWs?.worktree?.git_status;
+  const changedCount = gitStatus
+    ? gitStatus.staged +
+      gitStatus.unstaged +
+      gitStatus.untracked +
+      gitStatus.conflicted
+    : 0;
 
   useEffect(() => {
     const onRequestClose = (event: Event) => {
@@ -68,10 +86,14 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
       <TabContextMenu
         state={menu}
         onClose={() => setMenu(null)}
-        onFocus={(tab) => store.focusTab(tab.tab_id)}
+        onFocus={(tab) => {
+          store.focusTab(tab.tab_id);
+        }}
         onRename={(tab) => setPendingRenameTab(tab)}
         onCloseTab={(tab) => setPendingCloseTabId(tab.tab_id)}
-        onCreateTab={() => store.createTab(focusedWs.workspace_id)}
+        onCreateTab={() => {
+          store.createTab(focusedWs.workspace_id);
+        }}
       />
       <ConfirmDialog
         open={!!pendingCloseTabId}
@@ -115,11 +137,14 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
               t.label && t.label !== String(t.number)
                 ? t.label
                 : `Tab ${t.number}`;
+            const agentSummary = summarizeTabAgents(s.panes, t.tab_id);
             return (
               <div
                 key={t.tab_id}
                 className={`tabbar-tab ${t.focused ? "is-active" : ""}`}
-                onClick={() => store.focusTab(t.tab_id)}
+                onClick={() => {
+                  store.focusTab(t.tab_id);
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setMenu({ tab: t, x: e.clientX, y: e.clientY });
@@ -132,6 +157,29 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
                 >
                   <span className="tabbar-name">{name}</span>
                 </TabLongPressTarget>
+                {agentSummary ? (
+                  <span
+                    className="tabbar-agent-marker"
+                    title={`${agentSummary.primaryAgent} · ${agentSummary.status}${
+                      agentSummary.additionalAgents > 0
+                        ? ` · ${agentSummary.additionalAgents} more agent${
+                            agentSummary.additionalAgents === 1 ? "" : "s"
+                          }`
+                        : ""
+                    }`}
+                    aria-label={`${agentSummary.primaryAgent}, status ${agentSummary.status}`}
+                  >
+                    <AgentStatusIcon
+                      agent={agentSummary.primaryAgent}
+                      status={agentSummary.status}
+                    />
+                    {agentSummary.additionalAgents > 0 ? (
+                      <span className="tabbar-agent-more">
+                        +{agentSummary.additionalAgents}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
                 <button
                   className="tabbar-close"
                   onClick={(e) => {
@@ -147,11 +195,33 @@ export function TabBar({ mobile = false }: { mobile?: boolean }) {
           })}
           <button
             className="tabbar-add"
-            onClick={() => store.createTab(focusedWs.workspace_id)}
+            onClick={() => {
+              store.createTab(focusedWs.workspace_id);
+            }}
             title="New tab"
           >
             +
           </button>
+          <span className="tabbar-spacer" />
+          <div className="tabbar-utilities">
+            <button
+              type="button"
+              className={inspectorOpen ? "is-active" : ""}
+              aria-expanded={inspectorOpen}
+              title={
+                inspectorOpen
+                  ? "Close Workspace Inspector (⌘⇧B)"
+                  : "Open Workspace Inspector (⌘⇧B)"
+              }
+              onClick={onToggleInspector}
+            >
+              <PanelRight size={14} />
+              <span>Inspector</span>
+              {changedCount > 0 ? (
+                <span className="tabbar-change-count">{changedCount}</span>
+              ) : null}
+            </button>
+          </div>
         </div>
       ) : null}
       {createPortal(overlays, document.body)}

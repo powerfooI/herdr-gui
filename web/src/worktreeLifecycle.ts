@@ -78,6 +78,58 @@ export function lifecycleOpenedWorkspaceId(
     : undefined;
 }
 
+export function lifecycleRemovalSkipped(result: unknown): boolean {
+  return Boolean(
+    result &&
+      typeof result === "object" &&
+      "skipped_remove" in result &&
+      (result as { skipped_remove?: unknown }).skipped_remove,
+  );
+}
+
+export async function removeTemporaryWorkspaceSafely<T>({
+  workspaceId,
+  temporary,
+  remove,
+  close,
+}: {
+  workspaceId: string;
+  temporary: boolean;
+  remove: () => Promise<T>;
+  close: (workspaceId: string) => Promise<unknown>;
+}): Promise<T> {
+  let result: T;
+  try {
+    result = await remove();
+  } catch (error) {
+    if (temporary) {
+      try {
+        await close(workspaceId);
+      } catch (cleanupError) {
+        const message = error instanceof Error ? error.message : String(error);
+        const cleanupMessage =
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError);
+        throw new Error(
+          `${message}\nTemporary workspace cleanup failed: ${cleanupMessage}`,
+          { cause: cleanupError },
+        );
+      }
+    }
+    throw error;
+  }
+
+  const incomplete = result === undefined;
+  if (temporary && (incomplete || lifecycleRemovalSkipped(result))) {
+    await close(workspaceId);
+  }
+  if (incomplete) {
+    throw new Error("Worktree removal did not complete.");
+  }
+  return result;
+}
+
 export function lifecycleAutoSyncLabel(info?: WorkspaceAutoSyncInfo): string {
   if (!info?.enabled) return "Main auto-sync off";
   if (info.running) return "Syncing origin/main";

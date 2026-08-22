@@ -9,6 +9,11 @@ export type PaneJumpEntry = {
   current: boolean;
 };
 
+type ActivePaneSnapshot = {
+  selectedPaneId?: string | null;
+  layout?: Pick<PaneLayout, "panes" | "focused_pane_id"> | null;
+};
+
 type PaneJumpSnapshot = {
   layout?: Pick<PaneLayout, "panes"> | null;
   panes: Pane[];
@@ -16,6 +21,32 @@ type PaneJumpSnapshot = {
   tabs: Tab[];
   workspaces: Workspace[];
 };
+
+/** Resolves selection only when it still belongs to the active layout. */
+export function activePaneIdForSnapshot(
+  snapshot: ActivePaneSnapshot,
+): string | undefined {
+  return snapshot.selectedPaneId &&
+    snapshot.layout?.panes.some(
+      (pane) => pane.pane_id === snapshot.selectedPaneId,
+    )
+    ? snapshot.selectedPaneId
+    : snapshot.layout?.focused_pane_id;
+}
+
+/** A pane can be closed inline only while a sibling keeps its tab alive. */
+export function paneCanClose(
+  panes: readonly Pick<Pane, "pane_id" | "tab_id">[],
+  paneId: string,
+): boolean {
+  const target = panes.find((pane) => pane.pane_id === paneId);
+  return (
+    !!target &&
+    panes.some(
+      (pane) => pane.pane_id !== paneId && pane.tab_id === target.tab_id,
+    )
+  );
+}
 
 /** Projects live pane state into a deduplicated, most-recent-first switcher. */
 export function paneJumpEntries(
