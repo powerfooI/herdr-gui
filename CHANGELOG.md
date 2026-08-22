@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fix terminal attach against Herdr 0.8.2 (protocol 20), which renumbered the
+  `TerminalAttach` launch-mode wire value and rejected direct attaches with
+  "connection is not pending terminal attach".
+
 ## 0.4.3 - 2026-08-22
 
 ### Added

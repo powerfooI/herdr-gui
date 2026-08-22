@@ -248,7 +248,7 @@ export function createTerminalBridge(args: {
     // receive them, so keep one lightweight app connection while terminals are
     // being viewed and route its clipboard messages back to the input owner.
     const connecting = relay
-      .connect(cols, rows, { launchMode: 0, encoding: 1 })
+      .connect(cols, rows, { launchMode: "app", encoding: 1 })
       .then(() => {
         if (disposed) {
           relay.close();
@@ -512,7 +512,7 @@ export function createTerminalBridge(args: {
       }
     });
     const terminalReady = thin
-      .connect(cols, rows, { launchMode: 1, encoding: 1 })
+      .connect(cols, rows, { launchMode: "terminal-attach", encoding: 1 })
       .then(() => {
         if (!isCurrent(creationRevision)) {
           thin.close();

@@ -25,7 +25,7 @@ c.on("terminal", (t) => {
 });
 c.on("frame", (f) => console.log(`FRAME ${f.width}x${f.height}`));
 
-await c.connect(cols, rows, { launchMode: 1, encoding: 1 }); // TerminalAttach + TerminalAnsi
+await c.connect(cols, rows, { launchMode: "terminal-attach", encoding: 1 }); // TerminalAttach + TerminalAnsi
 setTimeout(() => {
   console.log("attaching to", termId);
   c.attach(termId);

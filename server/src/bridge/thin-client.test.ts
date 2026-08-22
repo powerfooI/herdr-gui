@@ -25,6 +25,8 @@ afterEach(async () => {
 async function startHandshakeServer(
   welcome: (protocol: number) => { version: number; error?: string },
   onConnection: () => void = () => undefined,
+  onHello: (hello: { protocol: number; launchMode: number }) => void = () =>
+    undefined,
 ) {
   const socketPath = path.join(
     tmpdir(),
@@ -44,6 +46,14 @@ async function startHandshakeServer(
       const reader = new BinReader(input.subarray(4, length + 4));
       expect(reader.variant()).toBe(0);
       const protocol = reader.varint();
+      reader.varint(); // cols
+      reader.varint(); // rows
+      reader.varint(); // cell_width_px
+      reader.varint(); // cell_height_px
+      reader.varint(); // requested_encoding
+      reader.varint(); // keybindings
+      const launchMode = reader.varint();
+      onHello({ protocol, launchMode });
       const response = welcome(protocol);
       const writer = new BinWriter();
       writer.variant(0);
@@ -132,12 +142,56 @@ describe("Herdr thin-client protocol compatibility", () => {
       });
       const client = new ThinClient(socketPath, async () => protocol);
 
-      await client.connect(100, 30, { launchMode: 1, encoding: 1 });
+      await client.connect(100, 30, {
+        launchMode: "terminal-attach",
+        encoding: 1,
+      });
 
       expect(seen).toEqual([protocol]);
       client.close();
     });
   }
+
+  test("maps the terminal-attach launch mode onto the negotiated protocol", async () => {
+    // Herdr 0.8.2 (protocol 20) renumbered ClientLaunchMode::TerminalAttach
+    // from 1 to 2 when AppDirectGraphics was inserted at index 1.
+    for (const [protocol, expectedLaunchMode] of [
+      [19, 1],
+      [20, 2],
+      [21, 2],
+    ] as const) {
+      const seen: Array<{ protocol: number; launchMode: number }> = [];
+      const socketPath = await startHandshakeServer(
+        (requestedProtocol) => ({ version: requestedProtocol }),
+        () => undefined,
+        (hello) => seen.push(hello),
+      );
+      const client = new ThinClient(socketPath, async () => protocol);
+
+      await client.connect(100, 30, {
+        launchMode: "terminal-attach",
+        encoding: 1,
+      });
+
+      expect(seen).toEqual([{ protocol, launchMode: expectedLaunchMode }]);
+      client.close();
+    }
+  });
+
+  test("keeps the app launch mode at wire value 0 on newer protocols", async () => {
+    const seen: Array<{ protocol: number; launchMode: number }> = [];
+    const socketPath = await startHandshakeServer(
+      (requestedProtocol) => ({ version: requestedProtocol }),
+      () => undefined,
+      (hello) => seen.push(hello),
+    );
+    const client = new ThinClient(socketPath, async () => 20);
+
+    await client.connect(100, 30, { launchMode: "app", encoding: 1 });
+
+    expect(seen).toEqual([{ protocol: 20, launchMode: 0 }]);
+    client.close();
+  });
 
   test("rejects a welcome error instead of treating the socket as attached", async () => {
     const socketPath = await startHandshakeServer((protocol) => ({
@@ -197,7 +251,10 @@ describe("Herdr thin-client protocol compatibility", () => {
     });
     const client = new ThinClient(socketPath, async () => 16);
 
-    await client.connect(100, 30, { launchMode: 1, encoding: 1 });
+    await client.connect(100, 30, {
+      launchMode: "terminal-attach",
+      encoding: 1,
+    });
     client.attach("term_1", true);
     client.attach("term_1", true);
     await Bun.sleep(10);
@@ -234,7 +291,10 @@ describe("Herdr thin-client protocol compatibility", () => {
     });
     const client = new ThinClient(socketPath, async () => 17);
 
-    await client.connect(100, 30, { launchMode: 1, encoding: 1 });
+    await client.connect(100, 30, {
+      launchMode: "terminal-attach",
+      encoding: 1,
+    });
     client.scroll("up", 28, null, null, "page-key");
     client.scroll("down", 17, null, null, "page-key");
     await receivedScrolls;
@@ -270,7 +330,10 @@ describe("Herdr thin-client protocol compatibility", () => {
       client.once("clipboard", resolve),
     );
 
-    await client.connect(100, 30, { launchMode: 1, encoding: 1 });
+    await client.connect(100, 30, {
+      launchMode: "terminal-attach",
+      encoding: 1,
+    });
     client.attach("term_1", true);
 
     expect(await clipboard).toEqual({ data: clipboardData });

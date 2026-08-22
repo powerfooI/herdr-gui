@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
 import * as net from "node:net";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
-import { assertSupportedHerdrProtocol } from "./protocol-compat";
+import {
+  assertSupportedHerdrProtocol,
+  terminalAttachLaunchModeWireValue,
+} from "./protocol-compat";
 
 const HANDSHAKE_TIMEOUT_MS = 8_000;
 
@@ -23,6 +26,13 @@ const SM = {
   Clipboard: 6,
   MouseCapture: 9,
 } as const;
+
+/**
+ * Semantic launch mode requested in the Hello handshake. The wire value is
+ * derived from the negotiated protocol version because Herdr 0.8.2 renumbered
+ * the ClientLaunchMode enum.
+ */
+export type ThinClientLaunchMode = "app" | "terminal-attach";
 
 export interface CellData {
   symbol: string;
@@ -84,7 +94,7 @@ export class ThinClient extends EventEmitter {
   async connect(
     cols: number,
     rows: number,
-    opts: { launchMode?: number; encoding?: number } = {},
+    opts: { launchMode?: ThinClientLaunchMode; encoding?: number } = {},
   ): Promise<void> {
     if (this.sock) throw new Error("thin client is already connected");
     if (this.closed) throw new Error("thin client is closed");
@@ -108,7 +118,7 @@ export class ThinClient extends EventEmitter {
         this.sendHello(
           cols,
           rows,
-          opts.launchMode ?? 0,
+          opts.launchMode ?? "app",
           opts.encoding ?? 0,
           protocolVersion,
         );
@@ -222,7 +232,7 @@ export class ThinClient extends EventEmitter {
   private sendHello(
     cols: number,
     rows: number,
-    launchMode: number,
+    launchMode: ThinClientLaunchMode,
     encoding: number,
     protocolVersion: number,
   ) {
@@ -235,7 +245,13 @@ export class ThinClient extends EventEmitter {
     w.varint(0); // cell_height_px
     w.varint(encoding); // requested_encoding: 0=SemanticFrame, 1=TerminalAnsi
     w.varint(0); // keybindings = Server
-    w.varint(launchMode); // launch_mode: 0=App, 1=TerminalAttach
+    // launch_mode: App is always 0; TerminalAttach moved from 1 to 2 in
+    // protocol 20 (Herdr 0.8.2) when AppDirectGraphics was inserted.
+    w.varint(
+      launchMode === "terminal-attach"
+        ? terminalAttachLaunchModeWireValue(protocolVersion)
+        : 0,
+    );
     this.write(w.toBuffer());
   }
 

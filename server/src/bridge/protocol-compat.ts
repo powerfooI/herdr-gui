@@ -14,6 +14,16 @@ export function isSupportedHerdrProtocol(protocol: number): boolean {
   );
 }
 
+// Herdr 0.8.2 (protocol 20) inserted ClientLaunchMode::AppDirectGraphics at
+// wire index 1, moving ClientLaunchMode::TerminalAttach from 1 to 2. Map the
+// semantic terminal-attach launch mode onto the negotiated protocol's wire
+// value; App stays 0 on every protocol.
+export const APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL = 20;
+
+export function terminalAttachLaunchModeWireValue(protocol: number): number {
+  return protocol >= APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL ? 2 : 1;
+}
+
 export function assertSupportedHerdrProtocol(protocol: number): void {
   if (
     !Number.isSafeInteger(protocol) ||
