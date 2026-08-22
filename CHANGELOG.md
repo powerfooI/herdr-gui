@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Re-attach the terminal whenever the xterm instance is recreated, fixing
+  terminals that stayed blank after switching between desktop and mobile
+  layouts or resuming the mobile app from the lock screen until the app was
+  refreshed.
 - Fix terminal attach against Herdr 0.8.2 (protocol 20), which renumbered the
   `TerminalAttach` launch-mode wire value and rejected direct attaches with
   "connection is not pending terminal attach".

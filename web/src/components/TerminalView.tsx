@@ -485,6 +485,11 @@ export function TerminalView({
   );
   const pasteFromClipboardRef = useRef<(() => void) | null>(null);
   const termRef = useRef<Terminal | null>(null);
+  // Mirrors termRef as state so the attach effect re-runs when the xterm
+  // instance is recreated: the init effect's cleanup resets the attach refs,
+  // and without an instance change in the deps the attach effect would not
+  // fire again, leaving the recreated terminal detached and blank.
+  const [termInstance, setTermInstance] = useState<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const attachedRef = useRef<string | null>(null);
   const attachingRef = useRef<string | null>(null);
@@ -786,6 +791,7 @@ export function TerminalView({
       // ResizeObserver will retry after the terminal becomes measurable.
     }
     termRef.current = term;
+    setTermInstance(term);
     fitRef.current = fit;
     const linkProvider = registerTerminalLinkProvider(
       term,
@@ -1616,6 +1622,7 @@ export function TerminalView({
       }
       term.dispose();
       termRef.current = null;
+      setTermInstance(null);
       fitRef.current = null;
       attachedRef.current = null;
       attachingRef.current = null;
@@ -1637,7 +1644,7 @@ export function TerminalView({
   // attach / re-attach when the rendered pane changes
   useEffect(() => {
     if (!connectionClient.isCurrent()) return;
-    const term = termRef.current;
+    const term = termInstance;
     const paneTerminalId = pane?.terminal_id ?? null;
     if (terminalAttachEpochRef.current !== s.terminalAttachEpoch) {
       terminalAttachEpochRef.current = s.terminalAttachEpoch;
@@ -1769,6 +1776,7 @@ export function TerminalView({
     s.terminalAttachEpoch,
     attachRetry,
     connectionClient,
+    termInstance,
   ]);
 
   const runMobileShortcut = (shortcut: MobileTerminalShortcut) => {
