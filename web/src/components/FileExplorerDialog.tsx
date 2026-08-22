@@ -21,6 +21,7 @@ import {
 import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
+import { downloadFileFromUrl } from "../downloadFile";
 import { store, useStore } from "../store";
 import {
   connectionClientScopeKey,
@@ -1334,23 +1335,21 @@ function FileExplorerContent({
     );
     url.searchParams.set("workspace_id", workspace.workspace_id);
     url.searchParams.set("path", entry.path);
-    const link = document.createElement("a");
-    link.href = url.toString();
-    link.download =
+    const filename =
       entry.type === "directory"
         ? `${entry.name || "download"}.tar.gz`
         : entry.name || "download";
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    if (!connectionClient.isCurrent()) return;
-    store.notify({
-      kind: "info",
-      message: "Download started",
-      detail: entry.path,
-      autoDismissMs: 5000,
-    });
+    void downloadFileFromUrl({ url: url.toString(), filename }).then(
+      (result) => {
+        if (result === "shared" || !connectionClient.isCurrent()) return;
+        store.notify({
+          kind: "info",
+          message: "Download started",
+          detail: entry.path,
+          autoDismissMs: 5000,
+        });
+      },
+    );
   };
 
   const markDeletePath = (path: string, deleting: boolean) => {

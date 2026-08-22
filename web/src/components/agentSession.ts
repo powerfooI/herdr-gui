@@ -1,5 +1,6 @@
 import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
+import { downloadFileFromUrl } from "../downloadFile";
 import { store } from "../store";
 import type { Pane } from "../types";
 
@@ -333,12 +334,8 @@ export function downloadSession(pane: Pane, client: ConnectionClient) {
   );
   url.searchParams.set("pane_id", pane.pane_id);
   if (pane.agent) url.searchParams.set("agent", pane.agent);
-  const link = document.createElement("a");
-  link.href = url.toString();
-  link.download = "";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  // Empty fallback keeps the server's Content-Disposition filename.
+  void downloadFileFromUrl({ url: url.toString(), filename: "" });
 }
 
 function sessionAtifFilename(path?: string) {
@@ -366,12 +363,10 @@ export function downloadSessionAtif(
   );
   url.searchParams.set("pane_id", pane.pane_id);
   if (pane.agent) url.searchParams.set("agent", pane.agent);
-  const link = document.createElement("a");
-  link.href = url.toString();
-  link.download = sessionAtifFilename(sessionName);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  void downloadFileFromUrl({
+    url: url.toString(),
+    filename: sessionAtifFilename(sessionName),
+  });
 }
 
 export async function exportSessionForConnection(
