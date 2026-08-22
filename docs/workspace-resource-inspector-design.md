@@ -1,7 +1,7 @@
 # Workspace Resource Inspector UX Design
 
-Status: **Proposed**
-Last updated: 2026-08-21
+Status: **Implemented**
+Last updated: 2026-08-22
 
 ## Objective
 
@@ -16,22 +16,22 @@ The central product rule is:
 > runtime route; the originating tab provides the return location; an agent or
 > pane may provide an initial path.
 
-## Current problems
+## Problems addressed
 
-The current application models Workspaces, Files, and Diff as mutually exclusive
-sidebar activities. Opening Files or Diff replaces the Workspace tree and hides
-the terminal surface. Separate `fileExplorerWorkspaceId` and
-`diffViewerWorkspaceId` state can also diverge temporarily from the focused
+The previous application model treated Workspaces, Files, and Diff as mutually
+exclusive sidebar activities. Opening Files or Diff replaced the Workspace tree
+and hid the terminal surface. Separate `fileExplorerWorkspaceId` and
+`diffViewerWorkspaceId` state could also diverge temporarily from the focused
 workspace.
 
-This creates several UX problems:
+That model created several UX problems:
 
-- Files and Diff appear global even though every request is workspace-scoped.
-- The active repository, checkout, or worktree is not always obvious.
-- Users cannot watch an agent or use a terminal while inspecting its files.
-- Switching workspaces may change the resource target without a strong visual
+- Files and Diff appeared global even though every request was workspace-scoped.
+- The active repository, checkout, or worktree was not always obvious.
+- Users could not watch an agent or use a terminal while inspecting its files.
+- Switching workspaces could change the resource target without a strong visual
   transition.
-- Linked worktrees of the same repository can contain identical paths but
+- Linked worktrees of the same repository could contain identical paths but
   different content and Git state.
 
 ## Product decisions
@@ -82,7 +82,7 @@ The checkout is the resource-data owner:
 - File selection, directory state, Diff selection, and collapse state: scoped
   to a stable checkout key
 
-The stable persistence key should be:
+The stable persistence key is:
 
 ```text
 checkout_key = worktree.gui_settings_key
@@ -210,11 +210,11 @@ Right dock is the default on wide desktop layouts.
 +-----------------------------+----------------------+
 ```
 
-Recommended sizing:
+Implemented sizing:
 
 - terminal minimum width: 480 px;
 - Inspector minimum width: 360 px;
-- default Inspector width: 42% of the main content area;
+- default Inspector width: 520 px, bounded by the available stage size;
 - maximum Inspector width: 65% of the main content area.
 
 ### Bottom dock
@@ -393,14 +393,16 @@ the entire request rather than consulting global focus at completion time.
 
 ## Responsive behavior
 
-Use available content width rather than device labels as the primary decision:
+The stage width controls docking, while the Inspector's own width controls its
+internal resource layout:
 
-| Main content width | Behavior |
+| Measurement | Behavior |
 | --- | --- |
-| >= 1400 px | Terminal + wide Inspector; tree/preview or split Diff allowed |
-| 1000-1399 px | Terminal + narrow Inspector; drill-in Files and unified Diff |
-| 700-999 px | Full-height right Inspector overlay or bottom dock |
-| < 700 px | Full-screen mobile Files/Changes/History flow |
+| Stage >= 1000 px | Terminal with a right or bottom Inspector dock |
+| Stage 700-999 px | Full-height right Inspector overlay or bottom overlay |
+| Stage < 700 px | Full-screen mobile Files/Changes/History flow |
+| Inspector >= 560 px | File navigation and preview/Diff shown together |
+| Inspector < 560 px | Drill-in Files/Changes navigation with one surface visible |
 
 ### Mobile
 
@@ -422,16 +424,16 @@ worktree label:
 < feature/auth / Changes
 ```
 
-The mobile terminal session should remain mounted when implementation cost and
-memory limits permit; otherwise its reconnection/restore behavior must remain
-identical to current mobile navigation.
+The mobile terminal session remains mounted while switching among local
+resource views, preserving the same terminal connection and state.
 
 ## State model
 
-Suggested navigation state:
+Implemented navigation state:
 
 ```ts
-type WorkspaceSurface = "terminal" | "files" | "changes";
+type InspectorView = "files" | "changes" | "history";
+type WorkspaceSurface = "terminal" | InspectorView;
 type InspectorDock = "right" | "bottom";
 
 type ResourceScope =
@@ -452,12 +454,22 @@ type ResourceScope =
 interface WorkspaceInspectorState {
   scope: ResourceScope;
   open: boolean;
-  view: "files" | "changes";
+  view: InspectorView;
   dock: InspectorDock;
   size: number;
   expanded: boolean;
   returnTabId?: string;
   originPaneId?: string;
+  initialDirectory?: string;
+}
+
+interface InspectorPreferences {
+  view: InspectorView;
+  dock: InspectorDock;
+  rightSize: number;
+  bottomSize: number;
+  filesNavigationRatio: number;
+  changesNavigationRatio: number;
 }
 ```
 
@@ -481,8 +493,9 @@ interface CheckoutResourceState {
 
 - Runtime routing keys include connection identity/generation and
   `workspace_id`.
-- Persistent Files/Changes state uses `checkoutKey` for Git worktrees and
-  workspace identity for non-Git workspaces.
+- Persistent Files/Changes state and Inspector layout preferences use
+  `checkoutKey` for Git worktrees and workspace identity for non-Git
+  workspaces.
 - File and Diff data caches may be shared by workspaces that resolve to the same
   checkout only if request-generation isolation remains intact.
 - Batched Diff prefetch reads and writes the same checkout resource key as the
@@ -508,8 +521,8 @@ Open Workspace and Review Changes
 Remove Worktree
 ```
 
-Do not create an invisible workspace. The UI should show the workspace-opening
-transition before opening the Inspector.
+The UI creates and visibly opens the workspace before routing the Inspector; it
+does not create an invisible workspace.
 
 ### Removal
 
@@ -578,9 +591,11 @@ Focus rules:
 - When terminal and Inspector minimum sizes cannot both fit, transition to
   overlay/full-screen mode rather than shrinking either into an unusable state.
 
-## Implementation outline
+## Implementation status
 
-### Phase 1: contextual shell
+All four phases are complete in the current implementation.
+
+### Phase 1: contextual shell — complete
 
 - Keep Workspace Tree mounted for all desktop resource views.
 - Introduce a `WorkspaceInspectorHost` beside the terminal surface.
@@ -589,7 +604,7 @@ Focus rules:
 - Keep `TerminalPaneLayout` mounted while the Inspector is open.
 - Add resizable right dock and expanded mode.
 
-### Phase 2: resource scope normalization
+### Phase 2: resource scope normalization — complete
 
 - Replace independent global Files/Diff workspace IDs with one explicit
   `ResourceScope`.
@@ -597,7 +612,7 @@ Focus rules:
 - Key persistence by connection plus checkout/workspace identity.
 - Preserve existing File Explorer and Diff caches after adapting their keys.
 
-### Phase 3: worktree hierarchy
+### Phase 3: worktree hierarchy — complete
 
 - Group checkout rows by stable `repo_key`.
 - Use `checkoutKey` for resource preferences and `workspace_id` for routing.
@@ -608,14 +623,14 @@ Focus rules:
   compatibility option.
 - Handle closed, prunable, and removed worktrees.
 
-### Phase 4: agent and responsive flows
+### Phase 4: agent and responsive flows — complete
 
 - Add Agent CWD and workspace Changes actions.
 - Add narrow Inspector drill-in Files and unified Diff behavior.
 - Implement bottom docking and mobile local navigation.
 - Complete focus restoration, keyboard behavior, and accessibility checks.
 
-## Acceptance criteria
+## Implemented acceptance criteria
 
 - The terminal remains connected and preserves state while Files or Changes is
   open.
