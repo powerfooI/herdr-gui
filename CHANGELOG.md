@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.4 - 2026-08-22
+
 ### Added
 
 - Allow resizing the Files/Changes navigation list in docked Inspectors too.
