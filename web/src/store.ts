@@ -11,6 +11,7 @@ import {
   migrateLegacyConnectionStorage,
 } from "./connectionStorage";
 import { disposeTerminalConnection } from "./terminalConnection";
+import { isReconnectRetryableError } from "./reconnectRetry";
 import {
   clearTerminalRelayViewports,
   forgetTerminalRelayViewportsExcept,
@@ -1373,12 +1374,36 @@ async function refreshConnectionCatalog(): Promise<boolean> {
   }
 }
 
+const RECONNECT_RETRY_WAIT_MS = 10_000;
+const RECONNECT_RETRY_POLL_MS = 100;
+
+async function waitForReconnectReady(): Promise<boolean> {
+  const deadline = Date.now() + RECONNECT_RETRY_WAIT_MS;
+  // The connection catalog carrying the runtime generation lands shortly
+  // after the socket reconnects; a fresh lease only reports current once
+  // scoped routing is usable, so poll instead of trusting the status flip.
+  while (Date.now() < deadline) {
+    if (
+      state.status === "connected" &&
+      !state.connectionPaused &&
+      captureConnectionLease().client.isCurrent()
+    ) {
+      return true;
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, RECONNECT_RETRY_POLL_MS),
+    );
+  }
+  return false;
+}
+
 async function action<T>(
   fn: (lease: StoreConnectionLease) => Promise<T>,
   options: {
     refresh?: "scheduled" | "immediate" | "none";
     pendingFocusWorkspaceId?: string;
     failureNotice?: (error: Error) => Notice;
+    retryOnReconnect?: boolean;
   } = {},
 ): Promise<T | undefined> {
   if (state.connectionPaused) {
@@ -1391,20 +1416,33 @@ async function action<T>(
     });
     return undefined;
   }
-  const lease = captureConnectionLease();
-  try {
-    const result = await fn(lease);
-    if (!leaseIsCurrent(lease)) return undefined;
-    if (options.refresh === "immediate") {
-      void refreshNow(lease);
-    } else if (options.refresh !== "none") {
-      scheduleRefresh(lease);
-    }
-    return result;
-  } catch (caught) {
-    if (!leaseIsCurrent(lease)) return undefined;
-    const error = caught as Error;
-    setForConnection(lease, {
+  const attempt = (
+    activeLease: StoreConnectionLease,
+  ): Promise<{ ok: true; value: T } | { ok: false; error: Error }> =>
+    fn(activeLease).then(
+      (value) => ({ ok: true, value }) as const,
+      (error: Error) => ({ ok: false, error }) as const,
+    );
+  let activeLease = captureConnectionLease();
+  let outcome = await attempt(activeLease);
+  // A focus action fired while the bridge socket is reconnecting fails before
+  // reaching the server, which makes clicks right after returning to the app
+  // look dropped. Retry it once on the fresh connection with a new lease.
+  if (
+    !outcome.ok &&
+    options.retryOnReconnect &&
+    isReconnectRetryableError(outcome.error) &&
+    !state.connectionPaused &&
+    (await waitForReconnectReady()) &&
+    !state.connectionPaused
+  ) {
+    activeLease = captureConnectionLease();
+    outcome = await attempt(activeLease);
+  }
+  if (!outcome.ok) {
+    if (!leaseIsCurrent(activeLease)) return undefined;
+    const error = outcome.error;
+    setForConnection(activeLease, {
       error: error.message,
       notice: options.failureNotice?.(error) ?? state.notice,
       pendingFocusWorkspaceId:
@@ -1415,6 +1453,13 @@ async function action<T>(
     });
     return undefined;
   }
+  if (!leaseIsCurrent(activeLease)) return undefined;
+  if (options.refresh === "immediate") {
+    void refreshNow(activeLease);
+  } else if (options.refresh !== "none") {
+    scheduleRefresh(activeLease);
+  }
+  return outcome.value;
 }
 
 function hookEventLabel(event: WorktreeHookEvent): string {
@@ -1762,7 +1807,11 @@ export const store = {
           }
           return lease.client.call("tab.focus", { tab_id: tabId });
         }),
-      { refresh: "immediate", pendingFocusWorkspaceId: workspaceId },
+      {
+        refresh: "immediate",
+        pendingFocusWorkspaceId: workspaceId,
+        retryOnReconnect: true,
+      },
     );
   },
 
@@ -1813,7 +1862,11 @@ export const store = {
         enqueueFocusAction(() =>
           lease.client.call("workspace.focus", { workspace_id: workspaceId }),
         ),
-      { refresh: "immediate", pendingFocusWorkspaceId: workspaceId },
+      {
+        refresh: "immediate",
+        pendingFocusWorkspaceId: workspaceId,
+        retryOnReconnect: true,
+      },
     );
   },
 

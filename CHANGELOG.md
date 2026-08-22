@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Retry workspace, agent, and tab switches once the bridge connection is back
+  when they are fired while the client is still reconnecting, so clicks right
+  after returning to the app are no longer silently dropped.
 - Re-attach the terminal whenever the xterm instance is recreated, fixing
   terminals that stayed blank after switching between desktop and mobile
   layouts or resuming the mobile app from the lock screen until the app was
