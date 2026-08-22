@@ -225,7 +225,10 @@ export function WorkspaceInspectorHost({
     };
   });
   const compact = hostWidth > 0 && hostWidth < 560;
-  const splitEnabled = state.expanded && hostWidth >= 600;
+  // The navigation/detail split is draggable whenever both panes fit side by
+  // side, not only in the expanded layout, so docked inspectors can resize
+  // the Files/Changes list too.
+  const splitEnabled = hostWidth >= 600;
   const navigationIds = {
     files: `${splitId}-files-navigation`,
     changes: `${splitId}-changes-navigation`,

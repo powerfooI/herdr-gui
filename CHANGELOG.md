@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Allow resizing the Files/Changes navigation list in docked Inspectors too.
+
 ### Fixed
 
 - Re-attach the terminal whenever the xterm instance is recreated, fixing
