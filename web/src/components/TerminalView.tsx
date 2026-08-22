@@ -61,6 +61,7 @@ import {
   TerminalImeTextareaFallbackTracker,
 } from "../terminalIme";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
+import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
 import { terminalFocusBlockedByOverlay } from "../terminalFocus";
 import {
   TerminalAttachFrameWatchdog,
@@ -1475,6 +1476,35 @@ export function TerminalView({
     };
     container.addEventListener("click", onClick);
 
+    // xterm only disarms its document-level drag listeners on mouseup. When
+    // the release is lost (released outside the window, or the browser drops
+    // the mouseup after the mousedown target was re-rendered mid-gesture),
+    // every later move keeps growing the selection without a button pressed.
+    // Detect the lost release on the first button-less move and force it.
+    const selectionDragGuard = new TerminalSelectionDragGuard();
+    const onTerminalMouseDown = (e: MouseEvent) =>
+      selectionDragGuard.mouseDown(e.button);
+    const onDocumentMouseUp = () => selectionDragGuard.mouseUp();
+    const onDocumentMouseMove = (e: MouseEvent) => {
+      if (!selectionDragGuard.mouseMoveNeedsRelease(e.buttons)) return;
+      container.ownerDocument.dispatchEvent(
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: 0,
+          buttons: 0,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          screenX: e.screenX,
+          screenY: e.screenY,
+        }),
+      );
+    };
+    container.addEventListener("mousedown", onTerminalMouseDown);
+    document.addEventListener("mouseup", onDocumentMouseUp, { capture: true });
+    document.addEventListener("mousemove", onDocumentMouseMove);
+
     const onWheel = (e: WheelEvent) => {
       const scroll = terminalWheelScroll(e.deltaY, e.deltaMode, term.rows);
       const terminalId = desiredTerminalRef.current;
@@ -1593,6 +1623,11 @@ export function TerminalView({
       document.removeEventListener("paste", onPaste, { capture: true });
       container.removeEventListener("copy", onCopy, { capture: true });
       container.removeEventListener("click", onClick);
+      container.removeEventListener("mousedown", onTerminalMouseDown);
+      document.removeEventListener("mouseup", onDocumentMouseUp, {
+        capture: true,
+      });
+      document.removeEventListener("mousemove", onDocumentMouseMove);
       container.removeEventListener("wheel", onWheel, { capture: true });
       container.removeEventListener("touchstart", onTouchStart, {
         capture: true,

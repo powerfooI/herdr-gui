@@ -10,6 +10,7 @@
   refreshed.
 - Keep file and session downloads inside the app on iOS/PWA instead of
   navigating into the system document handler with no way back.
+- Stop terminal selections from growing on mouse moves after a lost mouseup.
 - Fix terminal attach against Herdr 0.8.2 (protocol 20), which renumbered the
   `TerminalAttach` launch-mode wire value.
 
