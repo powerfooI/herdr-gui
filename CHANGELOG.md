@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.3 - 2026-08-22
+
 ### Added
 
 - Add a checkout-scoped Workspace Inspector for Files, Changes, and Agent
