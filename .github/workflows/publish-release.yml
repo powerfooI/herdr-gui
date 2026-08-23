@@ -46,17 +46,33 @@ jobs:
             exit 1
           fi
 
-          version_needle="\"version\": \"$VERSION\""
-          release_sha="$(git log --first-parent -n 1 --format=%H -S "$version_needle" -- package.json)"
+          read_version_at() {
+            git show "$1:$2" \
+              | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).version)'
+          }
+
+          # Find the first-parent commit that changed the top-level package
+          # version to VERSION, not the later commit that changed away from it.
+          release_sha=""
+          while read -r candidate_sha; do
+            if [ "$(read_version_at "$candidate_sha" package.json)" != "$VERSION" ]; then
+              continue
+            fi
+            parent_sha="$(git rev-parse "${candidate_sha}^1" 2>/dev/null || true)"
+            if [ -z "$parent_sha" ] || \
+              [ "$(read_version_at "$parent_sha" package.json)" != "$VERSION" ]; then
+              release_sha="$candidate_sha"
+              break
+            fi
+          done < <(git rev-list --first-parent origin/main -- package.json)
+
           if [ -z "$release_sha" ]; then
             echo "error: no release commit for $VERSION exists on main" >&2
             exit 1
           fi
-          git merge-base --is-ancestor "$release_sha" origin/main
 
           read_version() {
-            git show "$release_sha:$1" \
-              | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).version)'
+            read_version_at "$release_sha" "$1"
           }
           test "$(read_version package.json)" = "$VERSION"
           test "$(read_version web/package.json)" = "$VERSION"

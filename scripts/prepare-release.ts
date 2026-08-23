@@ -125,6 +125,11 @@ function gitTagExists(tag: string): boolean {
     ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`],
     { cwd: REPO_ROOT, encoding: "utf8" },
   );
+  if (result.error) {
+    throw new Error(
+      `could not run git while inspecting tag ${tag}: ${result.error.message}`,
+    );
+  }
   if (result.status === 0) return true;
   if (result.status === 1) return false;
   throw new Error(result.stderr.trim() || `could not inspect tag ${tag}`);
