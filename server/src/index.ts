@@ -14,7 +14,10 @@ import {
   openBrowser,
   withLoginToken,
 } from "./config/server-config";
-import { runServiceCommand } from "./config/service-manager";
+import {
+  runServiceCommand,
+  SERVICE_COMMAND_CONTINUE,
+} from "./config/service-manager";
 import {
   connectionRoutingErrorResponse,
   type ParsedConnectionHttpRoute,
@@ -76,8 +79,12 @@ import {
 } from "./worktree/remove";
 
 const APP_VERSION = packageJson.version;
-const serviceCommandExitCode = runServiceCommand(process.argv.slice(2));
-if (serviceCommandExitCode !== null) process.exit(serviceCommandExitCode);
+const serviceCommandResult = runServiceCommand(process.argv.slice(2));
+if (serviceCommandResult === SERVICE_COMMAND_CONTINUE) {
+  process.argv.splice(2);
+} else if (serviceCommandResult !== null) {
+  process.exit(serviceCommandResult);
+}
 const config = loadServerConfig(APP_VERSION);
 const downstreamConnectionConfig = {
   socketPath: config.socketPath,

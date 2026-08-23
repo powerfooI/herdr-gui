@@ -27,6 +27,14 @@ afterEach(() => {
 });
 
 describe("generated authentication token", () => {
+  test("uses APPDATA for the Windows token", () => {
+    const home = join("C:", "Users", "tester");
+    const appData = join(home, "AppData", "Roaming");
+    expect(defaultAuthTokenPath(home, "win32", appData)).toBe(
+      join(appData, "herdr-gui", "auth-token"),
+    );
+  });
+
   test("creates a persistent random token with private permissions", () => {
     const path = defaultAuthTokenPath(tempHome());
     const first = loadOrCreateAuthToken(path);

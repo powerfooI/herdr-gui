@@ -11,8 +11,16 @@ import { randomBytes } from "node:crypto";
 
 const AUTH_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 
-export function defaultAuthTokenPath(homeDir = homedir()): string {
-  return join(homeDir, ".config", "herdr-gui", "auth-token");
+export function defaultAuthTokenPath(
+  homeDir = homedir(),
+  platform = process.platform,
+  appDataDir = process.env.APPDATA,
+): string {
+  const base =
+    platform === "win32"
+      ? (appDataDir ?? join(homeDir, "AppData", "Roaming"))
+      : join(homeDir, ".config");
+  return join(base, "herdr-gui", "auth-token");
 }
 
 function readAuthToken(path: string): string {

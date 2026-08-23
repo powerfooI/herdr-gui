@@ -1,4 +1,4 @@
-import { homedir, networkInterfaces } from "node:os";
+import { homedir, networkInterfaces, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -74,7 +74,7 @@ Usage: herdr-gui [options]
        herdr-gui service <action>
 
 Service actions:
-  install [--force]           install and start a systemd/launchd user service
+  install [--force]           install and start the platform user service
   status                      show service status
   restart                     restart the managed service
   reload                      reload its definition and restart the service
@@ -182,7 +182,31 @@ function remoteTunnelLocalPath(
     .update(`${hostKey}\0${sessionKey}\0${kind}`)
     .digest("hex")
     .slice(0, 12);
-  return `/tmp/herdr-gui-${key}-${kind}.sock`;
+  return join(tmpdir(), `herdr-gui-${key}-${kind}.sock`);
+}
+
+export function herdrConfigDir(
+  platform: string = process.platform,
+  appData: string | undefined = process.env.APPDATA,
+): string {
+  if (platform === "win32") {
+    return join(appData ?? join(homedir(), "AppData", "Roaming"), "herdr");
+  }
+  return join(homedir(), ".config", "herdr");
+}
+
+export function nativeSocketPath(
+  socketPath: string,
+  platform: string = process.platform,
+): string {
+  if (
+    platform !== "win32" ||
+    socketPath.startsWith("\\\\.\\pipe\\") ||
+    socketPath.startsWith("\\\\?\\pipe\\")
+  ) {
+    return socketPath;
+  }
+  return `\\\\.\\pipe\\${socketPath}`;
 }
 
 function resolveSocketPath(
@@ -191,12 +215,18 @@ function resolveSocketPath(
   session: string | undefined,
 ): string {
   const fromFlag = args["socket-path"];
-  if (typeof fromFlag === "string") return fromFlag;
-  if (process.env.HERDR_SOCKET_PATH) return process.env.HERDR_SOCKET_PATH;
-  if (sshHost) return remoteTunnelLocalPath(sshHost, session, "control");
-  const base = resolve(homedir(), ".config", "herdr");
-  if (session) return resolve(base, "sessions", session, "herdr.sock");
-  return resolve(base, "herdr.sock");
+  if (typeof fromFlag === "string") return nativeSocketPath(fromFlag);
+  if (process.env.HERDR_SOCKET_PATH) {
+    return nativeSocketPath(process.env.HERDR_SOCKET_PATH);
+  }
+  if (sshHost) {
+    return nativeSocketPath(remoteTunnelLocalPath(sshHost, session, "control"));
+  }
+  const base = herdrConfigDir();
+  const socketPath = session
+    ? resolve(base, "sessions", session, "herdr.sock")
+    : resolve(base, "herdr.sock");
+  return nativeSocketPath(socketPath);
 }
 
 function resolveClientSocketPath(
@@ -205,13 +235,18 @@ function resolveClientSocketPath(
   session: string | undefined,
 ): string {
   const fromFlag = args["client-socket-path"];
-  if (typeof fromFlag === "string") return fromFlag;
-  if (process.env.HERDR_CLIENT_SOCKET_PATH)
-    return process.env.HERDR_CLIENT_SOCKET_PATH;
-  if (sshHost) return remoteTunnelLocalPath(sshHost, session, "client");
-  const base = resolve(homedir(), ".config", "herdr");
-  if (session) return resolve(base, "sessions", session, "herdr-client.sock");
-  return resolve(base, "herdr-client.sock");
+  if (typeof fromFlag === "string") return nativeSocketPath(fromFlag);
+  if (process.env.HERDR_CLIENT_SOCKET_PATH) {
+    return nativeSocketPath(process.env.HERDR_CLIENT_SOCKET_PATH);
+  }
+  if (sshHost) {
+    return nativeSocketPath(remoteTunnelLocalPath(sshHost, session, "client"));
+  }
+  const base = herdrConfigDir();
+  const socketPath = session
+    ? resolve(base, "sessions", session, "herdr-client.sock")
+    : resolve(base, "herdr-client.sock");
+  return nativeSocketPath(socketPath);
 }
 
 function resolvePublicDir(args: CliArgs): string {
@@ -248,9 +283,13 @@ export function browserUrlFor(host: string, port: number): string {
 
 export function withLoginToken(url: string, token?: string): string {
   if (!token) return url;
-  const result = new URL(url);
-  result.searchParams.set("token", token);
-  return result.toString();
+  try {
+    const result = new URL(url);
+    result.searchParams.set("token", token);
+    return result.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function openBrowser(config: ServerConfig, url: string) {

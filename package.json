@@ -31,6 +31,7 @@
     "postbuild:darwin-x64": "bun run clean:bun-build",
     "build:darwin-arm64": "bun run build:web && cd server && bun run compile:darwin-arm64",
     "postbuild:darwin-arm64": "bun run clean:bun-build",
+    "build:windows-x64": "bun run build:web && cd server && bun run compile:windows-x64",
     "build:all": "bun run build:web && cd server && bun run compile:all",
     "postbuild:all": "bun run clean:bun-build",
     "package:linux-x64": "scripts/package-release.sh linux-x64",

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Add Windows support: the bridge maps Herdr's `%APPDATA%\herdr` socket names
+  to native named pipes, keeps remote-tunnel sockets in the OS temp directory,
+  gains a Windows x64 build target, and manages a per-user startup task through
+  Windows Task Scheduler.
+
 ### Performance
 
 - Stop the idle-state render churn that made the UI hitch every second:

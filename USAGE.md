@@ -232,30 +232,32 @@ herdr-gui service uninstall
 | --- | --- |
 | `service install` | 创建或更新当前平台的用户服务定义，随后启动服务 |
 | `service install --force` | 强制替换不是由 herdr-gui 生成的同名服务定义 |
-| `service status` | 展示 systemd 或 launchd 返回的当前服务状态 |
+| `service status` | 展示 systemd、launchd 或 Task Scheduler 返回的当前服务状态 |
 | `service restart` | 重启进程；修改 `herdr-gui.env` 后使用此命令 |
-| `service reload` | 让服务管理器重新读取 unit/plist，然后重启进程 |
+| `service reload` | 让服务管理器重新读取平台定义，然后重启进程 |
 | `service uninstall` | 停止服务并删除服务定义，但保留环境配置和登录 token |
 
 `service install` 仅支持 standalone binary，不能从 `bun run` 的开发进程中
 安装。它会根据平台生成以下文件：
 
-| 用途 | Linux | macOS |
-| --- | --- | --- |
-| 服务定义 | `~/.config/systemd/user/herdr-gui.service` | `~/Library/LaunchAgents/dev.herdr.herdr-gui.plist` |
-| 环境配置 | `~/.config/herdr-gui/herdr-gui.env` | `~/.config/herdr-gui/herdr-gui.env` |
-| 登录 token | `~/.config/herdr-gui/auth-token` | `~/.config/herdr-gui/auth-token` |
+| 用途 | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| 服务定义 | `~/.config/systemd/user/herdr-gui.service` | `~/Library/LaunchAgents/dev.herdr.herdr-gui.plist` | `%APPDATA%\herdr-gui\herdr-gui-task.ps1` |
+| 环境配置 | `~/.config/herdr-gui/herdr-gui.env` | `~/.config/herdr-gui/herdr-gui.env` | `%APPDATA%\herdr-gui\herdr-gui.env` |
+| 登录 token | `~/.config/herdr-gui/auth-token` | `~/.config/herdr-gui/auth-token` | `%APPDATA%\herdr-gui\auth-token` |
 
-Linux 自动使用 systemd user service，macOS 自动使用 launchd LaunchAgent。
+Linux 自动使用 systemd user service，macOS 自动使用 launchd LaunchAgent，
+Windows 自动注册当前用户的 Task Scheduler 登录任务。Windows 任务以普通权限运行、
+登录时启动，并由 Task Scheduler 在异常退出后重试。
 `install` 会默认监听 `0.0.0.0:8787`，创建持久化随机 token，打印带
-`?token=...` 的 localhost 和内网访问地址，然后启动服务。首次运行会创建权限为
-`0600` 的 `~/.config/herdr-gui/herdr-gui.env`；token 单独保存在权限同样为
-`0600` 的 `~/.config/herdr-gui/auth-token`。重新安装和卸载均保留环境文件。
-修改配置后运行 `herdr-gui service restart`。命令不会覆盖非 herdr-gui 生成的
-service 定义，确实需要替换时使用
-`herdr-gui service install --force`。
-修改 systemd unit 或 launchd plist 后运行 `herdr-gui service reload`，该命令
-会让服务管理器重新读取 definition 并重启进程。
+`?token=...` 的 localhost 和内网访问地址，然后启动服务。Unix 上首次创建的配置
+和 token 权限为 `0600`；Windows 使用当前用户的 `%APPDATA%`。重新安装和卸载均
+保留环境文件。修改配置后运行 `herdr-gui service restart`。命令不会覆盖非
+herdr-gui 生成的 service 定义，确实需要替换时使用
+`herdr-gui service install --force`。修改平台定义后运行
+`herdr-gui service reload`，该命令会重新读取 definition 并重启进程。Windows
+首次运行如出现防火墙提示，只建议允许 Private networks；仅本机使用可先把
+`HOST` 改为 `127.0.0.1`。
 
 仓库中的 [`deploy/systemd/herdr-gui.service`](deploy/systemd/herdr-gui.service)
 是一个 systemd user service 示例。它使用 `Restart=always` 管理进程。herdr-gui
