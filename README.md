@@ -357,7 +357,8 @@ Run it:
 
 ```bash
 ./server/herdr-gui     # Unix: opens http://localhost:8787 by default
-# Windows: .\server\herdr-gui-windows-x64.exe
+# Windows x64: .\server\herdr-gui-windows-x64.exe
+# Windows ARM64: .\server\herdr-gui-windows-arm64.exe
 ```
 
 The executable serves the embedded frontend, the `/ws` bridge, and the `/api`
