@@ -55,6 +55,7 @@ jobs:
           - linux-arm64
           - darwin-x64
           - darwin-arm64
+          - windows-x64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -101,7 +102,11 @@ jobs:
           mkdir -p "$extract_dir"
           tar -xJf "dist/$versioned_archive" -C "$extract_dir"
           grep -Fx "herdr-gui $version $platform" "$extract_dir/$package_dir/VERSION"
-          binary="$extract_dir/$package_dir/herdr-gui"
+          binary_name="herdr-gui"
+          if [ "$platform" = "windows-x64" ]; then
+            binary_name="herdr-gui.exe"
+          fi
+          binary="$extract_dir/$package_dir/$binary_name"
           case "$platform" in
             linux-x64)
               test "$("$binary" --version)" = "herdr-gui $version"
@@ -114,6 +119,9 @@ jobs:
               ;;
             darwin-arm64)
               file "$binary" | grep -Eq 'Mach-O 64-bit.*arm64'
+              ;;
+            windows-x64)
+              file "$binary" | grep -Eq 'PE32\+ executable.*x86-64.*MS Windows'
               ;;
           esac
       - uses: actions/upload-artifact@v7

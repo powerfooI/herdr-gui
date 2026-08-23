@@ -12,7 +12,7 @@ herdr-gui 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务�
 
 ## 安装和更新
 
-当前 Linux 和 macOS 的 x86-64、arm64 版本通过 GitHub Releases 发布：
+当前 Linux、macOS 和 Windows x64 版本通过 GitHub Releases 发布：
 
 ```text
 https://github.com/powerfooI/herdr-gui/releases
@@ -24,6 +24,12 @@ https://github.com/powerfooI/herdr-gui/releases
 ```bash
 curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" | bash
 ```
+
+Windows x64 用户从 latest release 下载
+`herdr-gui-windows-x64.tar.xz` 及同名 `.sha256` 文件，用
+`Get-FileHash -Algorithm SHA256` 校验后，通过 Windows 11 自带的
+`tar.exe` 解压；可执行文件位于
+`herdr-gui-windows-x64\herdr-gui.exe`。
 
 确认 `~/.local/bin` 在 `PATH` 里：
 
@@ -516,6 +522,8 @@ bun run build:linux-x64
 bun run build:linux-arm64
 bun run build:darwin-x64
 bun run build:darwin-arm64
+bun run build:windows-x64
+bun run package:windows-x64
 ```
 
 构建多个平台：

@@ -5,8 +5,9 @@
 ### Added
 
 - Add Windows support: the bridge maps local Herdr `%APPDATA%\herdr` socket
-  names to native named pipes, gains a Windows x64 build target, and manages an
-  isolated per-user startup task through Windows Task Scheduler.
+  names to native named pipes, gains Windows x64 build and release packages,
+  and manages an isolated per-user startup task through Windows Task
+  Scheduler.
 
 ### Performance
 

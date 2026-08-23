@@ -87,6 +87,12 @@ curl -fsSL \
   | sh
 ```
 
+Windows x64 releases are published as a checksummed archive containing
+`herdr-gui.exe`. Download `herdr-gui-windows-x64.tar.xz` and its matching
+`.sha256` file from the [latest release](https://github.com/powerfooI/herdr-gui/releases/latest),
+verify it with `Get-FileHash`, then extract it with Windows 11's built-in
+`tar.exe`.
+
 Make sure `~/.local/bin` is in `PATH`, then start the application:
 
 ```bash
@@ -335,6 +341,7 @@ bun run build:darwin-x64  # → server/herdr-gui-darwin-x64  (Intel macOS)
 bun run build:darwin-arm64 # → server/herdr-gui-darwin-arm64 (Apple Silicon)
 bun run build:windows-x64 # → server/herdr-gui-windows-x64.exe (Windows x64)
 bun run build:all
+bun run package:windows-x64 # → dist/herdr-gui-windows-x64.tar.xz
 ```
 
 > **Linux x86-64 note:** use the **glibc** build (`herdr-gui-linux-x64`) for

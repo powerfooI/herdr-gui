@@ -8,6 +8,7 @@ version="$(
   bun -e 'console.log(require("./package.json").version)'
 )"
 
+binary_name="herdr-gui"
 case "$platform" in
   darwin-arm64)
     build_script="build:darwin-arm64"
@@ -25,9 +26,14 @@ case "$platform" in
     build_script="build:linux-arm64"
     binary="$root_dir/server/herdr-gui-linux-arm64"
     ;;
+  windows-x64)
+    build_script="build:windows-x64"
+    binary="$root_dir/server/herdr-gui-windows-x64.exe"
+    binary_name="herdr-gui.exe"
+    ;;
   *)
     echo "unsupported platform: $platform" >&2
-    echo "supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64" >&2
+    echo "supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64" >&2
     exit 2
     ;;
 esac
@@ -45,8 +51,8 @@ bun run "$build_script"
 
 rm -rf "$package_dir"
 mkdir -p "$package_dir"
-cp "$binary" "$package_dir/herdr-gui"
-chmod 755 "$package_dir/herdr-gui"
+cp "$binary" "$package_dir/$binary_name"
+chmod 755 "$package_dir/$binary_name"
 printf 'herdr-gui %s %s\n' "$version" "$platform" > "$package_dir/VERSION"
 
 rm -f \
