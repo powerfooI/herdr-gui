@@ -1,0 +1,70 @@
+name: Prepare Release
+
+# Create a normal, reviewable release PR after running the project gates.
+# Merging the PR does not publish the release; run Publish Release afterward.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (X.Y.Z, or patch/minor/major)
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Create release PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+          no-cache: true
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun install --frozen-lockfile
+        working-directory: server
+      - id: release
+        name: Prepare release files
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: bun scripts/prepare-release.ts "$VERSION_INPUT"
+      - name: Validate prepared release
+        run: bun run precommit
+      - name: Create release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="release/${TAG}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add package.json web/package.json server/package.json CHANGELOG.md
+          git commit -m "Release $VERSION"
+          gh auth setup-git
+          git push origin "$branch"
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Release $VERSION" \
+            --body "Prepare $TAG by updating package versions and finalizing the CHANGELOG section. Review and merge this PR after its explicitly dispatched CI check passes, then run the Publish Release workflow for $VERSION."
+          gh workflow run "CI" --ref "$branch"

@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { extractChangelogSection } from "./changelog-notes";
 import {
   parsePackageVersion,
   replacePackageVersion,
   resolveNextVersion,
   rotateChangelog,
-} from "./cut-release";
+} from "./prepare-release";
 
 const PACKAGE_JSON = `{
   "name": "herdr-gui",
@@ -132,25 +131,5 @@ describe("rotateChangelog", () => {
         "2026-08-21",
       ),
     ).toThrow("Unreleased");
-  });
-});
-
-describe("extractChangelogSection", () => {
-  test("extracts a middle section without the heading", () => {
-    expect(extractChangelogSection(CHANGELOG, "0.4.1")).toBe(
-      "### Changed\n\n- Previous release entry.",
-    );
-  });
-
-  test("extracts the final section", () => {
-    expect(extractChangelogSection(CHANGELOG, "0.4.0")).toBe("- Older entry.");
-  });
-
-  test("rejects missing or empty sections", () => {
-    expect(() => extractChangelogSection(CHANGELOG, "9.9.9")).toThrow(
-      "no section",
-    );
-    const text = "# Changelog\n\n## 0.4.2 - 2026-08-21\n\n## 0.4.1\n\n- Old.\n";
-    expect(() => extractChangelogSection(text, "0.4.2")).toThrow("empty");
   });
 });

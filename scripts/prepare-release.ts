@@ -1,19 +1,14 @@
 #!/usr/bin/env bun
-// Cut a release without a version-bump PR: bump the three package.json
-// versions, finalize the CHANGELOG "Unreleased" section, commit, tag, and
-// optionally push. Pushing the tag (or dispatching the Release workflow on
-// it) builds and publishes the release.
+// Prepare a release PR by bumping the three package.json versions and moving
+// the CHANGELOG "Unreleased" entries under the new version. This script only
+// updates the working tree; it does not commit, merge, tag, or push anything.
 //
 // Usage:
-//   bun scripts/cut-release.ts <X.Y.Z | patch | minor | major> [--push]
-//   bun scripts/cut-release.ts 0.4.2            # commit + tag locally
-//   bun scripts/cut-release.ts patch --push     # commit, tag, push to origin
-//
-// Flags:
-//   --push        Push the release commit and tag to origin.
-//   --any-branch  Allow cutting from a branch other than main.
+//   bun scripts/prepare-release.ts <X.Y.Z | patch | minor | major>
+//   bun scripts/prepare-release.ts 0.4.6
+//   bun scripts/prepare-release.ts patch
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,29 +119,34 @@ function git(...args: string[]): string {
   return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 }
 
+function gitTagExists(tag: string): boolean {
+  const result = spawnSync(
+    "git",
+    ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`],
+    { cwd: REPO_ROOT, encoding: "utf8" },
+  );
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error(result.stderr.trim() || `could not inspect tag ${tag}`);
+}
+
 function abort(message: string): never {
-  console.error(`cut-release: ${message}`);
+  console.error(`prepare-release: ${message}`);
   process.exit(1);
 }
 
 function main() {
-  const args = process.argv.slice(2);
-  const input = args.find((arg) => !arg.startsWith("--"));
-  const push = args.includes("--push");
-  const anyBranch = args.includes("--any-branch");
-  if (!input || args.includes("--help")) {
+  const input = process.argv[2];
+  if (!input || input === "--help") {
     console.log(
-      "Usage: bun scripts/cut-release.ts <X.Y.Z | patch | minor | major> [--push] [--any-branch]",
+      "Usage: bun scripts/prepare-release.ts <X.Y.Z | patch | minor | major>",
     );
     process.exit(input ? 0 : 1);
   }
-
-  const branch = git("rev-parse", "--abbrev-ref", "HEAD");
-  if (branch !== "main" && !anyBranch) {
-    abort(
-      `on branch "${branch}"; releases are cut from main (pass --any-branch to override)`,
-    );
+  if (process.argv.length > 3) {
+    abort("unexpected extra arguments");
   }
+
   const dirty = git("status", "--porcelain", "--", ...RELEASE_FILES);
   if (dirty) {
     abort(
@@ -154,33 +154,34 @@ function main() {
     );
   }
 
-  const current = parsePackageVersion(
-    readFileSync(join(REPO_ROOT, "package.json"), "utf8"),
+  const packageSources = PACKAGE_FILES.map((file) => {
+    const path = join(REPO_ROOT, file);
+    const text = readFileSync(path, "utf8");
+    return { file, path, text, version: parsePackageVersion(text) };
+  });
+  const current = packageSources[0].version;
+  const mismatchedPackage = packageSources.find(
+    ({ version }) => version !== current,
   );
+  if (mismatchedPackage) {
+    abort(
+      `${mismatchedPackage.file} version is ${mismatchedPackage.version}, expected ${current}`,
+    );
+  }
+
   const version = resolveNextVersion(current, input);
   const tag = `v${version}`;
-
-  try {
-    git("rev-parse", "--verify", "--quiet", `refs/tags/${tag}`);
-    abort(`tag ${tag} already exists locally`);
-  } catch {
-    // Tag does not exist yet.
-  }
-  if (push && git("ls-remote", "--tags", "origin", tag)) {
-    abort(`tag ${tag} already exists on origin`);
+  if (gitTagExists(tag)) {
+    abort(`tag ${tag} already exists; fetch tags before preparing a release`);
   }
 
   const date = new Date().toISOString().slice(0, 10);
   // Compute every output before writing anything so a validation failure
   // leaves the worktree untouched.
-  const packageWrites = PACKAGE_FILES.map((file) => {
-    const path = join(REPO_ROOT, file);
-    const text = readFileSync(path, "utf8");
-    return {
-      path,
-      text: replacePackageVersion(text, parsePackageVersion(text), version),
-    };
-  });
+  const packageWrites = packageSources.map(({ path, text }) => ({
+    path,
+    text: replacePackageVersion(text, current, version),
+  }));
   const changelogPath = join(REPO_ROOT, CHANGELOG_FILE);
   const changelogWrite = rotateChangelog(
     readFileSync(changelogPath, "utf8"),
@@ -192,27 +193,14 @@ function main() {
   }
   writeFileSync(changelogPath, changelogWrite);
 
-  git("add", ...RELEASE_FILES);
-  git("commit", "-m", `Release ${version}`);
-  git("tag", "-a", tag, "-m", `herdr-gui ${version}`);
-  console.log(`Created release commit and tag ${tag} (version ${version}).`);
+  console.log(
+    `Prepared release ${version}. Review the changes and submit them as a release PR.`,
+  );
 
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
       `version=${version}\ntag=${tag}\n`,
-    );
-  }
-
-  if (push) {
-    git("push", "origin", `HEAD:${branch}`);
-    git("push", "origin", tag);
-    console.log(
-      `Pushed ${branch} and ${tag}. The Release workflow builds and publishes the archives.`,
-    );
-  } else {
-    console.log(
-      `Not pushed. When ready: git push origin HEAD:${branch} && git push origin ${tag}`,
     );
   }
 }
