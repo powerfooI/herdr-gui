@@ -7,6 +7,7 @@ export type SshTunnelFailureKind =
   | "authentication"
   | "host-key"
   | "unreachable"
+  | "unsupported"
   | "exited";
 
 export class SshTunnelError extends Error {
@@ -114,8 +115,11 @@ export function assertSshTunnelPlatformSupported(
   platform: string = process.platform,
 ): void {
   if (platform === "win32") {
-    throw new Error(
+    throw new SshTunnelError(
       "SSH connections from Windows are not supported because herdr-gui's stream-local forwarding cannot create a local Windows named pipe",
+      false,
+      "unsupported",
+      -1,
     );
   }
 }

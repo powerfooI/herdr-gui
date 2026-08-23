@@ -1085,6 +1085,17 @@ describe("connection profile service", () => {
         new ConnectionProbeError("unsupported protocol", false),
       ),
     ).toBeFalse();
+    expect(
+      service.willRetry(
+        "remote",
+        new SshTunnelError(
+          "SSH is unsupported on this platform",
+          false,
+          "unsupported",
+          -1,
+        ),
+      ),
+    ).toBeFalse();
     const first = created.get("remote")![0];
     first.context.reportError(permanent, { reconnecting: false });
     service.runtimeFailed("remote", permanent);

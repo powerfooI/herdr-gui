@@ -27,6 +27,26 @@ function tempHome(): string {
   return path;
 }
 
+function isWindowsTaskQuery(argv: string[]): boolean {
+  const script = argv.at(-1) ?? "";
+  return (
+    argv[0] === "powershell.exe" &&
+    argv.includes("-Command") &&
+    script.includes("CmdletizationQuery_NotFound_TaskName") &&
+    script.includes("Out-Null")
+  );
+}
+
+function isWindowsTaskWait(argv: string[]): boolean {
+  const script = argv.at(-1) ?? "";
+  return (
+    argv[0] === "powershell.exe" &&
+    argv.includes("-Command") &&
+    script.includes("Get-ScheduledTask") &&
+    script.includes("AddSeconds(15)")
+  );
+}
+
 afterEach(() => {
   for (const path of tempDirs.splice(0)) {
     rmSync(path, { recursive: true, force: true });
@@ -572,8 +592,8 @@ describe("service commands", () => {
     let taskExists = false;
     const runCommand = (argv: string[], options?: { quiet?: boolean }) => {
       commands.push({ argv, quiet: options?.quiet === true });
-      if (argv[1] === "/Query") return taskExists ? 0 : 1;
-      if (argv[0] === "powershell.exe") taskExists = true;
+      if (isWindowsTaskQuery(argv)) return taskExists ? 0 : 3;
+      if (argv.includes("-File")) taskExists = true;
       if (argv[1] === "/Delete") taskExists = false;
       return 0;
     };
@@ -613,13 +633,10 @@ describe("service commands", () => {
       }),
     ).toBe(0);
 
-    expect(commands[0]).toEqual({
-      argv: ["schtasks.exe", "/Query", "/TN", taskName],
-      quiet: true,
-    });
-    expect(
-      commands.find(({ argv }) => argv[0] === "powershell.exe")?.argv,
-    ).toEqual([
+    expect(isWindowsTaskQuery(commands[0].argv)).toBeTrue();
+    expect(commands[0].quiet).toBeFalse();
+    expect(commands[0].argv.at(-1)).toContain(taskName);
+    expect(commands.find(({ argv }) => argv.includes("-File"))?.argv).toEqual([
       "powershell.exe",
       "-NoProfile",
       "-NonInteractive",
@@ -637,13 +654,7 @@ describe("service commands", () => {
         .filter(({ argv }) => argv.includes("/TN"))
         .every(({ argv }) => argv[argv.indexOf("/TN") + 1] === taskName),
     ).toBeTrue();
-    expect(
-      commands.some(
-        ({ argv }) =>
-          argv[0] === "powershell.exe" &&
-          argv.at(-1)?.includes("Get-ScheduledTask"),
-      ),
-    ).toBeTrue();
+    expect(commands.some(({ argv }) => isWindowsTaskWait(argv))).toBeTrue();
     expect(commands.some(({ argv }) => argv[1] === "/Delete")).toBeTrue();
     expect(taskExists).toBeFalse();
     expect(existsSync(definitionPath)).toBeFalse();
@@ -668,7 +679,7 @@ describe("service commands", () => {
       },
       runCommand: (argv) => {
         commands.push(argv);
-        if (argv[1] === "/Query") return taskExists ? 0 : 1;
+        if (isWindowsTaskQuery(argv)) return taskExists ? 0 : 3;
         if (argv[1] === "/Delete") {
           taskExists = false;
           return 1;
@@ -681,7 +692,7 @@ describe("service commands", () => {
     expect(code).toBe(0);
     expect(commands.some((argv) => argv[1] === "/End")).toBeTrue();
     expect(commands.some((argv) => argv[1] === "/Delete")).toBeTrue();
-    expect(commands.filter((argv) => argv[1] === "/Query")).toHaveLength(2);
+    expect(commands.filter(isWindowsTaskQuery)).toHaveLength(2);
     expect(taskExists).toBeFalse();
     expect(existsSync(paths.definition)).toBeFalse();
     expect(
@@ -713,15 +724,90 @@ describe("service commands", () => {
         },
         runCommand: (argv) => {
           commands.push(argv);
-          return argv[1] === "/Query" ? 1 : 0;
+          return isWindowsTaskQuery(argv) ? 3 : 0;
         },
         log: () => undefined,
       }),
     ).toBe(0);
 
-    expect(commands.filter((argv) => argv[1] === "/Query")).toHaveLength(1);
+    expect(commands.filter(isWindowsTaskQuery)).toHaveLength(1);
     expect(commands.some((argv) => argv[1] === "/Delete")).toBeFalse();
     expect(existsSync(paths.definition)).toBeFalse();
+  });
+
+  test("propagates Windows task query failures without changing state", () => {
+    const homeDir = tempHome();
+    const appDataDir = join(homeDir, "AppData", "Roaming");
+    const executable = join(homeDir, "herdr-gui.exe");
+    const paths = resolveServicePaths("windows-task", homeDir, appDataDir);
+    const runtime = {
+      platform: "win32",
+      homeDir,
+      appDataDir,
+      execPath: executable,
+      argv: [executable],
+    };
+    const installCommands: string[][] = [];
+
+    expect(
+      runServiceCommand(["service", "install"], {
+        runtime,
+        runCommand: (argv) => {
+          installCommands.push(argv);
+          return isWindowsTaskQuery(argv) ? 5 : 0;
+        },
+        log: () => undefined,
+      }),
+    ).toBe(5);
+    expect(installCommands).toHaveLength(1);
+    expect(isWindowsTaskQuery(installCommands[0])).toBeTrue();
+    expect(existsSync(paths.definition)).toBeFalse();
+    expect(existsSync(paths.config)).toBeFalse();
+
+    mkdirSync(dirname(paths.definition), { recursive: true });
+    writeFileSync(
+      paths.definition,
+      "# Generated by herdr-gui service install.\n",
+    );
+    const uninstallCommands: string[][] = [];
+    expect(
+      runServiceCommand(["service", "uninstall"], {
+        runtime,
+        runCommand: (argv) => {
+          uninstallCommands.push(argv);
+          return isWindowsTaskQuery(argv) ? 5 : 0;
+        },
+        log: () => undefined,
+      }),
+    ).toBe(5);
+    expect(uninstallCommands).toHaveLength(1);
+    expect(isWindowsTaskQuery(uninstallCommands[0])).toBeTrue();
+    expect(existsSync(paths.definition)).toBeTrue();
+  });
+
+  test("does not restart when task-state confirmation fails", () => {
+    const homeDir = tempHome();
+    const executable = join(homeDir, "herdr-gui.exe");
+    const commands: string[][] = [];
+
+    expect(
+      runServiceCommand(["service", "restart"], {
+        runtime: {
+          platform: "win32",
+          homeDir,
+          appDataDir: join(homeDir, "AppData", "Roaming"),
+          execPath: executable,
+          argv: [executable],
+        },
+        runCommand: (argv) => {
+          commands.push(argv);
+          return isWindowsTaskWait(argv) ? 7 : 0;
+        },
+      }),
+    ).toBe(7);
+    expect(commands.some((argv) => argv[1] === "/End")).toBeTrue();
+    expect(commands.some(isWindowsTaskWait)).toBeTrue();
+    expect(commands.some((argv) => argv[1] === "/Run")).toBeFalse();
   });
 
   test("loads environment for the direct Windows task process", () => {

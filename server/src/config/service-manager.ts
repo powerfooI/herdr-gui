@@ -142,12 +142,40 @@ function ensureStandaloneBinary(runtime: ServiceRuntime): string {
   return resolve(runtime.execPath);
 }
 
-function windowsTaskExists(taskName: string, runCommand: RunCommand): boolean {
-  return (
-    runCommand(["schtasks.exe", "/Query", "/TN", taskName], {
-      quiet: true,
-    }) === 0
-  );
+const WINDOWS_TASK_NOT_FOUND_EXIT_CODE = 3;
+
+type WindowsTaskQuery =
+  | { status: "exists" }
+  | { status: "missing" }
+  | { status: "error"; code: number };
+
+function windowsTaskName(paths: { taskName?: string }): string {
+  if (!paths.taskName) throw new Error("Windows service task name is missing");
+  return paths.taskName;
+}
+
+function powershellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function queryWindowsTask(
+  taskName: string,
+  runCommand: RunCommand,
+): WindowsTaskQuery {
+  const task = powershellLiteral(taskName);
+  const script = `try { Get-ScheduledTask -TaskName ${task} -ErrorAction Stop | Out-Null; exit 0 } catch { if ($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound_TaskName*') { exit ${WINDOWS_TASK_NOT_FOUND_EXIT_CODE} }; Write-Error $_; exit 1 }`;
+  const code = runCommand([
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    script,
+  ]);
+  if (code === 0) return { status: "exists" };
+  if (code === WINDOWS_TASK_NOT_FOUND_EXIT_CODE) {
+    return { status: "missing" };
+  }
+  return { status: "error", code };
 }
 
 function registerWindowsTask(
@@ -165,25 +193,19 @@ function registerWindowsTask(
   ]);
 }
 
-function windowsTaskName(paths: { taskName?: string }): string {
-  if (!paths.taskName) throw new Error("Windows service task name is missing");
-  return paths.taskName;
-}
-
-function powershellLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
 function waitForWindowsTaskStop(
   taskName: string,
   runCommand: RunCommand,
 ): number {
   const task = powershellLiteral(taskName);
-  const script = `$deadline = (Get-Date).AddSeconds(15); while ((Get-Date) -lt $deadline) { $task = Get-ScheduledTask -TaskName ${task} -ErrorAction SilentlyContinue; if ($null -eq $task -or $task.State -ne 'Running') { exit 0 }; Start-Sleep -Milliseconds 100 }; Write-Error 'scheduled task did not stop within 15 seconds'; exit 1`;
-  return runCommand(
-    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-    { quiet: true },
-  );
+  const script = `$deadline = (Get-Date).AddSeconds(15); while ((Get-Date) -lt $deadline) { try { $taskInfo = Get-ScheduledTask -TaskName ${task} -ErrorAction Stop } catch { if ($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound_TaskName*') { exit 0 }; Write-Error $_; exit 1 }; if ($taskInfo.State -ne 'Running') { exit 0 }; Start-Sleep -Milliseconds 100 }; Write-Error 'scheduled task did not stop within 15 seconds'; exit 1`;
+  return runCommand([
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    script,
+  ]);
 }
 
 function restartWindowsTask(taskName: string, runCommand: RunCommand): number {
@@ -400,8 +422,13 @@ function installService(
   );
   if (platform === "windows-task") {
     const taskName = windowsTaskName(paths);
-    const taskExists = windowsTaskExists(taskName, runCommand);
-    if (taskExists && !existsSync(paths.definition) && !force) {
+    const taskQuery = queryWindowsTask(taskName, runCommand);
+    if (taskQuery.status === "error") return taskQuery.code;
+    if (
+      taskQuery.status === "exists" &&
+      !existsSync(paths.definition) &&
+      !force
+    ) {
       throw new Error(
         `scheduled task ${taskName} already exists; rerun with --force to replace it`,
       );
@@ -525,7 +552,9 @@ function uninstallService(
     rmSync(paths.definition, { force: true });
   } else {
     const taskName = windowsTaskName(paths);
-    const taskExists = windowsTaskExists(taskName, runCommand);
+    const taskQuery = queryWindowsTask(taskName, runCommand);
+    if (taskQuery.status === "error") return taskQuery.code;
+    const taskExists = taskQuery.status === "exists";
     if (!definitionExists && !taskExists) {
       log(`No managed ${platform} service found: ${paths.definition}`);
       log(`Preserved service config: ${paths.config}`);
@@ -544,8 +573,10 @@ function uninstallService(
         taskName,
         "/F",
       ]);
-      if (deleteCode !== 0 && windowsTaskExists(taskName, runCommand)) {
-        return deleteCode;
+      if (deleteCode !== 0) {
+        const afterDelete = queryWindowsTask(taskName, runCommand);
+        if (afterDelete.status === "error") return afterDelete.code;
+        if (afterDelete.status === "exists") return deleteCode;
       }
     }
     rmSync(paths.definition, { force: true });

@@ -4,6 +4,7 @@ import {
   classifySshTunnelFailure,
   createSshTunnelManager as createPlatformSshTunnelManager,
   readBoundedStderr,
+  SshTunnelError,
 } from "./ssh-tunnel";
 
 function deferred<T>() {
@@ -44,9 +45,20 @@ function config() {
 
 describe("SSH tunnel readiness lifecycle", () => {
   test("rejects Windows before constructing an invalid stream-local forward", () => {
-    expect(() => assertSshTunnelPlatformSupported("win32")).toThrow(
-      "cannot create a local Windows named pipe",
-    );
+    let failure: unknown;
+    try {
+      assertSshTunnelPlatformSupported("win32");
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(SshTunnelError);
+    expect(failure).toMatchObject({
+      retryable: false,
+      kind: "unsupported",
+      message: expect.stringContaining(
+        "cannot create a local Windows named pipe",
+      ),
+    });
     expect(() => assertSshTunnelPlatformSupported("linux")).not.toThrow();
   });
 
