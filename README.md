@@ -87,11 +87,13 @@ curl -fsSL \
   | sh
 ```
 
-Windows x64 releases are published as a checksummed archive containing
-`herdr-gui.exe`. Download `herdr-gui-windows-x64.tar.xz` and its matching
-`.sha256` file from the [latest release](https://github.com/powerfooI/herdr-gui/releases/latest),
-verify it with `Get-FileHash`, then extract it with Windows 11's built-in
-`tar.exe`.
+Windows release artifacts are produced for x64 and ARM64 as checksummed
+archives containing `herdr-gui.exe`. Download the matching
+`herdr-gui-windows-<arch>.tar.xz` and `.sha256` files from the
+[latest release](https://github.com/powerfooI/herdr-gui/releases/latest), verify
+them with `Get-FileHash`, then extract them with Windows 11's built-in
+`tar.exe`. Releases predating native ARM64 support contain only the x64
+archive; use the native ARM64 package when it is available on Windows ARM64.
 
 Make sure `~/.local/bin` is in `PATH`, then start the application:
 
@@ -150,7 +152,7 @@ broadcast to every connected browser as `{ event: ... }`.
 
 - Herdr running locally (`~/.config/herdr/herdr.sock` on Unix; the
   `%APPDATA%\herdr\herdr.sock` named pipe on Windows)
-- [Bun](https://bun.sh) >= 1.3 for source builds
+- [Bun](https://bun.sh) >= 1.4 for source builds
 
 ## Development
 
@@ -340,8 +342,10 @@ bun run build:linux-arm64 # → server/herdr-gui-linux-arm64 (arm64 Linux, glibc
 bun run build:darwin-x64  # → server/herdr-gui-darwin-x64  (Intel macOS)
 bun run build:darwin-arm64 # → server/herdr-gui-darwin-arm64 (Apple Silicon)
 bun run build:windows-x64 # → server/herdr-gui-windows-x64.exe (Windows x64)
+bun run build:windows-arm64 # → server/herdr-gui-windows-arm64.exe (Windows ARM64)
 bun run build:all
 bun run package:windows-x64 # → dist/herdr-gui-windows-x64.tar.xz
+bun run package:windows-arm64 # → dist/herdr-gui-windows-arm64.tar.xz
 ```
 
 > **Linux x86-64 note:** use the **glibc** build (`herdr-gui-linux-x64`) for

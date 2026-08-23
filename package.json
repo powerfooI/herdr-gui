@@ -14,7 +14,7 @@
     "url": "https://github.com/powerfooI/herdr-gui/issues"
   },
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.4.0"
   },
   "scripts": {
     "dev:server": "cd server && bun run --hot src/index.ts",
@@ -32,6 +32,7 @@
     "build:darwin-arm64": "bun run build:web && cd server && bun run compile:darwin-arm64",
     "postbuild:darwin-arm64": "bun run clean:bun-build",
     "build:windows-x64": "bun run build:web && cd server && bun run compile:windows-x64",
+    "build:windows-arm64": "bun run build:web && cd server && bun run compile:windows-arm64",
     "build:all": "bun run build:web && cd server && bun run compile:all",
     "postbuild:all": "bun run clean:bun-build",
     "package:linux-x64": "scripts/package-release.sh linux-x64",
@@ -39,6 +40,7 @@
     "package:darwin-x64": "scripts/package-release.sh darwin-x64",
     "package:darwin-arm64": "scripts/package-release.sh darwin-arm64",
     "package:windows-x64": "scripts/package-release.sh windows-x64",
+    "package:windows-arm64": "scripts/package-release.sh windows-arm64",
     "release:cut": "bun scripts/cut-release.ts",
     "changelog:notes": "bun scripts/changelog-notes.ts",
     "format": "biome format --write .",

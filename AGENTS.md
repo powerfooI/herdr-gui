@@ -20,8 +20,8 @@ committed.
 - `bun run package:linux-x64`: build and emit both versioned and latest `tar.xz`
   archives and checksums in `dist/`.
 - `bun run package:linux-arm64`, `package:darwin-x64`,
-  `package:darwin-arm64`, and `package:windows-x64`: package the other
-  supported release targets.
+  `package:darwin-arm64`, `package:windows-x64`, and
+  `package:windows-arm64`: package the other supported release targets.
 - `bun run format`: format supported files with the pinned root Biome config.
 - `bun run format:check`: verify that all supported files are formatted.
 - `bun run lint`: lint all TypeScript and React code.

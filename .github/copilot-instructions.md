@@ -29,8 +29,8 @@ When reviewing pull requests, focus on:
   address; it also executes local processes. Flag any path traversal,
   unvalidated message payloads, or injection-prone command construction.
 - Cross-platform behavior: releases target linux-x64, linux-arm64,
-  darwin-x64, darwin-arm64, and windows-x64; avoid OS-specific assumptions in
-  shared code.
+  darwin-x64, darwin-arm64, windows-x64, and windows-arm64; avoid OS-specific
+  assumptions in shared code.
 
 ## Style and conventions
 

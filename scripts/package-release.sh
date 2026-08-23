@@ -31,9 +31,14 @@ case "$platform" in
     binary="$root_dir/server/herdr-gui-windows-x64.exe"
     binary_name="herdr-gui.exe"
     ;;
+  windows-arm64)
+    build_script="build:windows-arm64"
+    binary="$root_dir/server/herdr-gui-windows-arm64.exe"
+    binary_name="herdr-gui.exe"
+    ;;
   *)
     echo "unsupported platform: $platform" >&2
-    echo "supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64" >&2
+    echo "supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-arm64, windows-x64" >&2
     exit 2
     ;;
 esac

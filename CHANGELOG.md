@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Add a native Windows ARM64 release package.
+
+### Fixed
+
+- Upgrade release builds to Bun 1.4.0; the x64 binary built by Bun 1.3.14 can
+  crash during `service install` under Windows ARM64 emulation.
+
 ## 0.4.5 - 2026-08-23
 
 ### Added
