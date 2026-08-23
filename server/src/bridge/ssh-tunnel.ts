@@ -110,6 +110,16 @@ export async function readBoundedStderr(
   return new TextDecoder().decode(retained);
 }
 
+export function assertSshTunnelPlatformSupported(
+  platform: string = process.platform,
+): void {
+  if (platform === "win32") {
+    throw new Error(
+      "SSH connections from Windows are not supported because herdr-gui's stream-local forwarding cannot create a local Windows named pipe",
+    );
+  }
+}
+
 export type SshTunnelConfig = {
   socketPath: string;
   clientSocketPath: string;
@@ -161,8 +171,10 @@ export function createSshTunnelManager(args: {
     socketPollIntervalMs?: number;
     processStopTimeoutMs?: number;
     processForceKillTimeoutMs?: number;
+    platform?: string;
   };
 }) {
+  const platform = args.dependencies?.platform ?? process.platform;
   const exists = args.dependencies?.exists ?? existsSync;
   const formatError =
     args.formatError ??
@@ -355,6 +367,7 @@ export function createSshTunnelManager(args: {
     if (disposed) throw new Error("SSH tunnel manager is disposed");
     const host = args.config.sshHost;
     if (!host) return;
+    assertSshTunnelPlatformSupported(platform);
     const generation = ++lifecycleGeneration;
     activeSocketWait?.cancel();
     activeSocketWait = null;

@@ -69,6 +69,20 @@ describe("connection profile validation", () => {
     expect(validateConnectionRegistry(registry())).toEqual(registry());
   });
 
+  test("normalizes Windows local profiles to native named pipes", () => {
+    const windowsProfile = {
+      ...local(),
+      control_socket_path: String.raw`C:\Users\tester\AppData\Roaming\herdr\herdr.sock`,
+      client_socket_path: String.raw`C:\Users\tester\AppData\Roaming\herdr\herdr-client.sock`,
+    };
+
+    expect(validateLocalConnectionProfile(windowsProfile, "win32")).toEqual({
+      ...windowsProfile,
+      control_socket_path: String.raw`\\.\pipe\C:\Users\tester\AppData\Roaming\herdr\herdr.sock`,
+      client_socket_path: String.raw`\\.\pipe\C:\Users\tester\AppData\Roaming\herdr\herdr-client.sock`,
+    });
+  });
+
   test("rejects unsupported versions, duplicates, and missing defaults", () => {
     expect(() =>
       validateConnectionRegistry({ ...registry(), version: 3 }),

@@ -16,8 +16,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, win32 } from "node:path";
 import { validateSshDestination } from "../bridge/ssh-command";
+import { nativeSocketPath } from "../config/server-config";
 import { validateConnectionId } from "./protocol";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./types";
 
@@ -104,13 +105,20 @@ function validateLabel(value: unknown): string {
   return value;
 }
 
-function validateSocketPath(value: unknown, field: string): string {
+function validateSocketPath(
+  value: unknown,
+  field: string,
+  platform: string,
+): string {
+  const isWindowsPath =
+    typeof value === "string" &&
+    (/^[A-Za-z]:[\\/]/.test(value) || /^\\\\[.?]\\pipe\\/i.test(value));
   if (
     typeof value !== "string" ||
     value.length === 0 ||
     value.length > MAX_SOCKET_PATH_LENGTH ||
     CONTROL_CHARACTERS.test(value) ||
-    !isAbsolute(value)
+    (platform === "win32" ? !isWindowsPath : !isAbsolute(value))
   ) {
     throw new Error(`${field} must be an absolute socket path`);
   }
@@ -118,11 +126,17 @@ function validateSocketPath(value: unknown, field: string): string {
   if (segments.includes("..")) {
     throw new Error(`${field} must not contain parent traversal`);
   }
-  return value;
+  const normalized = platform === "win32" ? win32.normalize(value) : value;
+  const nativePath = nativeSocketPath(normalized, platform);
+  if (nativePath.length > MAX_SOCKET_PATH_LENGTH) {
+    throw new Error(`${field} must be an absolute socket path`);
+  }
+  return nativePath;
 }
 
 export function validateLocalConnectionProfile(
   value: unknown,
+  platform: string = process.platform,
 ): LocalConnectionProfile {
   assertPlainObject(value, "connection profile");
   assertExactKeys(
@@ -154,10 +168,12 @@ export function validateLocalConnectionProfile(
     control_socket_path: validateSocketPath(
       value.control_socket_path,
       "control_socket_path",
+      platform,
     ),
     client_socket_path: validateSocketPath(
       value.client_socket_path,
       "client_socket_path",
+      platform,
     ),
     auto_connect: value.auto_connect,
   };
@@ -244,9 +260,14 @@ export function validateSshConnectionProfile(
   };
 }
 
-export function validateConnectionProfile(value: unknown): ConnectionProfile {
+export function validateConnectionProfile(
+  value: unknown,
+  platform: string = process.platform,
+): ConnectionProfile {
   assertPlainObject(value, "connection profile");
-  if (value.type === "local") return validateLocalConnectionProfile(value);
+  if (value.type === "local") {
+    return validateLocalConnectionProfile(value, platform);
+  }
   if (value.type === "ssh") return validateSshConnectionProfile(value);
   throw new Error("invalid connection profile type");
 }
@@ -272,10 +293,10 @@ export function validateConnectionRegistry(
   if (value.profiles.length > MAX_CONNECTION_PROFILES) {
     throw new Error("connection registry contains too many profiles");
   }
-  const profiles = value.profiles.map(
+  const profiles = value.profiles.map((profile) =>
     value.version === 1
-      ? validateLocalConnectionProfile
-      : validateConnectionProfile,
+      ? validateLocalConnectionProfile(profile)
+      : validateConnectionProfile(profile),
   );
   const ids = new Set<string>();
   for (const profile of profiles) {

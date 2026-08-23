@@ -181,7 +181,11 @@ the remote home directory over SSH. Configure ports, jump hosts, identities,
 and other transport details in
 `~/.ssh/config`; herdr-gui uses the normal OpenSSH host-key and agent/Keychain
 policies and does not store passwords, private keys, passphrases, or arbitrary
-SSH options. A typical profile needs only a destination:
+SSH options. SSH profiles and `--ssh-host` currently require herdr-gui to run on
+Linux or macOS because the current stream-local transport cannot expose the
+forwarded Unix socket as a local Windows named pipe. Windows supports native
+local Herdr profiles. A typical
+SSH profile needs only a destination:
 
 ```text
 Destination: workbox
@@ -211,7 +215,7 @@ full list.
 | `--password <pw>` | `HERDR_GUI_PASSWORD` | _(generated token for non-localhost)_ |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | `~/.config/herdr/herdr.sock` (Unix) / `%APPDATA%\herdr\herdr.sock` (Windows) |
 | `--client-socket-path <p>` | `HERDR_CLIENT_SOCKET_PATH` | `~/.config/herdr/herdr-client.sock` (Unix) / `%APPDATA%\herdr\herdr-client.sock` (Windows) |
-| `--ssh-host <user@host>` | `HERDR_SSH_HOST` | _(auto tunnel remote Herdr sockets)_ |
+| `--ssh-host <user@host>` | `HERDR_SSH_HOST` | _(auto tunnel remote Herdr sockets; Linux/macOS)_ |
 | `--session <name>` | `HERDR_SESSION` | _(named herdr session)_ |
 | `--public-dir <path>` | `PUBLIC_DIR` | _(embedded assets)_ |
 | `--open` | `OPEN_BROWSER=1` | _(disabled)_ |

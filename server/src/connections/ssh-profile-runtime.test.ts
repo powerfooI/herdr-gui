@@ -64,6 +64,20 @@ describe("SSH profile runtime socket allocation", () => {
     });
   });
 
+  test("rejects Windows before allocating a Unix socket directory", () => {
+    let allocated = false;
+    expect(() =>
+      createSshProfileRuntimeConfig(profile(), {
+        platform: "win32",
+        createDirectory: () => {
+          allocated = true;
+          return "unused";
+        },
+      }),
+    ).toThrow("cannot create a local Windows named pipe");
+    expect(allocated).toBeFalse();
+  });
+
   test("rejects a non-private injected runtime directory", () => {
     expect(() =>
       createSshProfileRuntimeConfig(profile(), {

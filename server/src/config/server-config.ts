@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { validateSshDestination } from "../bridge/ssh-command";
+import { assertSshTunnelPlatformSupported } from "../bridge/ssh-tunnel";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
 type CliArgs = Partial<{
@@ -130,6 +131,7 @@ Options (flags override env vars):
   let sshHost: string | undefined;
   try {
     sshHost = sshHostValue ? validateSshDestination(sshHostValue) : undefined;
+    if (sshHost) assertSshTunnelPlatformSupported();
   } catch (error) {
     console.error(`[bridge] ${(error as Error).message}`);
     process.exit(2);
@@ -199,10 +201,11 @@ export function nativeSocketPath(
   socketPath: string,
   platform: string = process.platform,
 ): string {
+  const lowerPath = socketPath.toLowerCase();
   if (
     platform !== "win32" ||
-    socketPath.startsWith("\\\\.\\pipe\\") ||
-    socketPath.startsWith("\\\\?\\pipe\\")
+    lowerPath.startsWith("\\\\.\\pipe\\") ||
+    lowerPath.startsWith("\\\\?\\pipe\\")
   ) {
     return socketPath;
   }
@@ -219,9 +222,7 @@ function resolveSocketPath(
   if (process.env.HERDR_SOCKET_PATH) {
     return nativeSocketPath(process.env.HERDR_SOCKET_PATH);
   }
-  if (sshHost) {
-    return nativeSocketPath(remoteTunnelLocalPath(sshHost, session, "control"));
-  }
+  if (sshHost) return remoteTunnelLocalPath(sshHost, session, "control");
   const base = herdrConfigDir();
   const socketPath = session
     ? resolve(base, "sessions", session, "herdr.sock")
@@ -239,9 +240,7 @@ function resolveClientSocketPath(
   if (process.env.HERDR_CLIENT_SOCKET_PATH) {
     return nativeSocketPath(process.env.HERDR_CLIENT_SOCKET_PATH);
   }
-  if (sshHost) {
-    return nativeSocketPath(remoteTunnelLocalPath(sshHost, session, "client"));
-  }
+  if (sshHost) return remoteTunnelLocalPath(sshHost, session, "client");
   const base = herdrConfigDir();
   const socketPath = session
     ? resolve(base, "sessions", session, "herdr-client.sock")

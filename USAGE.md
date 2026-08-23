@@ -6,7 +6,7 @@ herdr-gui 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务�
 ## 前置条件
 
 - 已安装并启动 Herdr。
-- 本机默认 Herdr socket 存在于 `~/.config/herdr/herdr.sock`。
+- 本机默认 Herdr socket 位于 Unix 的 `~/.config/herdr/herdr.sock` 或 Windows 的 `%APPDATA%\herdr\herdr.sock`。
 - 如果使用源码开发，需要安装 Bun。
 - 如果使用 standalone binary，不需要在目标机器安装 Bun。
 
@@ -134,14 +134,16 @@ http://192.0.2.23:8781/?token=<token>
 
 标题旁的连接选择器可以添加、测试、连接、断开、编辑和删除 Herdr server。
 Profile 由同一个 bridge 的所有已认证浏览器共享，但每个浏览器独立选择当前展示的
-连接。Local profile 只附着已经存在的 Unix socket，不会启动 Herdr。创建首个
+连接。Local profile 只附着已经存在的 Unix socket 或 Windows named pipe，不会启动 Herdr。创建首个
 profile 时，默认本地 server 会以可写的 `Local` profile 保留在列表中，而不是被
 移除。
 
 SSH profile 要求远端 Herdr server 已经运行，并填写 OpenSSH Host alias 或
 `user@host`。远端 control/render socket 路径可留空：herdr-gui 会在连接时通过
 SSH 解析远端 home 目录下的默认 socket（`~/.config/herdr/herdr.sock` 与
-`~/.config/herdr/herdr-client.sock`）。例如：
+`~/.config/herdr/herdr-client.sock`）。SSH profile 与 `--ssh-host` 当前要求
+herdr-gui 运行在 Linux 或 macOS；当前 stream-local transport 无法把远端 Unix
+socket 暴露为本地 Windows named pipe，因此 Windows 当前只支持本机 Herdr 连接。例如：
 
 ```text
 SSH destination: devbox

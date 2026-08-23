@@ -157,24 +157,32 @@ function registerWindowsTask(
   ]);
 }
 
-function waitForWindowsTaskStop(runCommand: RunCommand): number {
+function windowsTaskName(paths: { taskName?: string }): string {
+  if (!paths.taskName) throw new Error("Windows service task name is missing");
+  return paths.taskName;
+}
+
+function powershellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function waitForWindowsTaskStop(
+  taskName: string,
+  runCommand: RunCommand,
+): number {
+  const task = powershellLiteral(taskName);
+  const script = `$deadline = (Get-Date).AddSeconds(15); while ((Get-Date) -lt $deadline) { $task = Get-ScheduledTask -TaskName ${task} -ErrorAction SilentlyContinue; if ($null -eq $task -or $task.State -ne 'Running') { exit 0 }; Start-Sleep -Milliseconds 100 }; Write-Error 'scheduled task did not stop within 15 seconds'; exit 1`;
   return runCommand(
-    [
-      "powershell.exe",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "Start-Sleep -Milliseconds 2000",
-    ],
+    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
     { quiet: true },
   );
 }
 
-function restartWindowsTask(runCommand: RunCommand): number {
-  runCommand(["schtasks.exe", "/End", "/TN", SERVICE_LABEL], { quiet: true });
-  const waitCode = waitForWindowsTaskStop(runCommand);
+function restartWindowsTask(taskName: string, runCommand: RunCommand): number {
+  runCommand(["schtasks.exe", "/End", "/TN", taskName], { quiet: true });
+  const waitCode = waitForWindowsTaskStop(taskName, runCommand);
   if (waitCode !== 0) return waitCode;
-  return runCommand(["schtasks.exe", "/Run", "/TN", SERVICE_LABEL]);
+  return runCommand(["schtasks.exe", "/Run", "/TN", taskName]);
 }
 
 function assertServiceDefinitionWritable(path: string, force: boolean) {
@@ -383,13 +391,14 @@ function installService(
     runtime.appDataDir,
   );
   if (platform === "windows-task") {
+    const taskName = windowsTaskName(paths);
     const taskExists =
-      runCommand(["schtasks.exe", "/Query", "/TN", SERVICE_LABEL], {
+      runCommand(["schtasks.exe", "/Query", "/TN", taskName], {
         quiet: true,
       }) === 0;
     if (taskExists && !existsSync(paths.definition) && !force) {
       throw new Error(
-        `scheduled task ${SERVICE_LABEL} already exists; rerun with --force to replace it`,
+        `scheduled task ${taskName} already exists; rerun with --force to replace it`,
       );
     }
   }
@@ -440,7 +449,9 @@ function installService(
     }
   } else {
     code = registerWindowsTask(paths.definition, runCommand);
-    if (code === 0) code = restartWindowsTask(runCommand);
+    if (code === 0) {
+      code = restartWindowsTask(windowsTaskName(paths), runCommand);
+    }
   }
 
   if (code === 0) {
@@ -504,16 +515,17 @@ function uninstallService(
     }
     rmSync(paths.definition, { force: true });
   } else {
-    runCommand(["schtasks.exe", "/End", "/TN", SERVICE_LABEL], {
+    const taskName = windowsTaskName(paths);
+    runCommand(["schtasks.exe", "/End", "/TN", taskName], {
       quiet: true,
     });
-    const waitCode = waitForWindowsTaskStop(runCommand);
+    const waitCode = waitForWindowsTaskStop(taskName, runCommand);
     if (waitCode !== 0) return waitCode;
     const deleteCode = runCommand([
       "schtasks.exe",
       "/Delete",
       "/TN",
-      SERVICE_LABEL,
+      taskName,
       "/F",
     ]);
     if (deleteCode !== 0) return deleteCode;
@@ -553,7 +565,9 @@ function runServiceAction(
     }
     if (platform === "windows-task") {
       const registerCode = registerWindowsTask(paths.definition, runCommand);
-      return registerCode === 0 ? restartWindowsTask(runCommand) : registerCode;
+      return registerCode === 0
+        ? restartWindowsTask(windowsTaskName(paths), runCommand)
+        : registerCode;
     }
     if (runtime.uid === undefined) {
       throw new Error("cannot determine the current user id for launchd");
@@ -576,17 +590,23 @@ function runServiceAction(
     );
   }
   if (platform === "windows-task") {
+    const paths = resolveServicePaths(
+      platform,
+      runtime.homeDir,
+      runtime.appDataDir,
+    );
+    const taskName = windowsTaskName(paths);
     return action === "status"
       ? runCommand([
           "schtasks.exe",
           "/Query",
           "/TN",
-          SERVICE_LABEL,
+          taskName,
           "/V",
           "/FO",
           "LIST",
         ])
-      : restartWindowsTask(runCommand);
+      : restartWindowsTask(taskName, runCommand);
   }
   if (runtime.uid === undefined) {
     throw new Error("cannot determine the current user id for launchd");

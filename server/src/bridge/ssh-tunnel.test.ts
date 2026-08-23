@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertSshTunnelPlatformSupported,
   classifySshTunnelFailure,
   createSshTunnelManager,
   readBoundedStderr,
@@ -33,6 +34,13 @@ function config() {
 }
 
 describe("SSH tunnel readiness lifecycle", () => {
+  test("rejects Windows before constructing an invalid stream-local forward", () => {
+    expect(() => assertSshTunnelPlatformSupported("win32")).toThrow(
+      "cannot create a local Windows named pipe",
+    );
+    expect(() => assertSshTunnelPlatformSupported("linux")).not.toThrow();
+  });
+
   test("classifies permanent and transient OpenSSH failures without raw stderr", () => {
     expect(
       classifySshTunnelFailure(255, "Permission denied (publickey)."),

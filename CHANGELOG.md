@@ -4,10 +4,9 @@
 
 ### Added
 
-- Add Windows support: the bridge maps Herdr's `%APPDATA%\herdr` socket names
-  to native named pipes, keeps remote-tunnel sockets in the OS temp directory,
-  gains a Windows x64 build target, and manages a per-user startup task through
-  Windows Task Scheduler.
+- Add Windows support: the bridge maps local Herdr `%APPDATA%\herdr` socket
+  names to native named pipes, gains a Windows x64 build target, and manages an
+  isolated per-user startup task through Windows Task Scheduler.
 
 ### Performance
 

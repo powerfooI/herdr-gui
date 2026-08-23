@@ -1,6 +1,9 @@
 import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { SshTunnelConfig } from "../bridge/ssh-tunnel";
+import {
+  assertSshTunnelPlatformSupported,
+  type SshTunnelConfig,
+} from "../bridge/ssh-tunnel";
 import type { SshConnectionProfile } from "./profiles";
 
 export type SshRuntimeConfigDependencies = {
@@ -8,12 +11,15 @@ export type SshRuntimeConfigDependencies = {
   chmod?: (path: string, mode: number) => void;
   stat?: (path: string) => { isDirectory(): boolean; mode: number };
   removeDirectory?: (path: string) => void;
+  platform?: string;
 };
 
 export function createSshProfileRuntimeConfig(
   profile: SshConnectionProfile,
   dependencies: SshRuntimeConfigDependencies = {},
 ): SshTunnelConfig {
+  const platform = dependencies.platform ?? process.platform;
+  assertSshTunnelPlatformSupported(platform);
   const directory =
     dependencies.createDirectory?.() ?? mkdtempSync("/tmp/herdr-gui-ssh-");
   const chmod = dependencies.chmod ?? chmodSync;
@@ -28,7 +34,7 @@ export function createSshProfileRuntimeConfig(
     const clientSocketPath = join(directory, "render.sock");
     if (
       !directoryStat.isDirectory() ||
-      (process.platform !== "win32" && (directoryStat.mode & 0o077) !== 0) ||
+      (platform !== "win32" && (directoryStat.mode & 0o077) !== 0) ||
       Buffer.byteLength(socketPath) > 100 ||
       Buffer.byteLength(clientSocketPath) > 100
     ) {

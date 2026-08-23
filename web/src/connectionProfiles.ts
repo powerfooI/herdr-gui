@@ -127,14 +127,18 @@ export function localConnectionProfilePayload(value: {
     ["Control socket", controlSocketPath],
     ["Render socket", clientSocketPath],
   ] as const) {
+    const isAbsoluteSocketPath =
+      path.startsWith("/") ||
+      /^[A-Za-z]:[\\/]/.test(path) ||
+      /^\\\\[.?]\\pipe\\/i.test(path);
     if (
-      !path.startsWith("/") ||
+      !isAbsoluteSocketPath ||
       /[\u0000-\u001f\u007f-\u009f]/.test(path) ||
-      path.split("/").includes("..") ||
+      path.split(/[\\/]/).includes("..") ||
       path.length > 4096
     ) {
       throw new Error(
-        `${field} path must be an absolute Unix socket path without parent traversal.`,
+        `${field} path must be an absolute socket path without parent traversal.`,
       );
     }
   }

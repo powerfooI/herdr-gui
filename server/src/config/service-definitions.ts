@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 export const SERVICE_LABEL = "dev.herdr.herdr-gui";
@@ -8,6 +9,7 @@ export type ServicePlatform = "systemd" | "launchd" | "windows-task";
 export interface ServicePaths {
   config: string;
   definition: string;
+  taskName?: string;
   stdoutLog?: string;
   stderrLog?: string;
 }
@@ -43,9 +45,15 @@ export function resolveServicePaths(
       appDataDir ?? join(homeDir, "AppData", "Roaming"),
       "herdr-gui",
     );
+    const config = join(base, "herdr-gui.env");
+    const userKey = createHash("sha256")
+      .update(base.toLowerCase())
+      .digest("hex")
+      .slice(0, 16);
     return {
-      config: join(base, "herdr-gui.env"),
+      config,
       definition: join(base, "herdr-gui-task.ps1"),
+      taskName: `${SERVICE_LABEL}-${userKey}`,
       stdoutLog: join(base, "herdr-gui.stdout.log"),
       stderrLog: join(base, "herdr-gui.stderr.log"),
     };
@@ -136,7 +144,8 @@ export function renderWindowsTaskDefinition(
   binaryPath: string,
   paths: ServicePaths,
 ): string {
-  const taskName = powershellSingleQuotedString(SERVICE_LABEL);
+  if (!paths.taskName) throw new Error("Windows service task name is missing");
+  const taskName = powershellSingleQuotedString(paths.taskName);
   const executable = powershellSingleQuotedString(binaryPath);
   const argumentsValue = powershellSingleQuotedString(
     `service run "${paths.config}"`,

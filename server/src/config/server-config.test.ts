@@ -28,6 +28,8 @@ describe("nativeSocketPath", () => {
 
     expect(nativeSocketPath(logical, "win32")).toBe(native);
     expect(nativeSocketPath(native, "win32")).toBe(native);
+    const upperPrefix = String.raw`\\.\PIPE\existing`;
+    expect(nativeSocketPath(upperPrefix, "win32")).toBe(upperPrefix);
     expect(nativeSocketPath(logical, "linux")).toBe(logical);
   });
 });

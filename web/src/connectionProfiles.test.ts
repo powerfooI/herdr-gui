@@ -85,6 +85,19 @@ describe("local connection profile presentation", () => {
         autoConnect: true,
       }),
     ).toThrow("parent traversal");
+
+    expect(
+      localConnectionProfilePayload({
+        id: "windows-local",
+        label: "Windows Local",
+        controlSocketPath: String.raw`C:\Users\tester\herdr.sock`,
+        clientSocketPath: String.raw`\\.\PIPE\C:\Users\tester\herdr-client.sock`,
+        autoConnect: true,
+      }),
+    ).toMatchObject({
+      control_socket_path: String.raw`C:\Users\tester\herdr.sock`,
+      client_socket_path: String.raw`\\.\PIPE\C:\Users\tester\herdr-client.sock`,
+    });
   });
 
   test("emits and validates the strict SSH backend payload", () => {
