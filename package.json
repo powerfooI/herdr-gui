@@ -1,7 +1,7 @@
 {
   "name": "herdr-gui",
   "private": true,
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "A web GUI client for Herdr (local socket bridge + React dashboard).",
   "license": "MIT",
   "author": "Arthur",

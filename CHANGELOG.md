@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.5 - 2026-08-23
+
 ### Added
 
 - Add Windows support: the bridge maps local Herdr `%APPDATA%\herdr` socket
