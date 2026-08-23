@@ -20,6 +20,14 @@ function tempHome(): string {
   return path;
 }
 
+function tempAuthTokenPath(homeDir = tempHome()): string {
+  return defaultAuthTokenPath(
+    homeDir,
+    process.platform,
+    join(homeDir, "AppData", "Roaming"),
+  );
+}
+
 afterEach(() => {
   for (const path of tempDirs.splice(0)) {
     rmSync(path, { recursive: true, force: true });
@@ -36,18 +44,21 @@ describe("generated authentication token", () => {
   });
 
   test("creates a persistent random token with private permissions", () => {
-    const path = defaultAuthTokenPath(tempHome());
+    const path = tempAuthTokenPath();
     const first = loadOrCreateAuthToken(path);
     const second = loadOrCreateAuthToken(path);
 
     expect(first).toMatch(/^[a-f0-9]{64}$/);
     expect(second).toBe(first);
     expect(readFileSync(path, "utf8")).toBe(`${first}\n`);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+    }
   });
 
   test("repairs permissions on an existing valid token", () => {
-    const path = defaultAuthTokenPath(tempHome());
+    if (process.platform === "win32") return;
+    const path = tempAuthTokenPath();
     const token = "a".repeat(64);
     loadOrCreateAuthToken(path);
     writeFileSync(path, `${token}\n`);
@@ -58,7 +69,7 @@ describe("generated authentication token", () => {
   });
 
   test("rejects a malformed persisted token", () => {
-    const path = defaultAuthTokenPath(tempHome());
+    const path = tempAuthTokenPath();
     loadOrCreateAuthToken(path);
     writeFileSync(path, "not-a-token\n");
 
@@ -69,7 +80,7 @@ describe("generated authentication token", () => {
 
   test("does not follow a generated-token symlink", () => {
     const home = tempHome();
-    const path = defaultAuthTokenPath(home);
+    const path = tempAuthTokenPath(home);
     const target = join(home, "shared-secret");
     loadOrCreateAuthToken(path);
     writeFileSync(target, `${"b".repeat(64)}\n`);

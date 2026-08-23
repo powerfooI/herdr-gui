@@ -1,10 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { lstatSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { createSshProfileRuntimeConfig } from "./ssh-profile-runtime";
+import {
+  createSshProfileRuntimeConfig as createPlatformSshProfileRuntimeConfig,
+  type SshRuntimeConfigDependencies,
+} from "./ssh-profile-runtime";
 import type { SshConnectionProfile } from "./profiles";
 
 const directories: string[] = [];
+
+function createSshProfileRuntimeConfig(
+  profile: SshConnectionProfile,
+  dependencies: SshRuntimeConfigDependencies = {},
+) {
+  return createPlatformSshProfileRuntimeConfig(profile, {
+    platform: "linux",
+    ...dependencies,
+  });
+}
 
 function profile(): SshConnectionProfile {
   return {
@@ -26,6 +39,7 @@ afterEach(() => {
 
 describe("SSH profile runtime socket allocation", () => {
   test("allocates short private paths without profile-controlled names", () => {
+    if (process.platform === "win32") return;
     const config = createSshProfileRuntimeConfig(profile());
     const directory = config.ownedRuntimeDirectory!;
     directories.push(directory);
@@ -48,6 +62,7 @@ describe("SSH profile runtime socket allocation", () => {
   });
 
   test("maps empty profile socket paths to remote home inference", () => {
+    if (process.platform === "win32") return;
     const config = createSshProfileRuntimeConfig({
       ...profile(),
       remote_control_socket_path: "",

@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Make Windows service registration Unicode-safe and let uninstall recover
+  when either the Task Scheduler entry or generated helper is already missing.
 - Re-attach the terminal when Herdr closes its stream after another herdr-gui
   client takes the terminal over (e.g. a second GUI instance viewing the same
   pane): the bridge now tells viewers when the stream closes and the frontend

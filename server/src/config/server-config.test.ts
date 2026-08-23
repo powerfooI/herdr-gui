@@ -10,7 +10,7 @@ describe("herdrConfigDir", () => {
   });
 
   test("falls back under the home directory on win32 without APPDATA", () => {
-    expect(herdrConfigDir("win32", undefined)).toBe(
+    expect(herdrConfigDir("win32", null)).toBe(
       join(homedir(), "AppData", "Roaming", "herdr"),
     );
   });

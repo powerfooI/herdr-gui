@@ -189,7 +189,7 @@ function remoteTunnelLocalPath(
 
 export function herdrConfigDir(
   platform: string = process.platform,
-  appData: string | undefined = process.env.APPDATA,
+  appData: string | null | undefined = process.env.APPDATA,
 ): string {
   if (platform === "win32") {
     return join(appData ?? join(homedir(), "AppData", "Roaming"), "herdr");

@@ -59,13 +59,20 @@ afterEach(async () => {
     rmSync(root, { recursive: true, force: true });
 });
 
+function localSocketPath(id: string, client = false): string {
+  const name = `${id}${client ? "-client" : ""}.sock`;
+  return process.platform === "win32"
+    ? `\\\\.\\pipe\\herdr-gui-test-${name}`
+    : `/tmp/${name}`;
+}
+
 function local(id: string, autoConnect = true): LocalConnectionProfile {
   return {
     id,
     label: id.toUpperCase(),
     type: "local",
-    control_socket_path: `/tmp/${id}.sock`,
-    client_socket_path: `/tmp/${id}-client.sock`,
+    control_socket_path: localSocketPath(id),
+    client_socket_path: localSocketPath(id, true),
     auto_connect: autoConnect,
   };
 }
@@ -133,11 +140,18 @@ async function startProbeServers(
   id: string,
   renderMode: "valid" | "malformed" = "valid",
 ) {
-  const root = join(tmpdir(), `herdr-gui-profile-probe-${crypto.randomUUID()}`);
+  const key = crypto.randomUUID();
+  const root = join(tmpdir(), `herdr-gui-profile-probe-${key}`);
   roots.push(root);
   mkdirSync(root, { recursive: true });
-  const controlPath = join(root, "control.sock");
-  const renderPath = join(root, "render.sock");
+  const controlPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\herdr-gui-profile-probe-${key}-control`
+      : join(root, "control.sock");
+  const renderPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\herdr-gui-profile-probe-${key}-render`
+      : join(root, "render.sock");
   let controlConnections = 0;
   let renderConnections = 0;
   const control = net.createServer((socket) => {
@@ -454,7 +468,7 @@ describe("connection profile service", () => {
     const store = new ConnectionProfileStore({ path: tempPath() });
     const failingLegacy = {
       ...legacy,
-      control_socket_path: "/tmp/bad-stop.sock",
+      control_socket_path: localSocketPath("bad-stop"),
     };
     const bootstrap = loadConnectionProfileBootstrap({
       store,
@@ -1240,7 +1254,7 @@ describe("connection profile service", () => {
     await manager.startDefault();
     const replacement = {
       ...original,
-      control_socket_path: "/tmp/bad-start.sock",
+      control_socket_path: localSocketPath("bad-start"),
     };
 
     await expect(service.update("alpha", replacement)).rejects.toThrow(
@@ -1254,7 +1268,7 @@ describe("connection profile service", () => {
     });
     expect(service.list()[0]).toMatchObject({
       id: "alpha",
-      control_socket_path: "/tmp/bad-start.sock",
+      control_socket_path: localSocketPath("bad-start"),
     });
     expect(manager.readyRuntime("alpha")).toBeNull();
     await expect(service.create(local("beta"))).rejects.toThrow(
@@ -1290,7 +1304,7 @@ describe("connection profile service", () => {
     await expect(
       service.update("alpha", {
         ...local("alpha"),
-        control_socket_path: "/tmp/bad-start.sock",
+        control_socket_path: localSocketPath("bad-start"),
       }),
     ).rejects.toThrow("transport unavailable");
     expect(manager.status("alpha")).toMatchObject({

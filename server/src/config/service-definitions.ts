@@ -151,7 +151,7 @@ export function renderWindowsTaskDefinition(
     `service run "${paths.config}"`,
   );
 
-  return `# ${GENERATED_MARKER}
+  return `\uFEFF# ${GENERATED_MARKER}
 $ErrorActionPreference = "Stop"
 $taskName = ${taskName}
 $user = [Security.Principal.WindowsIdentity]::GetCurrent().Name

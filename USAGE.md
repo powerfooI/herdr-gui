@@ -118,8 +118,9 @@ http://127.0.0.1:8787
 ./herdr-gui --host 0.0.0.0 --port 8781
 ```
 
-未设置密码时，herdr-gui 会把随机 token 保存在权限为 `0600` 的
-`~/.config/herdr-gui/auth-token`，并打印带 token 的内网访问地址，例如：
+未设置密码时，herdr-gui 会把随机 token 保存在 Unix 的
+`~/.config/herdr-gui/auth-token`（权限 `0600`）或 Windows 的
+`%APPDATA%\herdr-gui\auth-token`，并打印带 token 的内网访问地址，例如：
 
 ```text
 http://192.0.2.23:8781/?token=<token>
@@ -128,7 +129,7 @@ http://192.0.2.23:8781/?token=<token>
 在手机浏览器中打开即可自动登录。登录成功后地址栏中的 token 会立即被移除，
 后续使用 HttpOnly session cookie。也可以通过 `--password` 或
 `HERDR_GUI_PASSWORD` 设置固定密码，继续使用登录页面。需要轮换随机 token
-时，先停止服务，删除 `~/.config/herdr-gui/auth-token`，然后重新启动。
+时，先停止服务，删除上述平台对应的 `auth-token` 文件，然后重新启动。
 
 ## 多连接与远程 Herdr
 

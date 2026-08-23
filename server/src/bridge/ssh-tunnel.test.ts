@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   assertSshTunnelPlatformSupported,
   classifySshTunnelFailure,
-  createSshTunnelManager,
+  createSshTunnelManager as createPlatformSshTunnelManager,
   readBoundedStderr,
 } from "./ssh-tunnel";
 
@@ -20,6 +20,15 @@ async function waitUntil(predicate: () => boolean) {
     if (Date.now() >= deadline) throw new Error("condition not reached");
     await Bun.sleep(1);
   }
+}
+
+function createSshTunnelManager(
+  args: Parameters<typeof createPlatformSshTunnelManager>[0],
+) {
+  return createPlatformSshTunnelManager({
+    ...args,
+    dependencies: { ...args.dependencies, platform: "linux" },
+  });
 }
 
 function config() {
