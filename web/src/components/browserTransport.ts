@@ -31,7 +31,7 @@ export function browserTransportPresentation(
   if (otherClientCount === 1) {
     pauseOthersLabel = "Pause other browser";
   } else if (otherClientCount > 1) {
-    pauseOthersLabel = `Pause others (${otherClientCount})`;
+    pauseOthersLabel = `Pause other browsers (${otherClientCount})`;
   }
   const needsResume = connectionPaused || status === "disconnected";
   let toggleLabel = "Pause browser sync";

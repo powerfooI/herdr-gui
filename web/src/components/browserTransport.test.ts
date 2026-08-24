@@ -6,7 +6,7 @@ describe("browser transport presentation", () => {
     expect(browserTransportPresentation(false, "connected", 3)).toEqual({
       label: "Browser connected to bridge",
       clientCount: 3,
-      pauseOthersLabel: "Pause others (2)",
+      pauseOthersLabel: "Pause other browsers (2)",
       needsResume: false,
       toggleLabel: "Pause browser sync",
     });

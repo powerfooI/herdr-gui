@@ -352,6 +352,46 @@ describe("connection-partitioned store state", () => {
     }
   });
 
+  test("uses distinct notices for reconnecting and resuming browser sync", () => {
+    const previousState = store.get();
+    const previousLocalStorage = globalThis.localStorage;
+    const originalConnect = bridge.connect;
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { setItem: () => undefined },
+    });
+    bridge.connect = () => undefined;
+    try {
+      __storeTesting.replaceState({
+        ...partitionState(),
+        status: "disconnected",
+        automaticUpdateChecksEnabled: false,
+      });
+      store.resumeConnection();
+      expect(store.get().notice?.message).toBe("Reconnecting browser");
+
+      __storeTesting.replaceState({
+        ...partitionState(),
+        status: "disconnected",
+        connectionPaused: true,
+        automaticUpdateChecksEnabled: false,
+      });
+      store.resumeConnection();
+      expect(store.get().notice?.message).toBe("Resuming browser sync");
+    } finally {
+      bridge.connect = originalConnect;
+      __storeTesting.replaceState(previousState);
+      if (previousLocalStorage === undefined) {
+        delete (globalThis as { localStorage?: Storage }).localStorage;
+      } else {
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          value: previousLocalStorage,
+        });
+      }
+    }
+  });
+
   test("rearms terminal attachment when status polling recovers a failed catalog", async () => {
     const previousState = store.get();
     const originalCall = bridge.call;

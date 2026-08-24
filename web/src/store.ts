@@ -706,6 +706,7 @@ let catalogRequestSeq = 0;
 let appliedCatalogRequestSeq = 0;
 let catalogReadyForConnection = false;
 let terminalReattachPending = false;
+let connectionRecoveryIntent: "resume" | "reconnect" | null = null;
 let focusActionChain: Promise<unknown> = Promise.resolve();
 type PaneStatusTracker = {
   ready: boolean;
@@ -1699,19 +1700,23 @@ export const store = {
         focusActionChain = Promise.resolve();
         queuedConnectionKeys.clear();
       }
-      const resumed =
-        s === "connected" &&
-        !state.connectionPaused &&
-        state.notice?.loading &&
-        state.notice.message === "Resuming connection";
+      const completedRecovery =
+        s === "connected" && !state.connectionPaused && state.notice?.loading
+          ? connectionRecoveryIntent
+          : null;
+      if (s === "connected") connectionRecoveryIntent = null;
+      const completedRecoveryMessage =
+        completedRecovery === "reconnect"
+          ? "Browser reconnected"
+          : "Browser sync resumed";
       set(
-        resumed
+        completedRecovery
           ? {
               status: s,
               connectionGeneration: state.connectionGeneration,
               notice: {
                 kind: "success",
-                message: "Connection resumed",
+                message: completedRecoveryMessage,
                 autoDismissMs: 5000,
               },
             }
@@ -1815,6 +1820,7 @@ export const store = {
   pauseConnection(
     detail = "This browser will stop syncing until you resume it.",
   ) {
+    connectionRecoveryIntent = null;
     localStorage.setItem("connectionPaused", "true");
     stopPolling();
     disposeTerminalConnection(
@@ -1859,13 +1865,17 @@ export const store = {
   },
 
   resumeConnection() {
+    connectionRecoveryIntent = state.connectionPaused ? "resume" : "reconnect";
     localStorage.setItem("connectionPaused", "false");
     set({
       connectionPaused: false,
       error: null,
       notice: {
         kind: "info",
-        message: "Resuming connection",
+        message:
+          connectionRecoveryIntent === "reconnect"
+            ? "Reconnecting browser"
+            : "Resuming browser sync",
         loading: true,
       },
     });
@@ -2679,6 +2689,7 @@ export const __storeTesting = {
     taskCompletionTracker.clear();
     state = snapshot;
     terminalReattachPending = false;
+    connectionRecoveryIntent = null;
     catalogReadyForConnection = snapshot.connections.length > 0;
     bridge.setConnectionRuntimeGenerations(snapshot.connections);
   },
