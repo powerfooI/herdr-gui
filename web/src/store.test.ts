@@ -352,6 +352,39 @@ describe("connection-partitioned store state", () => {
     }
   });
 
+  test("rearms terminal attachment when status polling recovers a failed catalog", async () => {
+    const previousState = store.get();
+    const originalCall = bridge.call;
+    const snapshot = {
+      ...partitionState(),
+      terminalAttachEpoch: 7,
+    };
+    bridge.call = (async (method: string) => {
+      expect(method).toBe("bridge.status");
+      return {
+        clients: 2,
+        terminals: [],
+        connections: snapshot.connections,
+        default_connection_id: snapshot.defaultConnectionId,
+      };
+    }) as typeof bridge.call;
+    try {
+      __storeTesting.replaceState(snapshot);
+      __storeTesting.markTerminalReattachPending();
+
+      await __storeTesting.refreshBridgeStatus();
+
+      expect(store.get().terminalAttachEpoch).toBe(8);
+      expect(store.get().bridgeStatus?.clients).toBe(2);
+      expect(__storeTesting.rearmTerminalAttachmentsAfterCatalog(true)).toBe(
+        false,
+      );
+    } finally {
+      bridge.call = originalCall;
+      __storeTesting.replaceState(previousState);
+    }
+  });
+
   test("preserves profile DTO fields across transition bridge-status catalogs", () => {
     const previous = [
       {

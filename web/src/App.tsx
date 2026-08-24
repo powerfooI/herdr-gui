@@ -10,7 +10,6 @@ import {
   LoaderCircle,
   MoreHorizontal,
   PanelTop,
-  Plug,
   SquareTerminal,
   X,
 } from "lucide-react";
@@ -851,7 +850,6 @@ function TerminalPaneLayout({
 export default function App() {
   const s = useStoreSelector(
     (state) => ({
-      connectionPaused: state.connectionPaused,
       lastRefresh: state.lastRefresh,
       layout: state.layout,
       notice: state.notice,
@@ -2212,20 +2210,6 @@ export default function App() {
           <ConnectionSwitcher />
         </div>
         <div className="topbar-actions">
-          {s.connectionPaused || s.status === "disconnected" ? (
-            <button
-              type="button"
-              className="topbar-button icon-button connection-toggle-button is-paused"
-              onClick={() => store.resumeConnection()}
-              title={
-                s.connectionPaused
-                  ? "Resume this client"
-                  : "Reconnect this client"
-              }
-            >
-              <Plug size={15} />
-            </button>
-          ) : null}
           <div className="topbar-command-group">
             <CommandCombobox
               key={`${resourceUiKey}:commands`}

@@ -586,7 +586,7 @@ textarea:focus {
   gap: 12px;
 }
 .topbar-start {
-  overflow: visible;
+  overflow: hidden;
 }
 .topbar-actions {
   justify-self: end;
@@ -602,8 +602,10 @@ textarea:focus {
   box-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 28%, transparent);
 }
 .brand {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   gap: 8px;
   font-weight: 700;
   letter-spacing: 0.2px;
@@ -662,10 +664,13 @@ textarea:focus {
 .connection-switcher {
   position: relative;
   min-width: 0;
+  max-width: min(360px, 42vw);
+  flex: 0 1 auto;
 }
 .connection-switcher-trigger {
+  width: fit-content;
   min-width: 0;
-  max-width: min(360px, 42vw);
+  max-width: 100%;
   height: 30px;
   display: flex;
   align-items: center;
@@ -681,6 +686,14 @@ textarea:focus {
   border-color: var(--topbar-control-active-border);
   background: var(--topbar-control-active-bg);
   color: var(--text-strong);
+}
+.connection-switcher-trigger.has-browser-warning {
+  border-color: rgba(240, 196, 83, 0.4);
+  background: var(--warning-soft);
+}
+.connection-switcher-warning {
+  flex: 0 0 auto;
+  color: var(--warning-text);
 }
 .connection-switcher-label,
 .connection-switcher-meta {
@@ -750,6 +763,41 @@ textarea:focus {
 }
 .browser-disconnected {
   background: var(--red);
+}
+.connection-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 5px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.connection-browser-actions button {
+  min-width: min(150px, 100%);
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 150px;
+  padding: 7px 8px;
+  border-color: var(--border-soft);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+.connection-browser-actions button:hover,
+.connection-browser-actions button:focus-visible {
+  background: var(--panel-2);
+}
+.connection-browser-actions button.is-warning {
+  border-color: rgba(240, 196, 83, 0.32);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+.connection-browser-actions button.is-warning:hover,
+.connection-browser-actions button.is-warning:focus-visible {
+  border-color: rgba(240, 196, 83, 0.5);
+  background: color-mix(in srgb, var(--warning-soft) 78%, var(--yellow));
 }
 .connection-switcher-list {
   min-height: 0;
@@ -836,11 +884,6 @@ textarea:focus {
 .topbar-command-group .topbar-button.is-active {
   border-color: var(--topbar-control-active-border);
   background: var(--topbar-control-active-bg);
-}
-.topbar-button.is-paused {
-  color: var(--warning-text);
-  background: var(--warning-soft);
-  border-color: rgba(240, 196, 83, 0.32);
 }
 .view-switcher {
   display: flex;
@@ -1293,33 +1336,6 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.config-inline-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 6px 8px 0;
-}
-.config-inline-actions button {
-  min-width: 0;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: 7px;
-  color: var(--text);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.config-inline-actions button.is-primary {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text-strong);
-}
-.config-inline-actions button.is-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
 .errorbar {
   background: var(--danger-soft);
   color: var(--danger-text);
@@ -1661,8 +1677,6 @@ textarea:focus {
   border-radius: 10px;
   background: var(--viewer-panel-bg);
   box-shadow: var(--shadow-lg);
-  container-name: workspace-inspector;
-  container-type: inline-size;
 }
 .workspace-inspector-head {
   flex: 0 0 auto;
@@ -1875,68 +1889,67 @@ textarea:focus {
 .workspace-inspector-unavailable strong {
   color: var(--text-strong);
 }
-@container workspace-inspector (max-width: 559px) {
-  .workspace-inspector-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .workspace-inspector-identity {
-    grid-column: 1;
-  }
-  .workspace-inspector-actions {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .workspace-inspector-tabs {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-  }
-  .workspace-inspector-tabs button {
-    flex: 1 1 0;
-  }
-  .workspace-inspector-resource {
-    display: flex;
-    padding: 0;
-  }
+.workspace-inspector.is-compact .workspace-inspector-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.workspace-inspector.is-compact .workspace-inspector-identity {
+  grid-column: 1;
+}
+.workspace-inspector.is-compact .workspace-inspector-actions {
+  grid-column: 2;
+  grid-row: 1;
+}
+.workspace-inspector.is-compact .workspace-inspector-tabs {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+}
+.workspace-inspector.is-compact .workspace-inspector-tabs button {
+  flex: 1 1 0;
+}
+.workspace-inspector.is-compact .workspace-inspector-resource {
+  display: flex;
+  padding: 0;
+}
+.workspace-inspector.is-compact
   .workspace-inspector-resource.inspector-history-resource {
-    padding: 0;
-  }
-  .workspace-inspector-navigation,
-  .workspace-inspector-detail {
-    flex: 1 1 auto;
-    width: 100%;
-  }
-  .workspace-inspector-detail {
-    display: none;
-  }
-  .workspace-inspector.has-detail .workspace-inspector-navigation {
-    display: none;
-  }
-  .workspace-inspector.has-detail .workspace-inspector-detail {
-    display: flex;
-  }
-  .workspace-inspector.has-detail .workspace-inspector-back {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-height: 34px;
-    padding: 0 10px;
-    border: 0;
-    border-bottom: 1px solid var(--viewer-border);
-    border-radius: 0;
-    background: var(--viewer-header-bg);
-    color: var(--text);
-    font-size: 12px;
-  }
-  .workspace-inspector .file-explorer-side,
-  .workspace-inspector .diff-viewer-side,
-  .workspace-inspector .diff-content-view,
-  .workspace-inspector .file-preview,
-  .workspace-inspector .agent-history-drawer.is-embedded {
-    border: 0;
-    border-radius: 0;
-  }
+  padding: 0;
+}
+.workspace-inspector.is-compact .workspace-inspector-navigation,
+.workspace-inspector.is-compact .workspace-inspector-detail {
+  flex: 1 1 auto;
+  width: 100%;
+}
+.workspace-inspector.is-compact .workspace-inspector-detail {
+  display: none;
+}
+.workspace-inspector.is-compact.has-detail .workspace-inspector-navigation {
+  display: none;
+}
+.workspace-inspector.is-compact.has-detail .workspace-inspector-detail {
+  display: flex;
+}
+.workspace-inspector.is-compact.has-detail .workspace-inspector-back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--viewer-border);
+  border-radius: 0;
+  background: var(--viewer-header-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+.workspace-inspector.is-compact .file-explorer-side,
+.workspace-inspector.is-compact .diff-viewer-side,
+.workspace-inspector.is-compact .diff-content-view,
+.workspace-inspector.is-compact .file-preview,
+.workspace-inspector.is-compact .agent-history-drawer.is-embedded {
+  border: 0;
+  border-radius: 0;
 }
 @container workspace-stage (max-width: 999px) {
   .workspace-inspector-resizer {
@@ -7543,9 +7556,7 @@ textarea:focus {
     white-space: nowrap;
   }
   .brand-version {
-    height: 18px;
-    padding: 0 5px;
-    font-size: 9px;
+    display: none;
   }
   .status {
     gap: 0;
@@ -7566,12 +7577,18 @@ textarea:focus {
   .topbar-view-switcher {
     display: none;
   }
+  .workspace-inspector-actions .workspace-inspector-dock-action,
+  .workspace-inspector-actions .workspace-inspector-expand-action {
+    display: none;
+  }
   .topbar-start,
   .topbar-actions {
     gap: 8px;
   }
-  .connection-switcher-trigger {
+  .connection-switcher {
     max-width: min(220px, 42vw);
+  }
+  .connection-switcher-trigger {
     height: 28px;
   }
   .connection-switcher-meta {
@@ -7624,13 +7641,9 @@ textarea:focus {
   }
 
   .toast-viewport {
-    top: auto;
+    top: calc(56px + env(safe-area-inset-top, 0px));
     right: calc(10px + env(safe-area-inset-right, 0px));
-    bottom: calc(
-      148px +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
-    );
+    bottom: auto;
     left: calc(10px + env(safe-area-inset-left, 0px));
     width: auto;
   }
@@ -8258,5 +8271,14 @@ textarea:focus {
   }
   .layout-pane-head {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .brand {
+    flex: 0 0 auto;
+  }
+  .brand-title {
+    display: none;
   }
 }

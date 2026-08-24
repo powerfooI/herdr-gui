@@ -9,14 +9,11 @@ import {
   Keyboard,
   Moon,
   Palette,
-  Pause,
-  Play,
   RefreshCw,
   ScrollText,
   Server,
   Sun,
   SunMoon,
-  Users,
   Wifi,
 } from "lucide-react";
 import packageJson from "../../package.json";
@@ -97,8 +94,6 @@ export function ConfigMenu({
     !s.connectionPaused && s.status === "connected"
       ? s.bridgeStatus?.clients
       : null;
-  const otherClientCount =
-    typeof clientCount === "number" ? Math.max(0, clientCount - 1) : 0;
   const taskNotificationValue = taskNotificationStatus(
     s.taskNotificationsEnabled,
     s.taskNotificationPermission,
@@ -494,39 +489,6 @@ export function ConfigMenu({
                   <ConfigRow label="Socket" value={health?.socket ?? "-"} />
                 </div>
               ) : null}
-              <div className="config-inline-actions">
-                <button
-                  type="button"
-                  className={s.connectionPaused ? "is-primary" : ""}
-                  onClick={() => {
-                    setOpen(false);
-                    if (s.connectionPaused) {
-                      store.resumeConnection();
-                    } else {
-                      store.pauseConnection();
-                    }
-                  }}
-                >
-                  {s.connectionPaused ? (
-                    <Play size={14} />
-                  ) : (
-                    <Pause size={14} />
-                  )}
-                  {s.connectionPaused ? "Resume client" : "Pause client"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    void store.pauseOtherClients();
-                  }}
-                  disabled={s.connectionPaused || otherClientCount === 0}
-                >
-                  <Users size={14} />
-                  Pause others
-                  {otherClientCount > 0 ? ` (${otherClientCount})` : ""}
-                </button>
-              </div>
             </div>
           </div>
         ) : null}

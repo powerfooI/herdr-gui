@@ -13,9 +13,21 @@
 - Group the application, workspace, and agent menus into clearer sections;
   workspace and agent context menus now identify their target and isolate
   destructive actions.
+- Consolidate browser pause and reconnect controls in the Connections menu,
+  surface paused/disconnected status on its trigger, and prevent compact and
+  mobile topbar overlap.
+- Place mobile notifications below the topbar instead of above the bottom
+  terminal controls.
 
 ### Fixed
 
+- Reattach terminal frames after resuming browser sync instead of requiring a
+  page reload to restore terminal content.
+- Use the compact drill-in Inspector layout below 640px so narrow panes do not
+  squeeze navigation and detail side by side; mobile view also hides dock and
+  expand actions while narrow desktop docks retain them.
+- Animate and disable the Diff Viewer refresh control while changes are being
+  reloaded so refresh progress is visible.
 - Keep worktree dirty/ahead/behind count badges fully visible in the
   workspace tree; only the branch badge shrinks with an ellipsis, and the row
   tooltip still shows the full status.

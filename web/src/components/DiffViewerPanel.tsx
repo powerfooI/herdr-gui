@@ -1148,11 +1148,16 @@ export function DiffViewerPanel({
         <button
           type="button"
           className="diff-refresh"
-          title="Refresh"
-          aria-label="Refresh changes"
+          title={summaryLoading ? "Refreshing..." : "Refresh"}
+          aria-label={summaryLoading ? "Refreshing changes" : "Refresh changes"}
+          aria-busy={summaryLoading}
+          disabled={summaryLoading}
           onClick={() => void loadSummary()}
         >
-          <RefreshCw size={15} />
+          <RefreshCw
+            className={summaryLoading ? "is-spinning" : ""}
+            size={15}
+          />
         </button>
       </div>
 

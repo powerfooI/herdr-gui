@@ -2,10 +2,13 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  Pause,
   Pencil,
+  Plug,
   Plus,
   Server,
   Star,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -29,6 +32,7 @@ import {
   suggestConnectionId,
 } from "../connectionProfiles";
 import { shallowEqual, store, useStoreSelector } from "../store";
+import { browserTransportPresentation } from "./browserTransport";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { ConfirmDialog } from "./ModalDialogs";
@@ -149,29 +153,79 @@ function trapDialogTab(event: KeyboardEvent, dialog: HTMLElement | null) {
   }
 }
 
-function BrowserTransportStatus() {
+function BrowserTransportStatus({ onAction }: { onAction?: () => void }) {
   const state = useStoreSelector(
     (snapshot) => ({
+      bridgeStatus: snapshot.bridgeStatus,
       connectionPaused: snapshot.connectionPaused,
       status: snapshot.status,
     }),
     shallowEqual,
   );
-  const label = state.connectionPaused
-    ? "Browser sync paused"
-    : state.status === "connected"
-      ? "Browser connected to bridge"
-      : state.status === "connecting"
-        ? "Browser connecting to bridge"
-        : "Browser disconnected from bridge";
+  const { label, clientCount, pauseOthersLabel, needsResume, toggleLabel } =
+    browserTransportPresentation(
+      state.connectionPaused,
+      state.status,
+      state.bridgeStatus?.clients,
+    );
+  const statusLabel = `${label}${
+    typeof clientCount === "number"
+      ? ` · ${clientCount} browser${clientCount === 1 ? "" : "s"}`
+      : ""
+  }`;
   return (
-    <div className="connection-browser-status">
-      <span
-        className={`connection-browser-dot browser-${
-          state.connectionPaused ? "paused" : state.status
-        }`}
-      />
-      {label}
+    <div
+      className="connection-browser-section"
+      role={onAction ? "group" : undefined}
+      aria-label={onAction ? statusLabel : undefined}
+    >
+      <div
+        className="connection-browser-status"
+        role={onAction ? undefined : "status"}
+        aria-hidden={onAction ? true : undefined}
+      >
+        <span
+          className={`connection-browser-dot browser-${
+            state.connectionPaused ? "paused" : state.status
+          }`}
+        />
+        <span>{statusLabel}</span>
+      </div>
+      {onAction ? (
+        <div className="connection-browser-actions">
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className={needsResume ? "is-warning" : ""}
+            onClick={() => {
+              onAction();
+              if (needsResume) {
+                store.resumeConnection();
+              } else {
+                store.pauseConnection();
+              }
+            }}
+          >
+            {needsResume ? <Plug size={14} /> : <Pause size={14} />}
+            {toggleLabel}
+          </button>
+          {pauseOthersLabel ? (
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                onAction();
+                void store.pauseOtherClients();
+              }}
+            >
+              <Users size={14} />
+              {pauseOthersLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -975,8 +1029,10 @@ export function ConnectionSwitcher() {
   const state = useStoreSelector(
     (snapshot) => ({
       activeConnectionId: snapshot.activeConnectionId,
+      connectionPaused: snapshot.connectionPaused,
       connections: snapshot.connections,
       defaultConnectionId: snapshot.defaultConnectionId,
+      status: snapshot.status,
     }),
     shallowEqual,
   );
@@ -1008,10 +1064,16 @@ export function ConnectionSwitcher() {
       generation: 0,
     } satisfies ConnectionSummary);
 
+  const browserWarning = state.connectionPaused
+    ? "Browser sync paused"
+    : state.status === "disconnected"
+      ? "Browser disconnected from bridge"
+      : null;
+
   const menuItems = () =>
     Array.from(
       menuRef.current?.querySelectorAll<HTMLElement>(
-        '[role="menuitemradio"], [role="menuitem"]',
+        '[role="menuitemradio"]:not(:disabled), [role="menuitem"]:not(:disabled)',
       ) ?? [],
     );
   const focusInitialMenuItem = () => {
@@ -1074,7 +1136,9 @@ export function ConnectionSwitcher() {
             <button
               ref={triggerRef}
               type="button"
-              className={`connection-switcher-trigger ${open ? "is-active" : ""}`}
+              className={`connection-switcher-trigger ${open ? "is-active" : ""} ${browserWarning ? "has-browser-warning" : ""}`}
+              aria-label={`${active.label}, ${connectionTypeLabel(active)}, ${connectionLifecycleLabel(active.state)}${browserWarning ? `, ${browserWarning}` : ""}`}
+              title={browserWarning ?? undefined}
               aria-haspopup="menu"
               aria-expanded={open}
               onKeyDown={(event) => {
@@ -1091,6 +1155,13 @@ export function ConnectionSwitcher() {
                 className={`connection-runtime-dot ${runtimeStateClass(active)}`}
               />
               <span className="connection-switcher-label">{active.label}</span>
+              {browserWarning ? (
+                <CircleAlert
+                  className="connection-switcher-warning"
+                  size={13}
+                  aria-hidden="true"
+                />
+              ) : null}
               <span className="connection-switcher-meta">
                 {connectionTypeLabel(active)} /{" "}
                 {connectionLifecycleLabel(active.state)}
@@ -1104,6 +1175,7 @@ export function ConnectionSwitcher() {
             role="menu"
             aria-label="Connections"
             align="start"
+            collisionPadding={8}
             onKeyDown={onMenuKeyDown}
             onOpenAutoFocus={(event) => {
               event.preventDefault();
@@ -1135,7 +1207,7 @@ export function ConnectionSwitcher() {
               });
             }}
           >
-            <BrowserTransportStatus />
+            <BrowserTransportStatus onAction={() => setOpen(false)} />
             <div className="connection-switcher-list">
               {state.connections.map((connection) => (
                 <button

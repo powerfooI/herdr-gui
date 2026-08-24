@@ -13,6 +13,7 @@ import {
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -42,6 +43,7 @@ import {
   type ActiveFilePreviewSelection,
   FilePreviewContent,
 } from "./FilePreviewContent";
+import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
 
 function changedCount(workspace?: Workspace) {
   const status = workspace?.worktree?.git_status;
@@ -224,11 +226,10 @@ export function WorkspaceInspectorHost({
       changes: preferences.changesNavigationRatio,
     };
   });
-  const compact = hostWidth > 0 && hostWidth < 560;
+  const { compact, splitEnabled } = workspaceInspectorLayout(hostWidth);
   // The navigation/detail split is draggable whenever both panes fit side by
   // side, not only in the expanded layout, so docked inspectors can resize
   // the Files/Changes list too.
-  const splitEnabled = hostWidth >= 600;
   const navigationIds = {
     files: `${splitId}-files-navigation`,
     changes: `${splitId}-changes-navigation`,
@@ -297,7 +298,7 @@ export function WorkspaceInspectorHost({
     });
   }, [contentResourceKey, state.scope]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const update = () => setHostWidth(host.clientWidth);
@@ -312,7 +313,7 @@ export function WorkspaceInspectorHost({
       ref={hostRef}
       className={`workspace-inspector workspace-inspector-${state.dock} ${
         state.expanded ? "is-expanded" : ""
-      } ${hasDetail ? "has-detail" : ""}`}
+      } ${compact ? "is-compact" : ""} ${hasDetail ? "has-detail" : ""}`}
       aria-label="Workspace Inspector"
       data-view={state.view}
     >
@@ -390,6 +391,7 @@ export function WorkspaceInspectorHost({
         <div className="workspace-inspector-actions">
           <button
             type="button"
+            className="workspace-inspector-dock-action"
             title={state.dock === "right" ? "Dock at bottom" : "Dock at right"}
             aria-label={
               state.dock === "right"
@@ -408,6 +410,7 @@ export function WorkspaceInspectorHost({
           </button>
           <button
             type="button"
+            className="workspace-inspector-expand-action"
             title={state.expanded ? "Restore dock" : "Expand Inspector"}
             aria-label={
               state.expanded ? "Restore Inspector dock" : "Expand Inspector"
