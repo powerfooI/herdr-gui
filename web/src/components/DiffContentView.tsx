@@ -51,7 +51,7 @@ const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
 const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
   poolSize: Math.min(
     Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1),
-    globalThis.matchMedia?.("(pointer: coarse)").matches ? 1 : 2,
+    globalThis.matchMedia?.("(pointer: coarse)")?.matches ? 1 : 2,
   ),
   totalASTLRUCacheSize: 8,
   workerFactory: () =>
