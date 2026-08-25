@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -5,6 +6,17 @@ import react from "@vitejs/plugin-react";
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: [
+      {
+        find: /^shiki$/,
+        replacement: fileURLToPath(new URL("./src/shiki.ts", import.meta.url)),
+      },
+    ],
+  },
+  worker: {
+    format: "es",
+  },
   build: {
     // Build straight into the server's static dir so the backend can serve it.
     outDir: "../server/public",

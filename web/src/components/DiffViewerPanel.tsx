@@ -1,6 +1,8 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -45,6 +47,19 @@ export type DiffSelectionMeta = {
   userInitiated?: boolean;
 };
 
+export type DiffViewerPanelHandle = {
+  selectEntry: (entry: GitDiffEntry) => void;
+};
+
+export type DiffViewerPanelProps = {
+  workspaceId?: string;
+  resourceKey?: string;
+  onSelectionChange?: (
+    selection: ActiveDiffSelection,
+    meta?: DiffSelectionMeta,
+  ) => void;
+};
+
 type DiffCache = {
   summary: GitDiffSummary | null;
   selected: GitDiffEntry | null;
@@ -62,6 +77,10 @@ const diffFileRequests = new Map<string, Promise<GitDiffFile>>();
 const DIFF_TREE_INDENT = 9;
 const DIFF_TREE_BASE_INDENT = 6;
 const DIFF_PREFETCH_CONCURRENCY = 3;
+const MAX_CACHED_DIFF_FILES = 24;
+const MAX_CACHED_DIFF_BYTES = 8 * 1024 * 1024;
+const MAX_DIFF_CACHE_CONTEXTS = 8;
+const MAX_TOTAL_CACHED_DIFF_BYTES = 24 * 1024 * 1024;
 const DIFF_SCOPE_KEY = "diffViewerScope";
 
 function diffScopeStorageKey(connectionId: string, resourceKey?: string) {
@@ -88,6 +107,150 @@ function loadDiffScope(
 
 function diffEntryKey(entry: GitDiffEntry) {
   return `${entry.kind}:${entry.path}`;
+}
+
+function estimatedDiffBytes(file: GitDiffFile) {
+  return file.diff.length * 2;
+}
+
+function diffCacheBytes(cache: DiffCache) {
+  return Object.values(cache.files).reduce(
+    (total, file) => total + estimatedDiffBytes(file),
+    0,
+  );
+}
+
+function pruneDiffCaches(activeKey: string) {
+  const totalBytes = () =>
+    Array.from(diffCache.values()).reduce(
+      (total, cache) => total + diffCacheBytes(cache),
+      0,
+    );
+
+  while (
+    diffCache.size > MAX_DIFF_CACHE_CONTEXTS ||
+    totalBytes() > MAX_TOTAL_CACHED_DIFF_BYTES
+  ) {
+    const oldestKey = Array.from(diffCache.keys()).find(
+      (key) => key !== activeKey,
+    );
+    if (!oldestKey) return;
+    advanceDiffCacheRevision(oldestKey);
+    diffCache.delete(oldestKey);
+  }
+}
+
+function setDiffCache(key: string, cache: DiffCache) {
+  diffCache.delete(key);
+  diffCache.set(key, cache);
+  pruneDiffCaches(key);
+}
+
+function boundedDiffFiles(
+  files: Record<string, GitDiffFile>,
+  selected: GitDiffEntry | null,
+) {
+  const selectedKey = selected ? diffEntryKey(selected) : null;
+  const keptNewestFirst: string[] = [];
+  let cachedBytes = 0;
+
+  if (selectedKey && files[selectedKey]) {
+    keptNewestFirst.push(selectedKey);
+    cachedBytes = estimatedDiffBytes(files[selectedKey]);
+  }
+
+  const keys = Object.keys(files);
+  for (let index = keys.length - 1; index >= 0; index -= 1) {
+    const key = keys[index];
+    if (key === selectedKey) continue;
+    if (keptNewestFirst.length >= MAX_CACHED_DIFF_FILES) break;
+    const fileBytes = estimatedDiffBytes(files[key]);
+    if (
+      keptNewestFirst.length > 0 &&
+      cachedBytes + fileBytes > MAX_CACHED_DIFF_BYTES
+    ) {
+      continue;
+    }
+    keptNewestFirst.push(key);
+    cachedBytes += fileBytes;
+  }
+
+  return Object.fromEntries(
+    keptNewestFirst.reverse().map((key) => [key, files[key]]),
+  );
+}
+
+export function beginDiffFileSelection(
+  current: DiffCache,
+  entry: GitDiffEntry,
+) {
+  const key = diffEntryKey(entry);
+  const fileErrors = { ...current.fileErrors };
+  delete fileErrors[key];
+  return {
+    ...current,
+    selected: entry,
+    files: boundedDiffFiles(current.files, entry),
+    fileErrors,
+    error: null,
+  };
+}
+
+export function mergeResolvedDiffFile(
+  current: DiffCache,
+  entry: GitDiffEntry,
+  file: GitDiffFile,
+) {
+  const key = diffEntryKey(entry);
+  const requestIsSelected =
+    current.selected !== null && diffEntryKey(current.selected) === key;
+  const selected = requestIsSelected ? entry : current.selected;
+  return {
+    ...current,
+    selected,
+    files: boundedDiffFiles({ ...current.files, [key]: file }, selected),
+    fileErrors: Object.fromEntries(
+      Object.entries(current.fileErrors).filter(
+        ([errorKey]) => errorKey !== key,
+      ),
+    ),
+    error: requestIsSelected ? null : current.error,
+  };
+}
+
+export function buildActiveDiffSelection(
+  source: DiffCache,
+  patch: Partial<ActiveDiffSelection>,
+  fileLoadingKey: string | null,
+  summaryLoading: boolean,
+): ActiveDiffSelection {
+  const selected = patch.entry === undefined ? source.selected : patch.entry;
+  const files = patch.files === undefined ? source.files : patch.files;
+  const key = selected ? diffEntryKey(selected) : "";
+  return {
+    entry: selected,
+    file:
+      patch.file === undefined
+        ? key
+          ? (files[key] ?? null)
+          : null
+        : patch.file,
+    loading:
+      patch.loading ??
+      (summaryLoading || (!!key && fileLoadingKey === key && !files[key])),
+    error: patch.error === undefined ? source.error : patch.error,
+    entries:
+      patch.entries === undefined
+        ? treeOrderedDiffEntries(source.summary?.entries ?? [])
+        : patch.entries,
+    files,
+    fileErrors:
+      patch.fileErrors === undefined ? source.fileErrors : patch.fileErrors,
+    summaryLoading:
+      patch.summaryLoading === undefined
+        ? summaryLoading
+        : patch.summaryLoading,
+  };
 }
 
 export function diffCacheKey(
@@ -238,6 +401,8 @@ function readDiffCache(
   const key = diffCacheKey(client, workspaceId, scope, resourceKey);
   const cached = diffCache.get(key);
   if (cached) {
+    diffCache.delete(key);
+    diffCache.set(key, cached);
     return {
       ...cached,
       files: { ...cached.files },
@@ -245,7 +410,7 @@ function readDiffCache(
     };
   }
   const next = emptyDiffCache();
-  diffCache.set(key, next);
+  setDiffCache(key, next);
   return {
     ...next,
     files: { ...next.files },
@@ -262,10 +427,13 @@ function writeDiffCache(
 ) {
   const key = diffCacheKey(client, workspaceId, scope, resourceKey);
   const current = diffCache.get(key) ?? emptyDiffCache();
-  diffCache.set(key, {
+  const selected =
+    patch.selected === undefined ? current.selected : patch.selected;
+  setDiffCache(key, {
     ...current,
     ...patch,
-    files: patch.files ? { ...patch.files } : { ...current.files },
+    selected,
+    files: boundedDiffFiles(patch.files ?? current.files, selected),
     fileErrors: patch.fileErrors
       ? { ...patch.fileErrors }
       : { ...current.fileErrors },
@@ -500,13 +668,11 @@ function treeOrderedDiffEntries(entries: GitDiffEntry[]) {
   return ordered;
 }
 
-function expandedDirsForEntries(entries: GitDiffEntry[]) {
+export function expandedDirsForSelection(entry: GitDiffEntry | null) {
   const expanded = new Set<string>([""]);
-  for (const entry of entries) {
-    const parts = entry.path.split("/").filter(Boolean);
-    for (let i = 1; i < parts.length; i += 1) {
-      expanded.add(parts.slice(0, i).join("/"));
-    }
+  const parts = entry?.path.split("/").filter(Boolean) ?? [];
+  for (let index = 1; index < parts.length; index += 1) {
+    expanded.add(parts.slice(0, index).join("/"));
   }
   return expanded;
 }
@@ -598,18 +764,13 @@ export function prefetchDiffViewerWorkspace(
   return task;
 }
 
-export function DiffViewerPanel({
-  workspaceId,
-  resourceKey,
-  onSelectionChange,
-}: {
-  workspaceId?: string;
-  resourceKey?: string;
-  onSelectionChange?: (
-    selection: ActiveDiffSelection,
-    meta?: DiffSelectionMeta,
-  ) => void;
-}) {
+export const DiffViewerPanel = forwardRef<
+  DiffViewerPanelHandle,
+  DiffViewerPanelProps
+>(function DiffViewerPanel(
+  { workspaceId, resourceKey, onSelectionChange },
+  ref,
+) {
   const workspaces = useStoreSelector((state) => state.workspaces);
   const connectionClient = useConnectionClient();
   const focusedWorkspace = workspaces.find((w) => w.focused);
@@ -642,6 +803,14 @@ export function DiffViewerPanel({
       cacheResourceKey,
     ),
   );
+  const selectedEntryKeyRef = useRef(
+    cache.selected ? diffEntryKey(cache.selected) : "",
+  );
+  const onSelectionChangeRef = useRef(onSelectionChange);
+
+  useLayoutEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
 
   useLayoutEffect(() => {
     activeContextRef.current = diffRuntimeContextKey(
@@ -667,10 +836,13 @@ export function DiffViewerPanel({
 
   const updateCache = (patch: Partial<DiffCache>) => {
     setCache((current) => {
+      const selected =
+        patch.selected === undefined ? current.selected : patch.selected;
       const next = {
         ...current,
         ...patch,
-        files: patch.files ? { ...patch.files } : { ...current.files },
+        selected,
+        files: boundedDiffFiles(patch.files ?? current.files, selected),
         fileErrors: patch.fileErrors
           ? { ...patch.fileErrors }
           : { ...current.fileErrors },
@@ -690,31 +862,14 @@ export function DiffViewerPanel({
     (
       source: DiffCache = cache,
       patch: Partial<ActiveDiffSelection> = {},
-    ): ActiveDiffSelection => {
-      const selected = patch.entry ?? source.selected;
-      const files = patch.files ?? source.files;
-      const key = selected ? diffEntryKey(selected) : "";
-      return {
-        entry: selected,
-        file: patch.file ?? (key ? (files[key] ?? null) : null),
-        loading:
-          patch.loading ??
-          (summaryLoading || (!!key && fileLoadingKey === key && !files[key])),
-        error: patch.error ?? source.error,
-        entries:
-          patch.entries ??
-          treeOrderedDiffEntries(source.summary?.entries ?? []),
-        files,
-        fileErrors: patch.fileErrors ?? source.fileErrors,
-        summaryLoading: patch.summaryLoading ?? summaryLoading,
-      };
-    },
+    ): ActiveDiffSelection =>
+      buildActiveDiffSelection(source, patch, fileLoadingKey, summaryLoading),
     [cache, fileLoadingKey, summaryLoading],
   );
 
   useEffect(() => {
-    onSelectionChange?.(diffSelection(cache));
-  }, [cache, diffSelection, onSelectionChange]);
+    onSelectionChangeRef.current?.(diffSelection(cache));
+  }, [cache, diffSelection]);
 
   const loadSummary = async (previousSelected = cache.selected) => {
     if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
@@ -752,13 +907,14 @@ export function DiffViewerPanel({
       // Retire work started from the stale summary while this refresh was in
       // flight before publishing and prefetching the replacement snapshot.
       ownedRevision = advanceDiffCacheRevision(cacheKey);
+      selectedEntryKeyRef.current = selected ? diffEntryKey(selected) : "";
       updateCache({
         summary,
         selected,
         files: {},
         fileErrors: {},
       });
-      setExpandedDirs(expandedDirsForEntries(summary.entries));
+      setExpandedDirs(expandedDirsForSelection(selected));
     } catch (e) {
       if (
         !isCurrentContext(workspaceId, scope) ||
@@ -792,7 +948,20 @@ export function DiffViewerPanel({
       cacheResourceKey,
     );
     const revision = diffCacheRevision(cacheKey);
-    updateCache({ selected: entry, error: null });
+    selectedEntryKeyRef.current = key;
+    setCache((current) => {
+      const next = beginDiffFileSelection(current, entry);
+      writeDiffCache(
+        connectionClient,
+        cacheWorkspaceId,
+        scope,
+        next,
+        cacheResourceKey,
+      );
+      return next;
+    });
+    const immediateFileErrors = { ...cache.fileErrors };
+    delete immediateFileErrors[key];
     writeStoredSelection(
       connectionClient.connectionId,
       cacheResourceKey,
@@ -801,15 +970,27 @@ export function DiffViewerPanel({
     );
     const cachedFile = cache.files[key];
     if (cachedFile) {
-      onSelectionChange?.(
-        diffSelection(cache, { entry, file: cachedFile }),
+      setFileLoadingKey(null);
+      onSelectionChangeRef.current?.(
+        diffSelection(cache, {
+          entry,
+          file: cachedFile,
+          fileErrors: immediateFileErrors,
+          error: null,
+        }),
         meta,
       );
       return;
     }
     setFileLoadingKey(key);
-    onSelectionChange?.(
-      diffSelection(cache, { entry, file: null, loading: true, error: null }),
+    onSelectionChangeRef.current?.(
+      diffSelection(cache, {
+        entry,
+        file: null,
+        loading: true,
+        error: null,
+        fileErrors: immediateFileErrors,
+      }),
       meta,
     );
     try {
@@ -828,16 +1009,49 @@ export function DiffViewerPanel({
       }
       setCache((current) => {
         if (diffCacheRevision(cacheKey) !== revision) return current;
+        const next = mergeResolvedDiffFile(current, entry, file);
+        writeDiffCache(
+          connectionClient,
+          cacheWorkspaceId,
+          scope,
+          next,
+          cacheResourceKey,
+        );
+        return next;
+      });
+      if (selectedEntryKeyRef.current === key) {
+        onSelectionChangeRef.current?.(
+          diffSelection(cache, {
+            entry,
+            file,
+            files: boundedDiffFiles({ ...cache.files, [key]: file }, entry),
+            fileErrors: Object.fromEntries(
+              Object.entries(cache.fileErrors).filter(
+                ([errorKey]) => errorKey !== key,
+              ),
+            ),
+            loading: false,
+            error: null,
+          }),
+          meta,
+        );
+      }
+    } catch (e) {
+      if (
+        !isCurrentContext(workspaceId, scope) ||
+        diffCacheRevision(cacheKey) !== revision
+      ) {
+        return;
+      }
+      const message = (e as Error).message;
+      setCache((current) => {
+        if (diffCacheRevision(cacheKey) !== revision) return current;
+        const requestIsSelected =
+          current.selected !== null && diffEntryKey(current.selected) === key;
         const next = {
           ...current,
-          selected: entry,
-          files: { ...current.files, [key]: file },
-          fileErrors: Object.fromEntries(
-            Object.entries(current.fileErrors).filter(
-              ([errorKey]) => errorKey !== key,
-            ),
-          ),
-          error: null,
+          error: requestIsSelected ? message : current.error,
+          fileErrors: { ...current.fileErrors, [key]: message },
         };
         writeDiffCache(
           connectionClient,
@@ -848,52 +1062,41 @@ export function DiffViewerPanel({
         );
         return next;
       });
-      onSelectionChange?.(
-        diffSelection(cache, {
-          entry,
-          file,
-          files: { ...cache.files, [key]: file },
-          fileErrors: Object.fromEntries(
-            Object.entries(cache.fileErrors).filter(
-              ([errorKey]) => errorKey !== key,
-            ),
-          ),
-          loading: false,
-          error: null,
-        }),
-        meta,
-      );
-    } catch (e) {
-      if (
-        !isCurrentContext(workspaceId, scope) ||
-        diffCacheRevision(cacheKey) !== revision
-      ) {
-        return;
+      if (selectedEntryKeyRef.current === key) {
+        onSelectionChangeRef.current?.(
+          diffSelection(cache, {
+            entry,
+            file: null,
+            loading: false,
+            error: message,
+            fileErrors: { ...cache.fileErrors, [key]: message },
+          }),
+          meta,
+        );
       }
-      const message = (e as Error).message;
-      updateCache({
-        error: message,
-        fileErrors: { ...cache.fileErrors, [key]: message },
-      });
-      onSelectionChange?.(
-        diffSelection(cache, {
-          entry,
-          file: null,
-          loading: false,
-          error: message,
-          fileErrors: { ...cache.fileErrors, [key]: message },
-        }),
-        meta,
-      );
     } finally {
       if (
         isCurrentContext(workspaceId, scope) &&
         diffCacheRevision(cacheKey) === revision
       ) {
-        setFileLoadingKey(null);
+        setFileLoadingKey((current) => (current === key ? null : current));
       }
     }
   };
+
+  const loadFileRef = useRef(loadFile);
+  useLayoutEffect(() => {
+    loadFileRef.current = loadFile;
+  });
+  useImperativeHandle(
+    ref,
+    () => ({
+      selectEntry: (target) => {
+        void loadFileRef.current(target, { userInitiated: true });
+      },
+    }),
+    [],
+  );
 
   const selectedDiffEntryKey = cache.selected
     ? diffEntryKey(cache.selected)
@@ -917,9 +1120,12 @@ export function DiffViewerPanel({
       cacheResourceKey,
     );
     setFileLoadingKey(null);
+    selectedEntryKeyRef.current = cached.selected
+      ? diffEntryKey(cached.selected)
+      : "";
     setCache(cached);
-    setExpandedDirs(expandedDirsForEntries(cached.summary?.entries ?? []));
-    onSelectionChange?.({
+    setExpandedDirs(expandedDirsForSelection(cached.selected));
+    onSelectionChangeRef.current?.({
       entry: cached.selected,
       file: cached.selected
         ? (cached.files[diffEntryKey(cached.selected)] ?? null)
@@ -939,7 +1145,7 @@ export function DiffViewerPanel({
   useEffect(() => {
     if (cache.selected) void loadFile(cache.selected);
     else {
-      onSelectionChange?.(
+      onSelectionChangeRef.current?.(
         diffSelection(cache, {
           entry: null,
           file: null,
@@ -956,90 +1162,6 @@ export function DiffViewerPanel({
     diffScope,
     selectedDiffEntryKey,
     selectedDiffFile,
-  ]);
-
-  useEffect(() => {
-    if (summaryLoading || !cacheWorkspaceId || !cache.summary?.entries.length) {
-      return;
-    }
-    let cancelled = false;
-    const prefetchCacheKey = diffCacheKey(
-      connectionClient,
-      cacheWorkspaceId,
-      diffScope,
-      cacheResourceKey,
-    );
-    void prefetchDiffFilesInBatches(
-      connectionClient,
-      cacheWorkspaceId,
-      diffScope,
-      cache.summary.entries,
-      cacheResourceKey,
-      (entry, file, revision) => {
-        if (
-          cancelled ||
-          !connectionClient.isCurrent() ||
-          diffCacheRevision(prefetchCacheKey) !== revision
-        ) {
-          return;
-        }
-        setCache((current) => {
-          if (diffCacheRevision(prefetchCacheKey) !== revision) return current;
-          const key = diffEntryKey(entry);
-          if (current.files[key]) return current;
-          const nextFileErrors = { ...current.fileErrors };
-          delete nextFileErrors[key];
-          const next = {
-            ...current,
-            files: { ...current.files, [key]: file },
-            fileErrors: nextFileErrors,
-          };
-          writeDiffCache(
-            connectionClient,
-            cacheWorkspaceId,
-            diffScope,
-            next,
-            cacheResourceKey,
-          );
-          return next;
-        });
-      },
-      (entry, error, revision) => {
-        if (
-          cancelled ||
-          !connectionClient.isCurrent() ||
-          diffCacheRevision(prefetchCacheKey) !== revision
-        ) {
-          return;
-        }
-        const key = diffEntryKey(entry);
-        setCache((current) => {
-          if (diffCacheRevision(prefetchCacheKey) !== revision) return current;
-          const next = {
-            ...current,
-            fileErrors: { ...current.fileErrors, [key]: error },
-          };
-          writeDiffCache(
-            connectionClient,
-            cacheWorkspaceId,
-            diffScope,
-            next,
-            cacheResourceKey,
-          );
-          return next;
-        });
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    cacheResourceKey,
-    cacheWorkspaceId,
-    cache.summary?.entries,
-    connectionClient,
-    diffScope,
-    summaryLoading,
   ]);
 
   const selectedKey = cache.selected ? diffEntryKey(cache.selected) : null;
@@ -1184,7 +1306,7 @@ export function DiffViewerPanel({
       ) : null}
     </aside>
   );
-}
+});
 
 function DiffSkeleton() {
   return (

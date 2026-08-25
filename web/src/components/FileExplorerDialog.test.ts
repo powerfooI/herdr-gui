@@ -140,6 +140,59 @@ describe("connection-scoped file previews", () => {
     expect(calls).toBe(2);
   });
 
+  test("supersedes an in-flight preview when a refresh starts", async () => {
+    const resolvers: Array<(value: FilePreview) => void> = [];
+    let calls = 0;
+    const scopedClient = client("refresh-in-flight", 1, () => {
+      calls += 1;
+      return new Promise<FilePreview>((resolve) => resolvers.push(resolve));
+    });
+
+    const stale = requestFilePreview("same", "same.txt", {
+      client: scopedClient,
+    });
+    const fresh = requestFilePreview("same", "same.txt", {
+      client: scopedClient,
+      refresh: true,
+    });
+    expect(calls).toBe(2);
+
+    resolvers[0]?.(preview("stale"));
+    await expect(stale).rejects.toThrow("superseded");
+    resolvers[1]?.(preview("fresh"));
+    await expect(fresh).resolves.toMatchObject({ text: "fresh" });
+    await expect(
+      requestFilePreview("same", "same.txt", { client: scopedClient }),
+    ).resolves.toMatchObject({ text: "fresh" });
+    expect(calls).toBe(2);
+  });
+
+  test("evicts old previews when their estimated memory exceeds the budget", async () => {
+    let calls = 0;
+    const imageData = `data:image/png;base64,${"a".repeat(5_000_000)}`;
+    const scopedClient = client(
+      "bounded-previews",
+      1,
+      async (_method, params) => {
+        calls += 1;
+        return {
+          ...preview(String(params?.path ?? "")),
+          text: null,
+          binary: true,
+          image_data_url: imageData,
+        };
+      },
+    );
+
+    for (const path of ["one.png", "two.png", "three.png"]) {
+      await requestFilePreview("same", path, { client: scopedClient });
+    }
+    expect(calls).toBe(3);
+
+    await requestFilePreview("same", "one.png", { client: scopedClient });
+    expect(calls).toBe(4);
+  });
+
   test("does not cache a result after its client becomes stale", async () => {
     let current = true;
     let calls = 0;

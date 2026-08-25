@@ -1,3 +1,11 @@
+import { DEFAULT_THEMES } from "@pierre/diffs";
+import {
+  PatchDiff,
+  Virtualizer,
+  WorkerPoolContextProvider,
+  type WorkerInitializationRenderOptions,
+  type WorkerPoolOptions,
+} from "@pierre/diffs/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -6,26 +14,56 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { html as diffToHtml } from "diff2html";
-import "diff2html/bundles/css/diff2html.min.css";
+import {
+  Component,
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import type { ConnectionClient } from "../api";
 import type { FilePreview, GitDiffEntry, GitDiffFile } from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
 import { requestFilePreview } from "./FileExplorerDialog";
-import { diffAutoCollapseInfo } from "./diffAutoCollapse";
-import { highlightDiffCode } from "./syntaxHighlighting";
+import {
+  diffAutoCollapseInfo,
+  type DiffAutoCollapseInfo,
+} from "./diffAutoCollapse";
+import {
+  readDiffCollapseState,
+  writeDiffCollapseState,
+} from "./diffContentState";
 
 type DiffViewMode = "split" | "unified";
+type AppTheme = "dark" | "light";
+type PierreDiffOptions = NonNullable<
+  ComponentProps<typeof PatchDiff>["options"]
+>;
 
 const DIFF_VIEW_MODE_KEY = "diffViewMode";
 const DESKTOP_DIFF_WRAP_KEY = "desktopDiffWrap";
 const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
-const diffCollapseStateCache = new Map<string, ReadonlyMap<string, boolean>>();
+const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
+  poolSize: Math.min(
+    Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1),
+    globalThis.matchMedia?.("(pointer: coarse)").matches ? 1 : 2,
+  ),
+  totalASTLRUCacheSize: 8,
+  workerFactory: () =>
+    new Worker(new URL("@pierre/diffs/worker/worker.js", import.meta.url), {
+      type: "module",
+    }),
+};
+const DIFF_HIGHLIGHTER_OPTIONS: WorkerInitializationRenderOptions = {
+  theme: DEFAULT_THEMES,
+  preferredHighlighter: "shiki-wasm",
+};
 
-export function clearDiffContentResourceState(resourceKey: string) {
-  diffCollapseStateCache.delete(resourceKey);
-}
 const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
@@ -43,6 +81,50 @@ type ImagePreviewState = {
   error: string | null;
 };
 
+type ImagePreviewTarget = {
+  key: string;
+  file: GitDiffFile;
+};
+
+function startImagePreviewRequest(
+  target: ImagePreviewTarget,
+  client: ConnectionClient,
+  isCurrent: () => boolean,
+  onComplete: (key: string, state: ImagePreviewState) => void,
+) {
+  void requestFilePreview(target.file.workspace_id, target.file.path, {
+    client,
+    refresh: true,
+  })
+    .then((preview) => {
+      if (!isCurrent()) return;
+      onComplete(target.key, { preview, loading: false, error: null });
+    })
+    .catch((error) => {
+      if (!isCurrent()) return;
+      onComplete(target.key, {
+        preview: null,
+        loading: false,
+        error: (error as Error).message,
+      });
+    });
+}
+
+type DiffSearchGroup = {
+  key: string;
+};
+
+type DiffSection = {
+  key: string;
+  active: boolean;
+  entry: GitDiffEntry;
+  file: GitDiffFile | null;
+  imagePreview: boolean;
+  autoCollapse: DiffAutoCollapseInfo | null;
+  collapsed: boolean;
+  error: string | null;
+};
+
 function loadDiffViewMode(): DiffViewMode {
   return localStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
     ? "unified"
@@ -57,8 +139,36 @@ function loadDesktopDiffWrap() {
   return localStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
 }
 
+function currentDocumentTheme(): AppTheme {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function useDocumentTheme() {
+  const [theme, setTheme] = useState<AppTheme>(() => currentDocumentTheme());
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTheme(currentDocumentTheme());
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+}
+
 function diffEntryKey(entry: GitDiffEntry) {
   return `${entry.kind}:${entry.path}`;
+}
+
+export function diffContentEntries(
+  entries: GitDiffEntry[],
+  entry: GitDiffEntry | null,
+) {
+  return entries.length ? entries : entry ? [entry] : [];
 }
 
 function isPreviewableImagePath(path: string) {
@@ -87,70 +197,32 @@ function isEditableSearchTarget(target: EventTarget | null) {
   return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-function clearDiffSearchMarks(root: HTMLElement) {
-  const marks = Array.from(root.querySelectorAll("mark.diff-search-match"));
-  for (const mark of marks) {
-    const parent = mark.parentNode;
-    if (!parent) continue;
-    parent.replaceChild(document.createTextNode(mark.textContent ?? ""), mark);
-    parent.normalize();
-  }
+function literalSearchPattern(query: string) {
+  return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu");
 }
 
-function markDiffSearchMatches(root: HTMLElement, query: string) {
-  const normalizedQuery = query.toLowerCase();
-  const matches: HTMLElement[] = [];
-  const textNodes: Text[] = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const text = node.nodeValue ?? "";
-      if (!text.toLowerCase().includes(normalizedQuery)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      if (
-        parent.closest(
-          "mark.diff-search-match,.d2h-code-linenumber,.d2h-code-side-linenumber",
-        )
-      ) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-
-  let current = walker.nextNode();
-  while (current) {
-    textNodes.push(current as Text);
-    current = walker.nextNode();
+export function diffSearchGroups(
+  entries: GitDiffEntry[],
+  files: Record<string, GitDiffFile>,
+  query: string,
+) {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return { groups: [] as DiffSearchGroup[], count: 0 };
   }
-
-  for (const node of textNodes) {
-    const text = node.nodeValue ?? "";
-    const lowerText = text.toLowerCase();
-    const fragment = document.createDocumentFragment();
-    let cursor = 0;
-    let index = lowerText.indexOf(normalizedQuery);
-    while (index >= 0) {
-      if (index > cursor) {
-        fragment.append(document.createTextNode(text.slice(cursor, index)));
-      }
-      const mark = document.createElement("mark");
-      mark.className = "diff-search-match";
-      mark.textContent = text.slice(index, index + query.length);
-      fragment.append(mark);
-      matches.push(mark);
-      cursor = index + query.length;
-      index = lowerText.indexOf(normalizedQuery, cursor);
-    }
-    if (cursor < text.length) {
-      fragment.append(document.createTextNode(text.slice(cursor)));
-    }
-    node.parentNode?.replaceChild(fragment, node);
+  const pattern = literalSearchPattern(normalizedQuery);
+  const groups: DiffSearchGroup[] = [];
+  for (const entry of entries) {
+    const key = diffEntryKey(entry);
+    const diff = files[key]?.diff;
+    if (!diff || isBinaryDiffText(diff)) continue;
+    if (pattern.test(diff)) groups.push({ key });
   }
+  return { groups, count: groups.length };
+}
 
-  return matches;
+function searchEntryKey(groups: DiffSearchGroup[], index: number) {
+  return index < 0 ? null : (groups[index]?.key ?? null);
 }
 
 function DiffImagePreview({
@@ -195,6 +267,168 @@ function DiffImagePreview({
   );
 }
 
+class DiffRenderBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode; resetKey: string },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidUpdate(previousProps: Readonly<{ resetKey: string }>) {
+    if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+function RawPatch({ patch }: { patch: string }) {
+  return <pre className="diff-raw-patch">{patch}</pre>;
+}
+
+type DiffFileSectionProps = {
+  section: DiffSection;
+  loading: boolean;
+  imagePreviewState?: ImagePreviewState;
+  options: PierreDiffOptions;
+  currentSearchMatch: boolean;
+  onToggle: (key: string, collapsed: boolean) => void;
+  onSelectFile?: (entry: GitDiffEntry) => void;
+  onOpenFile?: (entry: GitDiffEntry) => void;
+};
+
+const DiffFileSection = memo(function DiffFileSection({
+  section,
+  loading,
+  imagePreviewState,
+  options,
+  currentSearchMatch,
+  onToggle,
+  onSelectFile,
+  onOpenFile,
+}: DiffFileSectionProps) {
+  const toggle = () => {
+    if (section.active) {
+      onToggle(section.key, section.collapsed);
+      return;
+    }
+    onToggle(section.key, true);
+    onSelectFile?.(section.entry);
+  };
+
+  return (
+    <article
+      className={`diff-file-section ${currentSearchMatch ? "is-search-current" : ""}`}
+      data-diff-entry-key={section.key}
+      aria-current={currentSearchMatch ? "true" : undefined}
+    >
+      <header className="diff-file-section-head">
+        <button
+          type="button"
+          className="diff-file-collapse"
+          onClick={toggle}
+          disabled={!section.active && !onSelectFile}
+          aria-expanded={!section.collapsed}
+          aria-label={`${section.collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
+          title={section.collapsed ? "Expand" : "Collapse"}
+        >
+          {section.collapsed ? (
+            <ChevronRight size={14} />
+          ) : (
+            <ChevronDown size={14} />
+          )}
+        </button>
+        <div className="diff-file-section-title">
+          <strong>{section.entry.path}</strong>
+          <span>
+            {section.entry.kind} · {section.entry.status}
+            {section.autoCollapse ? ` · ${section.autoCollapse.label}` : ""}
+            {section.file?.truncated ? " · truncated" : ""}
+            {section.collapsed && section.autoCollapse
+              ? " · auto-collapsed"
+              : ""}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="diff-file-open"
+          onClick={() => onOpenFile?.(section.entry)}
+          disabled={!onOpenFile}
+        >
+          <FolderOpen size={14} />
+          <span>Open in Files</span>
+        </button>
+      </header>
+      {section.collapsed ? null : (
+        <>
+          {section.error ? (
+            <div className="diff-content-state is-error">{section.error}</div>
+          ) : null}
+          {!section.file && !section.error ? (
+            <div className="diff-content-state">
+              {loading ? <span className="file-loading-spinner" /> : null}
+              {loading ? "Loading diff" : "Select this file to load its diff."}
+            </div>
+          ) : null}
+          {section.file && !section.file.diff && !section.imagePreview ? (
+            <div className="diff-content-state">No textual diff available.</div>
+          ) : null}
+          {section.imagePreview && section.file ? (
+            <DiffImagePreview
+              state={imagePreviewState}
+              path={section.entry.path}
+            />
+          ) : null}
+          {section.file?.truncated ? (
+            <div className="diff-truncated">Diff truncated at 512 KB.</div>
+          ) : null}
+          {section.file?.diff && !section.imagePreview ? (
+            <div className="pierre-diff-surface">
+              <DiffRenderBoundary
+                fallback={<RawPatch patch={section.file.diff} />}
+                resetKey={section.file.diff}
+              >
+                <PatchDiff patch={section.file.diff} options={options} />
+              </DiffRenderBoundary>
+            </div>
+          ) : null}
+        </>
+      )}
+    </article>
+  );
+}, areDiffFileSectionPropsEqual);
+
+function areDiffFileSectionPropsEqual(
+  previous: Readonly<DiffFileSectionProps>,
+  next: Readonly<DiffFileSectionProps>,
+) {
+  return (
+    previous.section.key === next.section.key &&
+    previous.section.active === next.section.active &&
+    previous.section.entry === next.section.entry &&
+    previous.section.file === next.section.file &&
+    previous.section.imagePreview === next.section.imagePreview &&
+    previous.section.collapsed === next.section.collapsed &&
+    previous.section.error === next.section.error &&
+    previous.section.autoCollapse?.reason ===
+      next.section.autoCollapse?.reason &&
+    previous.section.autoCollapse?.label === next.section.autoCollapse?.label &&
+    previous.loading === next.loading &&
+    previous.imagePreviewState === next.imagePreviewState &&
+    previous.options === next.options &&
+    previous.currentSearchMatch === next.currentSearchMatch &&
+    previous.onToggle === next.onToggle &&
+    previous.onSelectFile === next.onSelectFile &&
+    previous.onOpenFile === next.onOpenFile
+  );
+}
+
 export function DiffContentView({
   entry,
   file,
@@ -207,6 +441,7 @@ export function DiffContentView({
   mobile = false,
   resourceKey = "default",
   connectionClient,
+  onSelectFile,
   onOpenFile,
 }: {
   entry: GitDiffEntry | null;
@@ -220,45 +455,45 @@ export function DiffContentView({
   mobile?: boolean;
   resourceKey?: string;
   connectionClient: ConnectionClient;
+  onSelectFile?: (entry: GitDiffEntry) => void;
   onOpenFile?: (entry: GitDiffEntry) => void;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
-  const diffRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const searchMarksRef = useRef<HTMLElement[]>([]);
+  const selectFileRef = useRef(onSelectFile);
+  const openFileRef = useRef(onOpenFile);
   const [viewMode, setViewMode] = useState<DiffViewMode>(() =>
     loadDiffViewMode(),
   );
   const [desktopWrap, setDesktopWrap] = useState(() => loadDesktopDiffWrap());
   const [mobileWrap, setMobileWrap] = useState(() => loadMobileDiffWrap());
-  const [syntaxVersion, setSyntaxVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchMatchCount, setSearchMatchCount] = useState(0);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchIndex, setSearchIndex] = useState(-1);
-  const [searchVersion, setSearchVersion] = useState(0);
   const [imagePreviews, setImagePreviews] = useState<
     Record<string, ImagePreviewState>
   >({});
-  const requestedImagePreviewsRef = useRef<Set<string>>(new Set());
+  const requestedImagePreviewsRef = useRef(new Map<string, GitDiffFile>());
   const imagePreviewRequestSeqRef = useRef(0);
   const imagePreviewRequestByKeyRef = useRef(new Map<string, number>());
   const [manualCollapseStates, setManualCollapseStates] = useState<
     ReadonlyMap<string, boolean>
-  >(() => new Map(diffCollapseStateCache.get(resourceKey)));
+  >(() => new Map(readDiffCollapseState(resourceKey)));
+  const theme = useDocumentTheme();
   const effectiveViewMode: DiffViewMode = mobile ? "unified" : viewMode;
   const wrapEnabled = mobile ? mobileWrap : desktopWrap;
-  const activeSearchQuery = searchQuery;
   const activeEntryKey = entry ? diffEntryKey(entry) : "";
-  const visibleEntries = useMemo(() => {
-    if (entries.length) return entries;
-    return entry ? [entry] : [];
-  }, [entries, entry]);
   const filesByKey = useMemo(() => {
     const merged = { ...files };
     if (entry && file) merged[diffEntryKey(entry)] = file;
     return merged;
   }, [entry, file, files]);
-  const renderedSections = useMemo(
+  const visibleEntries = useMemo(
+    () => diffContentEntries(entries, entry),
+    [entries, entry],
+  );
+  const changedFileCount = entries.length || visibleEntries.length;
+  const renderedSections = useMemo<DiffSection[]>(
     () =>
       visibleEntries.map((visibleEntry) => {
         const key = diffEntryKey(visibleEntry);
@@ -269,46 +504,33 @@ export function DiffContentView({
           (!diffFile.diff || isBinaryDiffText(diffFile.diff));
         const autoCollapse = diffAutoCollapseInfo(visibleEntry, diffFile);
         const defaultCollapsed = autoCollapse !== null;
-        const collapsed = manualCollapseStates.get(key) ?? defaultCollapsed;
+        const active = key === activeEntryKey;
         return {
           key,
+          active,
           entry: visibleEntry,
           file: diffFile,
           imagePreview,
           autoCollapse,
-          collapsed,
+          collapsed:
+            !active || (manualCollapseStates.get(key) ?? defaultCollapsed),
           error: fileErrors[key] ?? null,
-          html:
-            !collapsed && diffFile?.diff && !imagePreview
-              ? diffToHtml(diffFile.diff, {
-                  drawFileList: false,
-                  matching: "lines",
-                  outputFormat:
-                    effectiveViewMode === "split"
-                      ? "side-by-side"
-                      : "line-by-line",
-                  renderNothingWhenEmpty: false,
-                })
-              : "",
         };
       }),
     [
-      effectiveViewMode,
+      activeEntryKey,
       fileErrors,
       filesByKey,
       manualCollapseStates,
       visibleEntries,
     ],
   );
-  const renderedKey = renderedSections
-    .map((section) => `${section.key}:${section.html.length}`)
-    .join("|");
-  const hasRenderedDiff = renderedSections.some((section) => section.html);
-  const collapsedKey = renderedSections
-    .filter((section) => section.collapsed)
-    .map((section) => section.key)
-    .join("|");
-  const syntaxKey = `${effectiveViewMode}:${renderedKey}:${collapsedKey}`;
+  const activeSection = renderedSections.find((section) => section.active);
+  const renderedKey = `${activeEntryKey}:${activeSection?.file?.diff.length ?? 0}:${renderedSections.length}`;
+  const hasExpandedTextDiff = renderedSections.some(
+    (section) =>
+      !section.collapsed && !!section.file?.diff && !section.imagePreview,
+  );
   const imagePreviewTargets = useMemo(
     () =>
       renderedSections.flatMap((section) =>
@@ -323,7 +545,56 @@ export function DiffContentView({
       ),
     [connectionClient, renderedSections],
   );
+  const searchResult = useMemo(
+    () => diffSearchGroups(visibleEntries, filesByKey, deferredSearchQuery),
+    [deferredSearchQuery, filesByKey, visibleEntries],
+  );
+  const searchMatchCount = searchResult.count;
+  const currentSearchEntryKey = searchEntryKey(
+    searchResult.groups,
+    searchIndex,
+  );
+  const hasSearchableDiff = useMemo(
+    () => Object.values(filesByKey).some((candidate) => !!candidate.diff),
+    [filesByKey],
+  );
+  const handleSelectFile = useCallback((target: GitDiffEntry) => {
+    selectFileRef.current?.(target);
+  }, []);
+  const handleOpenFile = useCallback((target: GitDiffEntry) => {
+    openFileRef.current?.(target);
+  }, []);
+  const completeImagePreview = useCallback(
+    (key: string, state: ImagePreviewState) => {
+      setImagePreviews((current) => ({ ...current, [key]: state }));
+    },
+    [],
+  );
+  const pierreOptions = useMemo<PierreDiffOptions>(
+    () => ({
+      theme: DEFAULT_THEMES,
+      themeType: theme,
+      diffStyle: effectiveViewMode === "split" ? "split" : "unified",
+      overflow: wrapEnabled ? "wrap" : "scroll",
+      disableFileHeader: true,
+      stickyHeader: false,
+      diffIndicators: "bars",
+      hunkSeparators: "line-info-basic",
+      lineDiffType: "word-alt",
+      maxLineDiffLength: 2_000,
+      tokenizeMaxLineLength: 4_000,
+      tokenizeMaxLength: 250_000,
+      preferredHighlighter: "shiki-wasm",
+    }),
+    [effectiveViewMode, theme, wrapEnabled],
+  );
 
+  useEffect(() => {
+    selectFileRef.current = onSelectFile;
+  }, [onSelectFile]);
+  useEffect(() => {
+    openFileRef.current = onOpenFile;
+  }, [onOpenFile]);
   useEffect(() => {
     localStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
@@ -338,75 +609,62 @@ export function DiffContentView({
     imagePreviewRequestByKeyRef.current.clear();
     imagePreviewRequestSeqRef.current += 1;
     setImagePreviews({});
-  }, [connectionClient]);
+  }, [connectionClient, resourceKey]);
   useEffect(() => {
-    for (const target of imagePreviewTargets) {
-      if (requestedImagePreviewsRef.current.has(target.key)) continue;
-      requestedImagePreviewsRef.current.add(target.key);
+    const activeKeys = new Set(imagePreviewTargets.map((target) => target.key));
+    for (const key of requestedImagePreviewsRef.current.keys()) {
+      if (!activeKeys.has(key)) requestedImagePreviewsRef.current.delete(key);
+    }
+    for (const key of imagePreviewRequestByKeyRef.current.keys()) {
+      if (!activeKeys.has(key)) imagePreviewRequestByKeyRef.current.delete(key);
+    }
+    setImagePreviews((current) => {
+      const retained = Object.fromEntries(
+        Object.entries(current).filter(([key]) => activeKeys.has(key)),
+      );
+      return Object.keys(retained).length === Object.keys(current).length
+        ? current
+        : retained;
+    });
+
+    const requests = imagePreviewTargets.flatMap((target) => {
+      if (requestedImagePreviewsRef.current.get(target.key) === target.file) {
+        return [];
+      }
+      requestedImagePreviewsRef.current.set(target.key, target.file);
       const requestSeq = ++imagePreviewRequestSeqRef.current;
       imagePreviewRequestByKeyRef.current.set(target.key, requestSeq);
-      setImagePreviews((current) => ({
-        ...current,
-        [target.key]: { preview: null, loading: true, error: null },
-      }));
-      void requestFilePreview(target.file.workspace_id, target.file.path, {
-        client: connectionClient,
-      })
-        .then((preview) => {
-          if (
-            !connectionClient.isCurrent() ||
-            imagePreviewRequestByKeyRef.current.get(target.key) !== requestSeq
-          ) {
-            return;
-          }
-          setImagePreviews((current) => ({
-            ...current,
-            [target.key]: { preview, loading: false, error: null },
-          }));
-        })
-        .catch((e) => {
-          if (
-            !connectionClient.isCurrent() ||
-            imagePreviewRequestByKeyRef.current.get(target.key) !== requestSeq
-          ) {
-            return;
-          }
-          setImagePreviews((current) => ({
-            ...current,
-            [target.key]: {
-              preview: null,
-              loading: false,
-              error: (e as Error).message,
-            },
-          }));
-        });
+      return [{ target, requestSeq }];
+    });
+    if (!requests.length) return;
+
+    setImagePreviews((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        requests.map(({ target }) => [
+          target.key,
+          { preview: null, loading: true, error: null },
+        ]),
+      ),
+    }));
+
+    for (const { target, requestSeq } of requests) {
+      startImagePreviewRequest(
+        target,
+        connectionClient,
+        () =>
+          connectionClient.isCurrent() &&
+          imagePreviewRequestByKeyRef.current.get(target.key) === requestSeq,
+        completeImagePreview,
+      );
     }
-  }, [connectionClient, imagePreviewTargets]);
-  useEffect(() => {
-    if (!hasRenderedDiff || !diffRef.current) return;
-    if (diffRef.current.dataset.syntaxKey === syntaxKey) return;
-    let cancelled = false;
-    const root = diffRef.current;
-    void highlightDiffCode(root, effectiveViewMode)
-      .catch(() => {
-        // Syntax highlighting is progressive; plain diff remains usable.
-      })
-      .finally(() => {
-        if (!cancelled && diffRef.current === root) {
-          root.dataset.syntaxKey = syntaxKey;
-          setSyntaxVersion((version) => version + 1);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveViewMode, hasRenderedDiff, syntaxKey]);
+  }, [completeImagePreview, connectionClient, imagePreviewTargets]);
 
   useEffect(() => {
-    if (!activeEntryKey || !diffRef.current) return;
+    if (!activeEntryKey || !sectionRef.current) return;
     requestAnimationFrame(() => {
       const target = Array.from(
-        diffRef.current?.querySelectorAll<HTMLElement>(
+        sectionRef.current?.querySelectorAll<HTMLElement>(
           "[data-diff-entry-key]",
         ) ?? [],
       ).find((element) => element.dataset.diffEntryKey === activeEntryKey);
@@ -415,49 +673,29 @@ export function DiffContentView({
   }, [activeEntryKey, renderedKey]);
 
   useEffect(() => {
-    const root = diffRef.current;
-    if (!root) {
-      searchMarksRef.current = [];
-      setSearchMatchCount(0);
-      setSearchIndex(-1);
-      return;
-    }
-
-    clearDiffSearchMarks(root);
-    searchMarksRef.current = [];
-
-    if (!hasRenderedDiff || !activeSearchQuery) {
-      setSearchMatchCount(0);
-      setSearchIndex(-1);
-      setSearchVersion((version) => version + 1);
-      return;
-    }
-
-    const marks = markDiffSearchMatches(root, activeSearchQuery);
-    searchMarksRef.current = marks;
-    setSearchMatchCount(marks.length);
-    setSearchIndex(marks.length ? 0 : -1);
-    setSearchVersion((version) => version + 1);
-
-    return () => {
-      if (root.isConnected) clearDiffSearchMarks(root);
-    };
-  }, [activeSearchQuery, hasRenderedDiff, renderedKey, syntaxVersion]);
+    setSearchIndex(searchMatchCount ? 0 : -1);
+  }, [deferredSearchQuery, searchMatchCount]);
 
   useEffect(() => {
-    const marks = searchMarksRef.current;
-    for (const mark of marks) {
-      mark.classList.remove("is-current");
-    }
-    const current = searchIndex >= 0 ? marks[searchIndex] : null;
-    if (!current) return;
-    current.classList.add("is-current");
-    current.scrollIntoView({
-      block: "center",
-      inline: "center",
-      behavior: "smooth",
+    if (!currentSearchEntryKey || !sectionRef.current) return;
+    setManualCollapseStates((current) => {
+      if (current.get(currentSearchEntryKey) === false) return current;
+      const next = new Map(current);
+      next.set(currentSearchEntryKey, false);
+      writeDiffCollapseState(resourceKey, next);
+      return next;
     });
-  }, [searchIndex, searchMatchCount, searchVersion]);
+    requestAnimationFrame(() => {
+      const target = Array.from(
+        sectionRef.current?.querySelectorAll<HTMLElement>(
+          "[data-diff-entry-key]",
+        ) ?? [],
+      ).find(
+        (element) => element.dataset.diffEntryKey === currentSearchEntryKey,
+      );
+      target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }, [currentSearchEntryKey, resourceKey]);
 
   const focusSearch = useCallback(() => {
     requestAnimationFrame(() => {
@@ -482,7 +720,7 @@ export function DiffContentView({
       setManualCollapseStates((current) => {
         const next = new Map(current);
         next.set(key, !collapsed);
-        diffCollapseStateCache.set(resourceKey, next);
+        writeDiffCollapseState(resourceKey, next);
         return next;
       });
     },
@@ -505,6 +743,31 @@ export function DiffContentView({
       window.removeEventListener("keydown", onKey, { capture: true });
   }, [focusSearch]);
 
+  const diffList = visibleEntries.length ? (
+    <Virtualizer
+      className={`pierre-diff-scroll ${mobile ? "is-compact" : ""}`}
+      contentClassName="pierre-diff-scroll-content"
+    >
+      {renderedSections.map((section) => (
+        <DiffFileSection
+          key={section.key}
+          section={section}
+          loading={loading && activeEntryKey === section.key && !section.file}
+          imagePreviewState={
+            section.file
+              ? imagePreviews[imagePreviewKey(connectionClient, section.file)]
+              : undefined
+          }
+          options={pierreOptions}
+          currentSearchMatch={currentSearchEntryKey === section.key}
+          onToggle={toggleSectionCollapsed}
+          onSelectFile={onSelectFile ? handleSelectFile : undefined}
+          onOpenFile={onOpenFile ? handleOpenFile : undefined}
+        />
+      ))}
+    </Virtualizer>
+  ) : null;
+
   return (
     <section
       ref={sectionRef}
@@ -523,9 +786,9 @@ export function DiffContentView({
       <div className="diff-content-head">
         <div className="diff-content-title">
           <strong>
-            {visibleEntries.length
-              ? `${visibleEntries.length} changed file${
-                  visibleEntries.length === 1 ? "" : "s"
+            {changedFileCount
+              ? `${changedFileCount} changed file${
+                  changedFileCount === 1 ? "" : "s"
                 }`
               : "Diff Viewer"}
           </strong>
@@ -560,14 +823,18 @@ export function DiffContentView({
                     setSearchQuery("");
                   }
                 }}
-                placeholder="Search diff"
-                disabled={!hasRenderedDiff}
+                placeholder="Find loaded files"
+                disabled={!hasSearchableDiff}
               />
             </label>
-            <span className="diff-search-count">
-              {activeSearchQuery && searchMatchCount
+            <span
+              className="diff-search-count"
+              role="status"
+              aria-live="polite"
+            >
+              {deferredSearchQuery && searchMatchCount
                 ? `${searchIndex + 1}/${searchMatchCount}`
-                : activeSearchQuery
+                : deferredSearchQuery
                   ? "No results"
                   : ""}
             </span>
@@ -576,7 +843,7 @@ export function DiffContentView({
               className="diff-search-button"
               onClick={() => goToSearchMatch(-1)}
               disabled={!searchMatchCount}
-              aria-label="Previous diff search match"
+              aria-label="Previous matching loaded file"
             >
               <ChevronUp size={14} />
             </button>
@@ -585,7 +852,7 @@ export function DiffContentView({
               className="diff-search-button"
               onClick={() => goToSearchMatch(1)}
               disabled={!searchMatchCount}
-              aria-label="Next diff search match"
+              aria-label="Next matching loaded file"
             >
               <ChevronDown size={14} />
             </button>
@@ -648,117 +915,16 @@ export function DiffContentView({
       {!summaryLoading && !error && !visibleEntries.length ? (
         <div className="diff-content-state">No changed files.</div>
       ) : null}
-      {visibleEntries.length ? (
-        <div
-          ref={diffRef}
-          className={`diff2html-wrapper syntax-highlighted ${
-            mobile ? "is-compact" : ""
-          } ${mobile && wrapEnabled ? "is-wrapped" : ""} ${
-            !mobile && !wrapEnabled ? "is-nowrap" : ""
-          } ${!mobile ? `is-${effectiveViewMode}` : ""}`}
+      {hasExpandedTextDiff && diffList ? (
+        <WorkerPoolContextProvider
+          poolOptions={DIFF_WORKER_POOL_OPTIONS}
+          highlighterOptions={DIFF_HIGHLIGHTER_OPTIONS}
         >
-          {renderedSections.map((section) => {
-            const sectionLoading =
-              loading && activeEntryKey === section.key && !section.file;
-            const loadingFile = !section.file && !section.error;
-            const collapsed = section.collapsed;
-            return (
-              <article
-                className="diff-file-section"
-                key={section.key}
-                data-diff-entry-key={section.key}
-              >
-                <header className="diff-file-section-head">
-                  <button
-                    type="button"
-                    className="diff-file-collapse"
-                    onClick={() =>
-                      toggleSectionCollapsed(section.key, collapsed)
-                    }
-                    aria-expanded={!collapsed}
-                    aria-label={`${collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
-                    title={collapsed ? "Expand" : "Collapse"}
-                  >
-                    {collapsed ? (
-                      <ChevronRight size={14} />
-                    ) : (
-                      <ChevronDown size={14} />
-                    )}
-                  </button>
-                  <div className="diff-file-section-title">
-                    <strong>{section.entry.path}</strong>
-                    <span>
-                      {section.entry.kind} · {section.entry.status}
-                      {section.autoCollapse
-                        ? ` · ${section.autoCollapse.label}`
-                        : ""}
-                      {section.file?.truncated ? " · truncated" : ""}
-                      {collapsed && section.autoCollapse
-                        ? " · auto-collapsed"
-                        : ""}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="diff-file-open"
-                    onClick={() => onOpenFile?.(section.entry)}
-                    disabled={!onOpenFile}
-                  >
-                    <FolderOpen size={14} />
-                    <span>Open in Files</span>
-                  </button>
-                </header>
-                {collapsed ? null : (
-                  <>
-                    {section.error ? (
-                      <div className="diff-content-state is-error">
-                        {section.error}
-                      </div>
-                    ) : null}
-                    {loadingFile ? (
-                      <div className="diff-content-state">
-                        {sectionLoading ? (
-                          <span className="file-loading-spinner" />
-                        ) : null}
-                        Loading diff
-                      </div>
-                    ) : null}
-                    {section.file &&
-                    !section.file.diff &&
-                    !section.imagePreview ? (
-                      <div className="diff-content-state">
-                        No textual diff available.
-                      </div>
-                    ) : null}
-                    {section.imagePreview && section.file ? (
-                      <DiffImagePreview
-                        state={
-                          imagePreviews[
-                            imagePreviewKey(connectionClient, section.file)
-                          ]
-                        }
-                        path={section.entry.path}
-                      />
-                    ) : null}
-                    {section.file?.truncated ? (
-                      <div className="diff-truncated">
-                        Diff truncated at 512 KB.
-                      </div>
-                    ) : null}
-                    {section.html ? (
-                      <div
-                        className="diff-file-html"
-                        data-syntax-path={section.entry.path}
-                        dangerouslySetInnerHTML={{ __html: section.html }}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
+          {diffList}
+        </WorkerPoolContextProvider>
+      ) : (
+        diffList
+      )}
     </section>
   );
 }

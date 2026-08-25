@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Keep the Diff Viewer responsive for large change sets by rendering only the
+  selected patch with a virtualized Pierre surface, loading syntax and patch
+  data on demand, and bounding patch, worker, and image-preview caches.
 - Reattach terminal frames after resuming browser sync instead of requiring a
   page reload to restore terminal content.
 - Use the compact drill-in Inspector layout below 640px so narrow panes do not

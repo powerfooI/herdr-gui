@@ -1911,6 +1911,9 @@ textarea:focus {
   display: flex;
   padding: 0;
 }
+.workspace-inspector.is-compact .workspace-inspector-resource.is-hidden {
+  display: none;
+}
 .workspace-inspector.is-compact
   .workspace-inspector-resource.inspector-history-resource {
   padding: 0;
@@ -4989,6 +4992,8 @@ textarea:focus {
 .diff-tree-row {
   width: 100%;
   min-height: 30px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
   display: grid;
   grid-template-columns: 16px 18px minmax(0, 1fr) auto auto;
   align-items: center;
@@ -5341,8 +5346,8 @@ textarea:focus {
 }
 .diff-file-collapse {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5352,9 +5357,13 @@ textarea:focus {
   background: transparent;
   color: var(--muted);
 }
-.diff-file-collapse:hover {
+.diff-file-collapse:hover:not(:disabled) {
   background: var(--accent-soft);
   color: var(--text-strong);
+}
+.diff-file-collapse:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 .diff-file-section-title strong,
 .diff-file-section-title span {
@@ -5398,6 +5407,50 @@ textarea:focus {
      banners stay put in no-wrap mode (previously the whole wrapper scrolled
      and carried the header off screen). */
   overflow-x: auto;
+}
+.diff-file-section.is-search-current .diff-file-section-head {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.pierre-diff-scroll.is-compact .diff-file-collapse {
+  width: 44px;
+  height: 44px;
+}
+.pierre-diff-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--diff-bg);
+  scrollbar-gutter: stable;
+}
+.pierre-diff-scroll-content,
+.pierre-diff-surface,
+.pierre-diff-surface > diffs-container {
+  min-width: 0;
+  width: 100%;
+}
+.pierre-diff-surface {
+  overflow: hidden;
+  background: var(--diff-bg);
+}
+.pierre-diff-surface > diffs-container {
+  display: block;
+}
+.diff-raw-patch {
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--diff-bg);
+  color: var(--diff-text);
+  font:
+    12px / 18px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre;
 }
 .diff-image-preview {
   display: grid;

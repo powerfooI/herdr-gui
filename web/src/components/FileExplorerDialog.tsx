@@ -89,6 +89,9 @@ const explorerCacheRevisions = new Map<string, number>();
 const explorerPrefetches = new Map<string, Promise<void>>();
 const previewCache = new Map<string, FilePreview>();
 const previewRequests = new Map<string, Promise<FilePreview>>();
+const previewRequestRevisions = new Map<string, number>();
+const MAX_PREVIEW_CACHE_BYTES = 16 * 1024 * 1024;
+let previewCacheBytes = 0;
 const FILE_TREE_INDENT = 10;
 const FILE_TREE_BASE_INDENT = 6;
 const FILE_SHOW_HIDDEN_PREFIX = "fileExplorerShowHidden:";
@@ -217,6 +220,40 @@ export function filePreviewCacheKey(
     workspaceId ?? "focused",
     path,
   );
+}
+
+function estimatedPreviewBytes(preview: FilePreview) {
+  return (
+    ((preview.text?.length ?? 0) + (preview.image_data_url?.length ?? 0)) * 2 +
+    256
+  );
+}
+
+function readCachedPreview(key: string) {
+  const preview = previewCache.get(key);
+  if (!preview) return undefined;
+  previewCache.delete(key);
+  previewCache.set(key, preview);
+  return preview;
+}
+
+function writeCachedPreview(key: string, preview: FilePreview) {
+  const existing = previewCache.get(key);
+  if (existing) previewCacheBytes -= estimatedPreviewBytes(existing);
+  previewCache.delete(key);
+  previewCache.set(key, preview);
+  previewCacheBytes += estimatedPreviewBytes(preview);
+
+  while (previewCacheBytes > MAX_PREVIEW_CACHE_BYTES && previewCache.size > 1) {
+    const oldestKey = previewCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    const oldest = previewCache.get(oldestKey);
+    previewCache.delete(oldestKey);
+    if (!previewRequests.has(oldestKey)) {
+      previewRequestRevisions.delete(oldestKey);
+    }
+    if (oldest) previewCacheBytes -= estimatedPreviewBytes(oldest);
+  }
 }
 
 function parentDirectoryPaths(path: string) {
@@ -418,10 +455,13 @@ export function requestFilePreview(
     return Promise.reject(new Error("connection changed during file preview"));
   }
   const key = filePreviewCacheKey(client, workspaceId, path);
-  const cached = previewCache.get(key);
-  if (cached && !options?.refresh) return Promise.resolve(cached);
+  const cached = readCachedPreview(key);
+  if (cached && !options.refresh) return Promise.resolve(cached);
   const running = previewRequests.get(key);
-  if (running) return running;
+  if (running && !options.refresh) return running;
+
+  const revision = (previewRequestRevisions.get(key) ?? 0) + 1;
+  previewRequestRevisions.set(key, revision);
   const task = client.call("file.read", {
     workspace_id: workspaceId,
     path,
@@ -431,11 +471,17 @@ export function requestFilePreview(
       if (!client.isCurrent()) {
         throw new Error("connection changed during file preview");
       }
-      previewCache.set(key, preview);
+      if (previewRequestRevisions.get(key) !== revision) {
+        throw new Error("file preview request superseded");
+      }
+      writeCachedPreview(key, preview);
       return preview;
     })
     .finally(() => {
-      previewRequests.delete(key);
+      if (previewRequests.get(key) === scopedTask) {
+        previewRequests.delete(key);
+        if (!previewCache.has(key)) previewRequestRevisions.delete(key);
+      }
     });
   previewRequests.set(key, scopedTask);
   return scopedTask;
@@ -826,6 +872,7 @@ function FileExplorerContent({
   const longPressTriggered = useRef(false);
   const gitStatusRequestKeyRef = useRef<string | null>(null);
   const previewRequestKeyRef = useRef<string | null>(null);
+  const previewRequestSequenceRef = useRef(0);
   const previousCacheResourceKeyRef = useRef<string | undefined>(undefined);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
   const runtimeContext = explorerRuntimeContextKey(
@@ -1243,10 +1290,11 @@ function FileExplorerContent({
     if (!workspace?.workspace_id || entry.type === "directory") return;
     const workspaceId = workspace.workspace_id;
     const key = filePreviewCacheKey(connectionClient, workspaceId, entry.path);
-    previewRequestKeyRef.current = key;
+    const requestKey = `${key}:${++previewRequestSequenceRef.current}`;
+    previewRequestKeyRef.current = requestKey;
     setPreviewEntry(entry);
     setPreviewError(null);
-    const cached = previewCache.get(key);
+    const cached = readCachedPreview(key);
     if (cached) {
       setPreview(cached);
       setPreviewLoading(false);
@@ -1269,7 +1317,7 @@ function FileExplorerContent({
       });
       if (
         connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === key
+        previewRequestKeyRef.current === requestKey
       ) {
         setPreview(next);
         emitPreviewChange(
@@ -1280,7 +1328,7 @@ function FileExplorerContent({
     } catch (e) {
       if (
         connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === key &&
+        previewRequestKeyRef.current === requestKey &&
         !cached
       ) {
         const message = (e as Error).message;
@@ -1293,7 +1341,7 @@ function FileExplorerContent({
     } finally {
       if (
         connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === key
+        previewRequestKeyRef.current === requestKey
       ) {
         setPreviewLoading(false);
       }

@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useEffect,
   useId,
   useLayoutEffect,
@@ -36,14 +38,24 @@ import {
 } from "../workspaceResource";
 import { AgentHistoryDrawer } from "./AgentHistoryDrawer";
 import { paneHasAgentHistory } from "./agentSession";
-import { DiffContentView } from "./DiffContentView";
-import { type ActiveDiffSelection, DiffViewerPanel } from "./DiffViewerPanel";
+import {
+  type ActiveDiffSelection,
+  DiffViewerPanel,
+  type DiffViewerPanelHandle,
+  type DiffViewerPanelProps,
+} from "./DiffViewerPanel";
 import { FileExplorerPanel } from "./FileExplorerDialog";
 import {
   type ActiveFilePreviewSelection,
   FilePreviewContent,
 } from "./FilePreviewContent";
 import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
+
+const DiffContentView = lazy(() =>
+  import("./DiffContentView").then((module) => ({
+    default: module.DiffContentView,
+  })),
+);
 
 function changedCount(workspace?: Workspace) {
   const status = workspace?.worktree?.git_status;
@@ -194,9 +206,7 @@ export function WorkspaceInspectorHost({
   onFileSelectionChange: Parameters<
     typeof FileExplorerPanel
   >[0]["onPreviewChange"];
-  onDiffSelectionChange: Parameters<
-    typeof DiffViewerPanel
-  >[0]["onSelectionChange"];
+  onDiffSelectionChange: DiffViewerPanelProps["onSelectionChange"];
   onOpenDiffFile: (entry: ActiveDiffSelection["entry"]) => void;
   onViewChange: (view: InspectorView) => void;
   onDockChange: (dock: InspectorDock) => void;
@@ -208,6 +218,7 @@ export function WorkspaceInspectorHost({
   const filesTabRef = useRef<HTMLButtonElement | null>(null);
   const changesTabRef = useRef<HTMLButtonElement | null>(null);
   const historyTabRef = useRef<HTMLButtonElement | null>(null);
+  const diffViewerRef = useRef<DiffViewerPanelHandle | null>(null);
   const splitId = useId();
   const [hostWidth, setHostWidth] = useState(0);
   const [drillInByView, setDrillInByView] = useState<
@@ -514,6 +525,7 @@ export function WorkspaceInspectorHost({
               className="workspace-inspector-navigation"
             >
               <DiffViewerPanel
+                ref={diffViewerRef}
                 workspaceId={workspace.workspace_id}
                 resourceKey={resourceKey}
                 onSelectionChange={(selection, meta) => {
@@ -537,20 +549,37 @@ export function WorkspaceInspectorHost({
               />
             ) : null}
             <div id={detailIds.changes} className="workspace-inspector-detail">
-              <DiffContentView
-                entry={diffSelection.entry}
-                file={diffSelection.file}
-                loading={diffSelection.loading}
-                error={diffSelection.error}
-                entries={diffSelection.entries}
-                files={diffSelection.files}
-                fileErrors={diffSelection.fileErrors}
-                summaryLoading={diffSelection.summaryLoading}
-                mobile={compact}
-                resourceKey={contentResourceKey}
-                connectionClient={connectionClient}
-                onOpenFile={onOpenDiffFile}
-              />
+              {state.view === "changes" ? (
+                <Suspense
+                  fallback={
+                    <div className="diff-content-view">
+                      <div className="diff-content-state">
+                        <span className="file-loading-spinner" />
+                        Loading Diff Viewer
+                      </div>
+                    </div>
+                  }
+                >
+                  <DiffContentView
+                    key={contentResourceKey}
+                    entry={diffSelection.entry}
+                    file={diffSelection.file}
+                    loading={diffSelection.loading}
+                    error={diffSelection.error}
+                    entries={diffSelection.entries}
+                    files={diffSelection.files}
+                    fileErrors={diffSelection.fileErrors}
+                    summaryLoading={diffSelection.summaryLoading}
+                    mobile={compact}
+                    resourceKey={contentResourceKey}
+                    connectionClient={connectionClient}
+                    onSelectFile={(target) =>
+                      diffViewerRef.current?.selectEntry(target)
+                    }
+                    onOpenFile={onOpenDiffFile}
+                  />
+                </Suspense>
+              ) : null}
             </div>
           </div>
           <div

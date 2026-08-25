@@ -36,7 +36,7 @@ import {
 import { AgentIcon } from "./components/AgentIcon";
 import { paneHasAgentHistory } from "./components/agentSession";
 import { CloseButton } from "./components/CloseButton";
-import { clearDiffContentResourceState } from "./components/DiffContentView";
+import { clearDiffContentResourceState } from "./components/diffContentState";
 import { CommandCombobox } from "./components/CommandCombobox";
 import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
 import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
