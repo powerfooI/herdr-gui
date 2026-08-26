@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
@@ -215,14 +216,17 @@ function AgentHistoryMinimap({
       if (!strip || !(firstBar instanceof HTMLElement)) return null;
       const count = entries.length;
       if (count === 0) return null;
-      // Keep the gap in sync with .agent-history-minimap in styles.css.
-      const stride = firstBar.offsetWidth + 2;
+      // Derive the stride (bar width + gap) from the first two bars'
+      // geometry so the mapping stays correct whatever gap the CSS uses.
+      const firstLeft = firstBar.getBoundingClientRect().left;
+      const secondBar = firstBar.nextElementSibling;
+      const stride =
+        secondBar instanceof HTMLElement
+          ? secondBar.getBoundingClientRect().left - firstLeft
+          : firstBar.offsetWidth;
       if (stride <= 0) return null;
       const stripRect = strip.getBoundingClientRect();
-      const barsLeft =
-        firstBar.getBoundingClientRect().left -
-        stripRect.left +
-        strip.scrollLeft;
+      const barsLeft = firstLeft - stripRect.left + strip.scrollLeft;
       const contentX = clientX - stripRect.left + strip.scrollLeft - barsLeft;
       const index = Math.max(
         0,
@@ -251,14 +255,56 @@ function AgentHistoryMinimap({
     scrubbingRef.current = false;
     centerWave();
   };
+  // The strip is a single slider-like control: one tab stop, with arrow-key
+  // navigation across messages. The bars themselves stay non-focusable.
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const count = entries.length;
+    if (count === 0) return;
+    const range = visibleRangeRef.current;
+    const current = range?.start ?? 1;
+    const span = range ? range.end - range.start + 1 : 1;
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        next = current - 1;
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        next = current + 1;
+        break;
+      case "PageUp":
+        next = current - span;
+        break;
+      case "PageDown":
+        next = current + span;
+        break;
+      case "Home":
+        next = 1;
+        break;
+      case "End":
+        next = count;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    onSelect(Math.max(1, Math.min(count, next)));
+  };
 
   return (
     <div className="agent-history-minimap-wrap">
       <div
         ref={stripRef}
         className="agent-history-minimap"
-        role="group"
-        aria-label="Message index"
+        role="slider"
+        tabIndex={0}
+        aria-label="Jump to message"
+        aria-orientation="horizontal"
+        aria-valuemin={1}
+        aria-valuemax={entries.length}
+        aria-valuenow={visibleRange?.start ?? 1}
+        onKeyDown={handleKeyDown}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
@@ -271,16 +317,13 @@ function AgentHistoryMinimap({
             sequence >= visibleRange.start &&
             sequence <= visibleRange.end;
           return (
-            <button
+            <div
               key={message.id}
-              type="button"
               className={
                 `agent-history-minimap-bar is-${message.role}` +
                 (inView ? " is-in-view" : "")
               }
               title={`#${sequence} ${roleLabel}`}
-              aria-label={`Go to message ${sequence} (${roleLabel})`}
-              onClick={() => onSelect(sequence)}
             />
           );
         })}
@@ -574,8 +617,19 @@ export function AgentHistoryDrawer({
     resizeObserver.observe(root);
     // Scroll events do not bubble, but capture listeners on window fire for
     // scrolls on any descendant, so this covers the content container and
-    // any ancestor that ends up scrolling instead.
-    window.addEventListener("scroll", schedule, {
+    // any ancestor that ends up scrolling instead. Filter out scrolls that
+    // cannot move the timeline so unrelated views never wake this up.
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (
+        target === document ||
+        (target instanceof Node &&
+          (root.contains(target) || target.contains(root)))
+      ) {
+        schedule();
+      }
+    };
+    window.addEventListener("scroll", onScroll, {
       passive: true,
       capture: true,
     });
@@ -583,7 +637,7 @@ export function AgentHistoryDrawer({
     return () => {
       if (frame !== 0) window.cancelAnimationFrame(frame);
       resizeObserver.disconnect();
-      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", schedule);
     };
   }, [drawerTab, messagesKey]);
