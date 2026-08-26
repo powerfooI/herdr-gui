@@ -138,12 +138,19 @@ describe("shared git diff summaries", () => {
         });
       },
     };
+    const key = gitDiffSummaryKey(
+      client,
+      "workspace",
+      "working",
+      "checkout:retired",
+    );
     const initial = refreshGitDiffSummary(
       client,
       "workspace",
       "working",
       "checkout:retired",
     );
+    expect(readGitDiffSummary(key).loading).toBe(true);
     const queued = refreshGitDiffSummary(
       client,
       "workspace",
@@ -152,6 +159,7 @@ describe("shared git diff summaries", () => {
       { afterCurrent: true },
     );
     retireGitDiffSummaryResource(client, "checkout:retired");
+    expect(readGitDiffSummary(key).loading).toBe(false);
     resolveInitial?.(summary("stale"));
     await initial;
     await expect(queued).rejects.toThrow("retired");

@@ -793,8 +793,7 @@ export const DiffViewerPanel = forwardRef<
       cacheResourceKey,
     ),
   );
-  const [summaryRequestLoading, setSummaryRequestLoading] = useState(false);
-  const summaryLoading = summaryRequestLoading || sharedSummaryState.loading;
+  const summaryLoading = sharedSummaryState.loading;
   const [fileLoadingKey, setFileLoadingKey] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
     () => new Set([""]),
@@ -948,7 +947,6 @@ export const DiffViewerPanel = forwardRef<
       diffCacheKey(connectionClient, workspaceId, scope, cacheResourceKey),
     );
     setFileLoadingKey(null);
-    setSummaryRequestLoading(true);
     updateCache({ error: null });
     try {
       await refreshGitDiffSummary(
@@ -961,10 +959,6 @@ export const DiffViewerPanel = forwardRef<
     } catch (e) {
       if (isCurrentContext(workspaceId, scope)) {
         updateCache({ error: (e as Error).message });
-      }
-    } finally {
-      if (isCurrentContext(workspaceId, scope)) {
-        setSummaryRequestLoading(false);
       }
     }
   };
