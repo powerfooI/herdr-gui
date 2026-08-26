@@ -290,32 +290,17 @@ function AgentHistoryMinimap({
     centerWave();
   };
 
-  // Thin position indicator for the strip's own horizontal scroll, updated
-  // imperatively so native strip scrolls don't need React re-renders.
-  const thumbRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const strip = stripRef.current;
-    const thumb = thumbRef.current;
-    if (!strip || !thumb) return;
-    const update = () => {
-      const { scrollLeft, scrollWidth, clientWidth } = strip;
-      if (scrollWidth <= clientWidth + 1) {
-        thumb.style.display = "none";
-        return;
-      }
-      thumb.style.display = "block";
-      thumb.style.width = `${(clientWidth / scrollWidth) * 100}%`;
-      thumb.style.left = `${(scrollLeft / scrollWidth) * 100}%`;
-    };
-    update();
-    const resizeObserver = new ResizeObserver(update);
-    resizeObserver.observe(strip);
-    strip.addEventListener("scroll", update, { passive: true });
-    return () => {
-      resizeObserver.disconnect();
-      strip.removeEventListener("scroll", update);
-    };
-  }, [entries.length]);
+  // The indicator marks which slice of the whole history the timeline
+  // viewport currently shows (like a minimap viewport rectangle), so it is
+  // derived from the visible range itself rather than the strip's own
+  // scroll position, which the wave-follow logic deliberately suppresses
+  // while scrubbing.
+  const total = entries.length;
+  const thumbVisible = visibleRange !== null && total > 0;
+  const thumbLeft = thumbVisible ? ((visibleRange.start - 1) / total) * 100 : 0;
+  const thumbWidth = thumbVisible
+    ? Math.max(((visibleRange.end - visibleRange.start + 1) / total) * 100, 2)
+    : 0;
 
   return (
     <div className="agent-history-minimap-wrap">
@@ -352,9 +337,12 @@ function AgentHistoryMinimap({
       </div>
       <div className="agent-history-minimap-scrollbar" aria-hidden="true">
         <div
-          ref={thumbRef}
           className="agent-history-minimap-scrollbar-thumb"
-          style={{ display: "none" }}
+          style={
+            thumbVisible
+              ? { left: `${thumbLeft}%`, width: `${thumbWidth}%` }
+              : { display: "none" }
+          }
         />
       </div>
     </div>
