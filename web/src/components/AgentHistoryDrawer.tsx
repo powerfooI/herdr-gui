@@ -75,47 +75,6 @@ function messageSummary(text: string) {
   return `${lines.length} lines`;
 }
 
-// Temporary diagnostics for the minimap wave, enabled with ?debug-minimap=1.
-const MINIMAP_DEBUG_ENABLED =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).has("debug-minimap");
-
-function MinimapWaveDebug({
-  contentRef,
-  visibleRange,
-  open,
-  drawerTab,
-  messageCount,
-}: {
-  contentRef: React.RefObject<HTMLDivElement | null>;
-  visibleRange: MessageMinimapVisibleRange | null;
-  open: boolean;
-  drawerTab: string;
-  messageCount: number;
-}) {
-  const [line, setLine] = useState("");
-  useEffect(() => {
-    const update = () => {
-      const el = contentRef.current;
-      const bars = document.querySelectorAll(
-        ".agent-history-minimap-bar.is-in-view",
-      ).length;
-      const first = document.querySelector(".agent-history-minimap-bar");
-      const t = first ? getComputedStyle(first).transform : "?";
-      setLine(
-        `dbg4 open=${open} tab=${drawerTab} msgs=${messageCount} ` +
-          `st=${el ? Math.round(el.scrollTop) : "?"} ` +
-          `wave=${visibleRange ? `${visibleRange.start}-${visibleRange.end}` : "null"} ` +
-          `bars=${bars} t=${t.slice(0, 20)}`,
-      );
-    };
-    update();
-    const timer = window.setInterval(update, 400);
-    return () => window.clearInterval(timer);
-  }, [contentRef, visibleRange, open, drawerTab, messageCount]);
-  return <div className="minimap-debug-overlay">{line}</div>;
-}
-
 // Cards are memoized because the timeline can hold hundreds of them and the
 // drawer's minimap viewport tracking re-renders on every scroll boundary.
 const AgentHistoryMessageCard = memo(function AgentHistoryMessageCard({
@@ -905,15 +864,6 @@ export function AgentHistoryDrawer({
             ) : null}
           </>
         )}
-        {MINIMAP_DEBUG_ENABLED ? (
-          <MinimapWaveDebug
-            contentRef={contentRef}
-            visibleRange={visibleRange}
-            open={open}
-            drawerTab={drawerTab}
-            messageCount={messages.length}
-          />
-        ) : null}
       </aside>
       <AgentMessageDialog
         message={expandedMessage}

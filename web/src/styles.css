@@ -7270,6 +7270,8 @@ textarea:focus {
   pointer-events: none;
 }
 .agent-history-minimap-scrollbar-thumb {
+  position: absolute;
+  top: 0;
   height: 100%;
   border-radius: 1.5px;
   background: var(--accent);
@@ -7307,23 +7309,6 @@ textarea:focus {
   transform: scaleY(1.6);
   opacity: 1;
 }
-.minimap-debug-overlay {
-  position: fixed;
-  left: 4px;
-  bottom: 4px;
-  z-index: 9999;
-  max-width: calc(100vw - 8px);
-  padding: 4px 6px;
-  background: rgb(0 0 0 / 0.85);
-  color: #7fff7f;
-  font-family: monospace;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-all;
-  pointer-events: none;
-}
-
 .agent-history-minimap-bar:hover,
 .agent-history-minimap-bar:focus-visible {
   opacity: 1;
