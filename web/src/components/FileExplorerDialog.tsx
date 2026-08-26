@@ -486,7 +486,7 @@ export function buildGitStatusMaps(
     const existing = fileStatuses.get(mappedPath);
     const codes = Array.from(
       new Set([...(existing?.codes ?? []), gitDiffCode(entry)]),
-    );
+    ).sort();
     const entries = [...(existing?.entries ?? []), entry];
     const next: FileGitStatus = {
       label: gitStatusLabel(entry),
@@ -543,7 +543,7 @@ export function buildGitStatusMaps(
       tone: "directory",
       priority: 10,
       count,
-      codes: Array.from(directoryCodes.get(path) ?? []),
+      codes: Array.from(directoryCodes.get(path) ?? []).sort(),
     });
   }
 

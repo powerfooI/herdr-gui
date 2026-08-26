@@ -1270,7 +1270,7 @@ export const DiffViewerPanel = forwardRef<
       const stats = diffStatsForEntries(child.entries);
       const statusCodes = Array.from(
         new Set(child.entries.map((entry) => gitDiffCode(entry))),
-      );
+      ).sort();
       items.push(
         <button
           type="button"

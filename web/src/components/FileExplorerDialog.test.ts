@@ -76,6 +76,29 @@ describe("file explorer git status", () => {
     expect(status?.label).toBe("Modified");
     expect(status?.codes).toEqual(["M"]);
   });
+
+  test("sorts file and directory status codes independently of summary order", () => {
+    const summary: GitDiffSummary = {
+      workspace_id: "workspace",
+      root: "/repo",
+      entries: [
+        { path: "src/app.ts", kind: "unstaged", status: "modified" },
+        { path: "src/new.ts", kind: "untracked", status: "untracked" },
+        { path: "src/app.ts", kind: "staged", status: "added" },
+      ],
+      counts: {
+        staged: 1,
+        unstaged: 1,
+        untracked: 1,
+        conflicted: 0,
+        branch: 0,
+      },
+    };
+
+    const maps = buildGitStatusMaps(summary, "/repo");
+    expect(maps.fileStatuses.get("src/app.ts")?.codes).toEqual(["A", "M"]);
+    expect(maps.directoryStatuses.get("src")?.codes).toEqual(["A", "M", "U"]);
+  });
 });
 
 describe("connection-scoped file prefetch", () => {
