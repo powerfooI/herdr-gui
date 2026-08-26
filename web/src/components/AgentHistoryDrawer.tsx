@@ -747,7 +747,7 @@ export function AgentHistoryDrawer({
 
             {error ? <div className="agent-history-error">{error}</div> : null}
             {drawerTab === "messages" ? (
-              <>
+              <div className="agent-history-messages" role="tabpanel">
                 {messageEntries.length > 1 ? (
                   <AgentHistoryMinimap
                     entries={messageEntries}
@@ -756,11 +756,7 @@ export function AgentHistoryDrawer({
                     onSelect={scrollToMessage}
                   />
                 ) : null}
-                <div
-                  className="agent-history-content"
-                  role="tabpanel"
-                  ref={contentRef}
-                >
+                <div className="agent-history-content" ref={contentRef}>
                   {loading && messages.length === 0 ? (
                     <div className="agent-history-state">
                       <span className="terminal-loading-dot" />
@@ -784,7 +780,7 @@ export function AgentHistoryDrawer({
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             ) : (
               <div className="agent-history-details" role="tabpanel">
                 {sessionReady ? (

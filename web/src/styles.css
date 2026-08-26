@@ -7308,6 +7308,13 @@ textarea:focus {
 .agent-history-minimap-bar:focus-visible {
   opacity: 1;
 }
+.agent-history-messages {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
 .agent-history-content {
   min-height: 0;
   flex: 1 1 auto;
