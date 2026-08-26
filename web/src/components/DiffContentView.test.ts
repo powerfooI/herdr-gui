@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { GitDiffEntry, GitDiffFile } from "../types";
-import { diffContentEntries, diffSearchGroups } from "./DiffContentView";
+import {
+  diffContentEntries,
+  diffHunkTargets,
+  diffSearchGroups,
+  nextDiffHunkIndex,
+} from "./DiffContentView";
 
 const entries: GitDiffEntry[] = [
   { path: "src/one.ts", kind: "unstaged", status: "M" },
@@ -27,6 +32,35 @@ describe("diffContentEntries", () => {
   test("falls back to the selected entry before a summary is available", () => {
     expect(diffContentEntries([], entries[0])).toEqual([entries[0]]);
     expect(diffContentEntries([], null)).toEqual([]);
+  });
+});
+
+describe("diffHunkTargets", () => {
+  test("starts navigation at the first or last hunk", () => {
+    expect(nextDiffHunkIndex(-1, 1, 3)).toBe(0);
+    expect(nextDiffHunkIndex(-1, -1, 3)).toBe(2);
+    expect(nextDiffHunkIndex(2, 1, 3)).toBe(0);
+    expect(nextDiffHunkIndex(0, -1, 3)).toBe(2);
+    expect(nextDiffHunkIndex(0, 1, 0)).toBe(-1);
+  });
+
+  test("locates the first changed lines in each patch hunk", () => {
+    expect(
+      diffHunkTargets(
+        [
+          "@@ -3,4 +3,5 @@",
+          " context",
+          "-before",
+          "+after",
+          "+added",
+          "@@ -20,2 +21,0 @@",
+          "-removed",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { oldLine: 4, newLine: 4 },
+      { oldLine: 20, newLine: null },
+    ]);
   });
 });
 

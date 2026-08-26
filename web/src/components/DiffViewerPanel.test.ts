@@ -7,6 +7,7 @@ import {
   diffCacheKey,
   diffRuntimeContextKey,
   diffSelectionStorageKey,
+  expandedDirsForEntries,
   expandedDirsForSelection,
   mergeResolvedDiffFile,
   prefetchDiffFilesInBatches,
@@ -39,7 +40,7 @@ describe("connection-scoped diff identity", () => {
     );
   });
 
-  test("expands only the selected file ancestors", () => {
+  test("expands the selected file ancestors", () => {
     expect(
       Array.from(
         expandedDirsForSelection({
@@ -50,6 +51,30 @@ describe("connection-scoped diff identity", () => {
       ),
     ).toEqual(["", "src", "src/components"]);
     expect(Array.from(expandedDirsForSelection(null))).toEqual([""]);
+  });
+
+  test("expands every directory in a refreshed diff tree", () => {
+    expect(
+      Array.from(
+        expandedDirsForEntries([
+          {
+            path: "src/components/App.tsx",
+            kind: "unstaged",
+            status: "M",
+          },
+          {
+            path: "server/src/index.ts",
+            kind: "staged",
+            status: "M",
+          },
+          {
+            path: "README.md",
+            kind: "untracked",
+            status: "added",
+          },
+        ]),
+      ),
+    ).toEqual(["", "src", "src/components", "server", "server/src"]);
   });
 
   test("honors explicit null selection overrides", () => {

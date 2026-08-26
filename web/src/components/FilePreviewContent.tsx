@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
+  type ReactNode,
+} from "react";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import type { FileExplorerEntry, FilePreview } from "../types";
 import { MarkdownPreview } from "./markdown";
@@ -103,17 +111,29 @@ export function FilePreviewContent({
   preview,
   loading,
   error,
+  changesContent,
+  changesKey,
+  onOpenChanges,
 }: {
   entry: FileExplorerEntry | null;
   preview: FilePreview | null;
   loading: boolean;
   error: string | null;
+  changesContent?: ReactNode;
+  changesKey?: string;
+  onOpenChanges?: () => void;
 }) {
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
+  const fileTabRef = useRef<HTMLButtonElement | null>(null);
+  const changesTabRef = useRef<HTMLButtonElement | null>(null);
+  const tabId = useId();
+  const onOpenChangesRef = useRef(onOpenChanges);
+  onOpenChangesRef.current = onOpenChanges;
   const [previewMode, setPreviewMode] = useState<"rendered" | "raw">(
     "rendered",
   );
+  const [detailTab, setDetailTab] = useState<"file" | "changes">("file");
   const theme = useDocumentTheme();
   const previewText = preview?.text ?? null;
   const previewPath = preview?.path ?? "";
@@ -122,13 +142,45 @@ export function FilePreviewContent({
   const hasMermaidPreview = hasPreviewText && isMermaidPath(previewPath);
   const hasRichPreview = hasMarkdownPreview || hasMermaidPreview;
   const renderRichPreview = hasRichPreview && previewMode === "rendered";
+  const changesAvailable =
+    changesContent !== undefined && !!changesKey && !!onOpenChanges;
+  const showingChanges = detailTab === "changes" && changesAvailable;
+  const fileTabId = `${tabId}-file-tab`;
+  const changesTabId = `${tabId}-changes-tab`;
+  const filePanelId = `${tabId}-file-panel`;
+  const changesPanelId = `${tabId}-changes-panel`;
+
+  const handleDetailTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const nextTab =
+      !changesAvailable || event.key === "Home"
+        ? "file"
+        : event.key === "End"
+          ? "changes"
+          : showingChanges
+            ? "file"
+            : "changes";
+    setDetailTab(nextTab);
+    (nextTab === "file" ? fileTabRef : changesTabRef).current?.focus();
+  };
 
   useEffect(() => {
     setPreviewMode("rendered");
   }, [previewPath]);
 
   useEffect(() => {
-    if (!hasPreviewText || renderRichPreview) return;
+    if (detailTab === "changes" && changesAvailable) {
+      onOpenChangesRef.current?.();
+    }
+  }, [changesAvailable, changesKey, detailTab]);
+
+  useEffect(() => {
+    if (showingChanges || !hasPreviewText || renderRichPreview) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() !== "f") return;
@@ -142,7 +194,7 @@ export function FilePreviewContent({
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
-  }, [hasPreviewText, renderRichPreview]);
+  }, [hasPreviewText, renderRichPreview, showingChanges]);
 
   return (
     <section
@@ -152,7 +204,7 @@ export function FilePreviewContent({
       tabIndex={-1}
       onKeyDownCapture={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
-          if (renderRichPreview) return;
+          if (showingChanges || renderRichPreview) return;
           e.preventDefault();
           e.stopPropagation();
           openPreviewSearch(editorViewRef.current);
@@ -161,8 +213,39 @@ export function FilePreviewContent({
     >
       <div className="file-preview-head">
         <div className="file-preview-title-row">
-          <strong>{entry?.name ?? "Preview"}</strong>
-          {hasRichPreview ? (
+          <div className="file-preview-tabs" role="tablist">
+            <button
+              ref={fileTabRef}
+              id={fileTabId}
+              type="button"
+              role="tab"
+              className={showingChanges ? "" : "is-active"}
+              aria-selected={!showingChanges}
+              aria-controls={filePanelId}
+              tabIndex={showingChanges ? -1 : 0}
+              onClick={() => setDetailTab("file")}
+              onKeyDown={handleDetailTabKeyDown}
+            >
+              {entry?.name ?? "Preview"}
+            </button>
+            {changesAvailable ? (
+              <button
+                ref={changesTabRef}
+                id={changesTabId}
+                type="button"
+                role="tab"
+                className={showingChanges ? "is-active" : ""}
+                aria-selected={showingChanges}
+                aria-controls={changesPanelId}
+                tabIndex={showingChanges ? 0 : -1}
+                onClick={() => setDetailTab("changes")}
+                onKeyDown={handleDetailTabKeyDown}
+              >
+                Changes
+              </button>
+            ) : null}
+          </div>
+          {!showingChanges && hasRichPreview ? (
             <button
               type="button"
               className="file-preview-mode-toggle"
@@ -179,49 +262,74 @@ export function FilePreviewContent({
         {entry ? <span>{entry.path}</span> : null}
       </div>
 
-      {!entry ? (
-        <div className="file-preview-state">Select a text file to preview.</div>
-      ) : null}
-      {loading ? (
-        <div className="file-preview-state">
-          <span className="file-loading-spinner" />
-          Loading preview
+      {showingChanges ? (
+        <div
+          id={changesPanelId}
+          className="file-preview-changes"
+          role="tabpanel"
+          aria-labelledby={changesTabId}
+        >
+          {changesContent}
         </div>
-      ) : null}
-      {error ? (
-        <div className="file-preview-state is-error">{error}</div>
-      ) : null}
-      {!loading && !error && preview?.image_data_url ? (
-        <div className="file-preview-image-wrap">
-          <img
-            className="file-preview-image"
-            src={preview.image_data_url}
-            alt={entry?.name ?? preview.path}
-          />
+      ) : (
+        <div
+          id={filePanelId}
+          className="file-preview-file-content"
+          role="tabpanel"
+          aria-labelledby={fileTabId}
+        >
+          {!entry ? (
+            <div className="file-preview-state">
+              Select a text file to preview.
+            </div>
+          ) : null}
+          {loading ? (
+            <div className="file-preview-state">
+              <span className="file-loading-spinner" />
+              Loading preview
+            </div>
+          ) : null}
+          {error ? (
+            <div className="file-preview-state is-error">{error}</div>
+          ) : null}
+          {!loading && !error && preview?.image_data_url ? (
+            <div className="file-preview-image-wrap">
+              <img
+                className="file-preview-image"
+                src={preview.image_data_url}
+                alt={entry?.name ?? preview.path}
+              />
+            </div>
+          ) : null}
+          {!loading && !error && preview?.binary && !preview.image_data_url ? (
+            <div className="file-preview-state">
+              Binary file cannot be previewed.
+            </div>
+          ) : null}
+          {!loading && !error && preview?.truncated ? (
+            <div className="file-preview-banner">
+              Preview truncated at 512 KB.
+            </div>
+          ) : null}
+          {!loading && !error && hasMarkdownPreview && renderRichPreview ? (
+            <MarkdownPreview text={previewText} />
+          ) : null}
+          {!loading && !error && hasMermaidPreview && renderRichPreview ? (
+            <MermaidDiagram
+              code={previewText}
+              className="file-preview-mermaid"
+            />
+          ) : null}
+          {!loading && !error && hasPreviewText && !renderRichPreview ? (
+            <CodeMirrorPreview
+              text={previewText}
+              path={previewPath}
+              theme={theme}
+              editorViewRef={editorViewRef}
+            />
+          ) : null}
         </div>
-      ) : null}
-      {!loading && !error && preview?.binary && !preview.image_data_url ? (
-        <div className="file-preview-state">
-          Binary file cannot be previewed.
-        </div>
-      ) : null}
-      {!loading && !error && preview?.truncated ? (
-        <div className="file-preview-banner">Preview truncated at 512 KB.</div>
-      ) : null}
-      {!loading && !error && hasMarkdownPreview && renderRichPreview ? (
-        <MarkdownPreview text={previewText} />
-      ) : null}
-      {!loading && !error && hasMermaidPreview && renderRichPreview ? (
-        <MermaidDiagram code={previewText} className="file-preview-mermaid" />
-      ) : null}
-      {!loading && !error && hasPreviewText && !renderRichPreview ? (
-        <CodeMirrorPreview
-          text={previewText}
-          path={previewPath}
-          theme={theme}
-          editorViewRef={editorViewRef}
-        />
-      ) : null}
+      )}
     </section>
   );
 }

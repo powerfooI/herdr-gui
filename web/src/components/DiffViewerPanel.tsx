@@ -18,18 +18,19 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { ConnectionClient } from "../api";
-import type {
-  GitDiffEntry,
-  GitDiffFile,
-  GitDiffKind,
-  GitDiffSummary,
-} from "../types";
+import type { GitDiffEntry, GitDiffFile, GitDiffSummary } from "../types";
 import { useStoreSelector } from "../store";
 import {
   connectionClientScopeKey,
   useConnectionClient,
 } from "../useConnectionClient";
 import { connectionStorageKey } from "../connectionStorage";
+import { gitDiffCode, gitDiffCodeLabel } from "../gitDiffStatus";
+import {
+  refreshGitDiffSummary,
+  retireGitDiffSummaryResource,
+  useGitDiffSummaryState,
+} from "../gitDiffSummaryStore";
 import { diffAutoCollapseInfo } from "./diffAutoCollapse";
 
 export type ActiveDiffSelection = {
@@ -49,6 +50,8 @@ export type DiffSelectionMeta = {
 
 export type DiffViewerPanelHandle = {
   selectEntry: (entry: GitDiffEntry) => void;
+  selectWorkingEntry: (entry: GitDiffEntry) => void;
+  selectWorkingEntries: (entries: GitDiffEntry[]) => void;
 };
 
 export type DiffViewerPanelProps = {
@@ -376,6 +379,7 @@ export function clearDiffViewerResourceCache(
       diffSelectionStorageKey(client.connectionId, resourceKey, scope),
     );
   }
+  retireGitDiffSummaryResource(client, resourceKey);
   storage.removeItem(diffScopeStorageKey(client.connectionId, resourceKey));
   diffPrefetches.delete(
     connectionClientScopeKey(client, "diff-prefetch", resourceKey),
@@ -585,21 +589,6 @@ export function prefetchDiffFilesInBatches(
   ).then(() => undefined);
 }
 
-function kindLabel(kind: GitDiffKind) {
-  switch (kind) {
-    case "staged":
-      return "Staged";
-    case "unstaged":
-      return "Unstaged";
-    case "untracked":
-      return "Untracked";
-    case "conflicted":
-      return "Conflict";
-    case "branch":
-      return "Branch";
-  }
-}
-
 function diffStatsForEntries(entries: GitDiffEntry[]) {
   return entries.reduce(
     (total, entry) => ({
@@ -669,10 +658,16 @@ function treeOrderedDiffEntries(entries: GitDiffEntry[]) {
 }
 
 export function expandedDirsForSelection(entry: GitDiffEntry | null) {
+  return expandedDirsForEntries(entry ? [entry] : []);
+}
+
+export function expandedDirsForEntries(entries: GitDiffEntry[]) {
   const expanded = new Set<string>([""]);
-  const parts = entry?.path.split("/").filter(Boolean) ?? [];
-  for (let index = 1; index < parts.length; index += 1) {
-    expanded.add(parts.slice(0, index).join("/"));
+  for (const entry of entries) {
+    const parts = entry.path.split("/").filter(Boolean);
+    for (let index = 1; index < parts.length; index += 1) {
+      expanded.add(parts.slice(0, index).join("/"));
+    }
   }
   return expanded;
 }
@@ -696,10 +691,12 @@ export function prefetchDiffViewerWorkspace(
     const cacheKey = diffCacheKey(client, workspaceId, scope, resourceKey);
     let revision = diffCacheRevision(cacheKey);
     const cached = readDiffCache(client, workspaceId, scope, resourceKey);
-    const summary = (await client.call("git.diff_summary", {
-      workspace_id: workspaceId,
-      mode: scope,
-    })) as GitDiffSummary;
+    const summary = await refreshGitDiffSummary(
+      client,
+      workspaceId,
+      scope,
+      resourceKey,
+    );
     if (!client.isCurrent() || diffCacheRevision(cacheKey) !== revision) return;
     const selected = resolveSelectedEntry(
       client,
@@ -782,6 +779,12 @@ export const DiffViewerPanel = forwardRef<
   const [diffScope, setDiffScope] = useState<DiffScope>(() =>
     loadDiffScope(connectionClient.connectionId, cacheResourceKey),
   );
+  const sharedSummaryState = useGitDiffSummaryState(
+    connectionClient,
+    cacheWorkspaceId,
+    diffScope,
+    cacheResourceKey,
+  );
   const [cache, setCache] = useState<DiffCache>(() =>
     readDiffCache(
       connectionClient,
@@ -790,7 +793,8 @@ export const DiffViewerPanel = forwardRef<
       cacheResourceKey,
     ),
   );
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryRequestLoading, setSummaryRequestLoading] = useState(false);
+  const summaryLoading = summaryRequestLoading || sharedSummaryState.loading;
   const [fileLoadingKey, setFileLoadingKey] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
     () => new Set([""]),
@@ -806,6 +810,10 @@ export const DiffViewerPanel = forwardRef<
   const selectedEntryKeyRef = useRef(
     cache.selected ? diffEntryKey(cache.selected) : "",
   );
+  const pendingWorkingEntriesRef = useRef<GitDiffEntry[]>([]);
+  const preferredSummarySelectionRef = useRef<GitDiffEntry | null>(null);
+  const diffScopeRef = useRef(diffScope);
+  diffScopeRef.current = diffScope;
   const onSelectionChangeRef = useRef(onSelectionChange);
 
   useLayoutEffect(() => {
@@ -858,6 +866,63 @@ export const DiffViewerPanel = forwardRef<
     });
   };
 
+  useEffect(() => {
+    const summary = sharedSummaryState.summary;
+    if (
+      !workspace?.workspace_id ||
+      !summary ||
+      cache.summary === summary ||
+      !isCurrentContext(workspace.workspace_id, diffScope)
+    ) {
+      return;
+    }
+    const selected = resolveSelectedEntry(
+      connectionClient,
+      workspace.workspace_id,
+      diffScope,
+      summary.entries,
+      preferredSummarySelectionRef.current ?? cache.selected,
+      cacheResourceKey,
+    );
+    preferredSummarySelectionRef.current = null;
+    advanceDiffCacheRevision(
+      diffCacheKey(
+        connectionClient,
+        workspace.workspace_id,
+        diffScope,
+        cacheResourceKey,
+      ),
+    );
+    selectedEntryKeyRef.current = selected ? diffEntryKey(selected) : "";
+    updateCache({
+      summary,
+      selected,
+      files: {},
+      fileErrors: {},
+      error: null,
+    });
+    setExpandedDirs(expandedDirsForEntries(summary.entries));
+    const pendingEntries = pendingWorkingEntriesRef.current;
+    if (diffScope === "working" && pendingEntries.length) {
+      pendingWorkingEntriesRef.current = [];
+      const currentEntries = pendingEntries.flatMap((target) => {
+        const match = summary.entries.find(
+          (entry) =>
+            entry.path === target.path &&
+            entry.kind === target.kind &&
+            entry.status === target.status,
+        );
+        return match ? [match] : [];
+      });
+      for (const target of currentEntries) {
+        void loadFileRef.current(target, { userInitiated: true });
+      }
+    }
+    // The shared snapshot is the synchronization boundary; cache adoption is
+    // intentionally driven only when that immutable snapshot changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedSummaryState.summary]);
+
   const diffSelection = useCallback(
     (
       source: DiffCache = cache,
@@ -871,64 +936,35 @@ export const DiffViewerPanel = forwardRef<
     onSelectionChangeRef.current?.(diffSelection(cache));
   }, [cache, diffSelection]);
 
-  const loadSummary = async (previousSelected = cache.selected) => {
+  const loadSummary = async (
+    previousSelected = cache.selected,
+    afterCurrent = false,
+  ) => {
     if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     const workspaceId = workspace.workspace_id;
     const scope = diffScope;
-    const cacheKey = diffCacheKey(
-      connectionClient,
-      workspaceId,
-      scope,
-      cacheResourceKey,
+    preferredSummarySelectionRef.current = previousSelected;
+    advanceDiffCacheRevision(
+      diffCacheKey(connectionClient, workspaceId, scope, cacheResourceKey),
     );
-    let ownedRevision = advanceDiffCacheRevision(cacheKey);
     setFileLoadingKey(null);
-    setSummaryLoading(true);
+    setSummaryRequestLoading(true);
     updateCache({ error: null });
     try {
-      const summary = (await connectionClient.call("git.diff_summary", {
-        workspace_id: workspaceId,
-        mode: scope,
-      })) as GitDiffSummary;
-      if (
-        !isCurrentContext(workspaceId, scope) ||
-        diffCacheRevision(cacheKey) !== ownedRevision
-      ) {
-        return;
-      }
-      const selected = resolveSelectedEntry(
+      await refreshGitDiffSummary(
         connectionClient,
         workspaceId,
         scope,
-        summary.entries,
-        previousSelected,
         cacheResourceKey,
+        { afterCurrent },
       );
-      // Retire work started from the stale summary while this refresh was in
-      // flight before publishing and prefetching the replacement snapshot.
-      ownedRevision = advanceDiffCacheRevision(cacheKey);
-      selectedEntryKeyRef.current = selected ? diffEntryKey(selected) : "";
-      updateCache({
-        summary,
-        selected,
-        files: {},
-        fileErrors: {},
-      });
-      setExpandedDirs(expandedDirsForSelection(selected));
     } catch (e) {
-      if (
-        !isCurrentContext(workspaceId, scope) ||
-        diffCacheRevision(cacheKey) !== ownedRevision
-      ) {
-        return;
+      if (isCurrentContext(workspaceId, scope)) {
+        updateCache({ error: (e as Error).message });
       }
-      updateCache({ error: (e as Error).message });
     } finally {
-      if (
-        isCurrentContext(workspaceId, scope) &&
-        diffCacheRevision(cacheKey) === ownedRevision
-      ) {
-        setSummaryLoading(false);
+      if (isCurrentContext(workspaceId, scope)) {
+        setSummaryRequestLoading(false);
       }
     }
   };
@@ -1088,15 +1124,26 @@ export const DiffViewerPanel = forwardRef<
   useLayoutEffect(() => {
     loadFileRef.current = loadFile;
   });
-  useImperativeHandle(
-    ref,
-    () => ({
+  useImperativeHandle(ref, () => {
+    const selectWorkingEntries = (targets: GitDiffEntry[]) => {
+      if (!targets.length) return;
+      if (diffScopeRef.current === "working") {
+        for (const target of targets) {
+          void loadFileRef.current(target, { userInitiated: true });
+        }
+        return;
+      }
+      pendingWorkingEntriesRef.current = targets;
+      setDiffScope("working");
+    };
+    return {
       selectEntry: (target) => {
         void loadFileRef.current(target, { userInitiated: true });
       },
-    }),
-    [],
-  );
+      selectWorkingEntry: (target) => selectWorkingEntries([target]),
+      selectWorkingEntries,
+    };
+  }, []);
 
   const selectedDiffEntryKey = cache.selected
     ? diffEntryKey(cache.selected)
@@ -1123,8 +1170,16 @@ export const DiffViewerPanel = forwardRef<
     selectedEntryKeyRef.current = cached.selected
       ? diffEntryKey(cached.selected)
       : "";
+    const pendingWorkingEntries =
+      diffScope === "working" ? pendingWorkingEntriesRef.current : [];
+    const preferredWorkingEntry =
+      pendingWorkingEntries[pendingWorkingEntries.length - 1] ?? null;
     setCache(cached);
-    setExpandedDirs(expandedDirsForSelection(cached.selected));
+    setExpandedDirs(
+      expandedDirsForEntries(
+        cached.summary?.entries ?? (cached.selected ? [cached.selected] : []),
+      ),
+    );
     onSelectionChangeRef.current?.({
       entry: cached.selected,
       file: cached.selected
@@ -1137,7 +1192,7 @@ export const DiffViewerPanel = forwardRef<
       fileErrors: cached.fileErrors,
       summaryLoading: false,
     });
-    void loadSummary(cached.selected);
+    void loadSummary(preferredWorkingEntry ?? cached.selected);
     // Reopen against a fresh workspace snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheResourceKey, cacheWorkspaceId, connectionClient, diffScope]);
@@ -1213,6 +1268,9 @@ export const DiffViewerPanel = forwardRef<
         (entry) => diffEntryKey(entry) === selectedKey,
       );
       const stats = diffStatsForEntries(child.entries);
+      const statusCodes = Array.from(
+        new Set(child.entries.map((entry) => gitDiffCode(entry))),
+      );
       items.push(
         <button
           type="button"
@@ -1227,12 +1285,15 @@ export const DiffViewerPanel = forwardRef<
           <File size={15} />
           <span className="diff-tree-name">{child.name}</span>
           <span className="diff-tree-badges">
-            {child.entries.map((entry) => (
+            {statusCodes.map((code) => (
               <span
-                className={`diff-kind diff-kind-${entry.kind}`}
-                key={diffEntryKey(entry)}
+                className={`git-status-code git-status-${code.toLowerCase()}`}
+                key={code}
+                role="img"
+                aria-label={gitDiffCodeLabel(code)}
+                title={gitDiffCodeLabel(code)}
               >
-                {kindLabel(entry.kind)}
+                {code}
               </span>
             ))}
           </span>
@@ -1274,7 +1335,7 @@ export const DiffViewerPanel = forwardRef<
           aria-label={summaryLoading ? "Refreshing changes" : "Refresh changes"}
           aria-busy={summaryLoading}
           disabled={summaryLoading}
-          onClick={() => void loadSummary()}
+          onClick={() => void loadSummary(cache.selected, true)}
         >
           <RefreshCw
             className={summaryLoading ? "is-spinning" : ""}

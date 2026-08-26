@@ -125,6 +125,69 @@ type DiffSection = {
   error: string | null;
 };
 
+export type DiffHunkTarget = {
+  oldLine: number | null;
+  newLine: number | null;
+};
+
+export function nextDiffHunkIndex(
+  current: number,
+  delta: -1 | 1,
+  count: number,
+) {
+  if (count <= 0) return -1;
+  if (current < 0 || current >= count) return delta > 0 ? 0 : count - 1;
+  return (current + delta + count) % count;
+}
+
+export function diffHunkTargets(patch: string): DiffHunkTarget[] {
+  const targets: DiffHunkTarget[] = [];
+  const lines = patch.split("\n");
+  let oldLine = 0;
+  let newLine = 0;
+  let target: DiffHunkTarget | null = null;
+
+  for (const line of lines) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (header) {
+      if (target) targets.push(target);
+      oldLine = Number(header[1]);
+      newLine = Number(header[2]);
+      target = { oldLine: null, newLine: null };
+      continue;
+    }
+    if (!target) continue;
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      target.newLine ??= newLine;
+      newLine += 1;
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      target.oldLine ??= oldLine;
+      oldLine += 1;
+    } else if (!line.startsWith("\\")) {
+      oldLine += 1;
+      newLine += 1;
+    }
+  }
+  if (target) targets.push(target);
+  return targets;
+}
+
+function deepQuerySelector(
+  root: ParentNode,
+  selectors: string[],
+): HTMLElement | null {
+  for (const selector of selectors) {
+    const match = root.querySelector<HTMLElement>(selector);
+    if (match) return match;
+  }
+  for (const element of root.querySelectorAll<HTMLElement>("*")) {
+    if (!element.shadowRoot) continue;
+    const match = deepQuerySelector(element.shadowRoot, selectors);
+    if (match) return match;
+  }
+  return null;
+}
+
 function loadDiffViewMode(): DiffViewMode {
   return localStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
     ? "unified"
@@ -298,6 +361,7 @@ type DiffFileSectionProps = {
   imagePreviewState?: ImagePreviewState;
   options: PierreDiffOptions;
   currentSearchMatch: boolean;
+  embedded: boolean;
   onToggle: (key: string, collapsed: boolean) => void;
   onSelectFile?: (entry: GitDiffEntry) => void;
   onOpenFile?: (entry: GitDiffEntry) => void;
@@ -309,6 +373,7 @@ const DiffFileSection = memo(function DiffFileSection({
   imagePreviewState,
   options,
   currentSearchMatch,
+  embedded,
   onToggle,
   onSelectFile,
   onOpenFile,
@@ -324,56 +389,79 @@ const DiffFileSection = memo(function DiffFileSection({
 
   return (
     <article
-      className={`diff-file-section ${currentSearchMatch ? "is-search-current" : ""}`}
+      className={`diff-file-section ${embedded ? "is-embedded" : ""} ${currentSearchMatch ? "is-search-current" : ""}`}
       data-diff-entry-key={section.key}
       aria-current={currentSearchMatch ? "true" : undefined}
     >
-      <header className="diff-file-section-head">
-        <button
-          type="button"
-          className="diff-file-collapse"
-          onClick={toggle}
-          disabled={!section.active && !onSelectFile}
-          aria-expanded={!section.collapsed}
-          aria-label={`${section.collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
-          title={section.collapsed ? "Expand" : "Collapse"}
-        >
-          {section.collapsed ? (
-            <ChevronRight size={14} />
-          ) : (
-            <ChevronDown size={14} />
-          )}
-        </button>
-        <div className="diff-file-section-title">
-          <strong>{section.entry.path}</strong>
-          <span>
-            {section.entry.kind} · {section.entry.status}
-            {section.autoCollapse ? ` · ${section.autoCollapse.label}` : ""}
-            {section.file?.truncated ? " · truncated" : ""}
-            {section.collapsed && section.autoCollapse
-              ? " · auto-collapsed"
-              : ""}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="diff-file-open"
-          onClick={() => onOpenFile?.(section.entry)}
-          disabled={!onOpenFile}
-        >
-          <FolderOpen size={14} />
-          <span>Open in Files</span>
-        </button>
-      </header>
+      {embedded ? null : (
+        <header className="diff-file-section-head">
+          <button
+            type="button"
+            className="diff-file-collapse"
+            onClick={toggle}
+            disabled={!section.active && !onSelectFile}
+            aria-expanded={!section.collapsed}
+            aria-label={`${section.collapsed ? "Expand" : "Collapse"} ${section.entry.path}`}
+            title={section.collapsed ? "Expand" : "Collapse"}
+          >
+            {section.collapsed ? (
+              <ChevronRight size={14} />
+            ) : (
+              <ChevronDown size={14} />
+            )}
+          </button>
+          <div className="diff-file-section-title">
+            <strong>{section.entry.path}</strong>
+            <span>
+              {section.entry.kind} · {section.entry.status}
+              {section.autoCollapse ? ` · ${section.autoCollapse.label}` : ""}
+              {section.file?.truncated ? " · truncated" : ""}
+              {section.collapsed && section.autoCollapse
+                ? " · auto-collapsed"
+                : ""}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="diff-file-open"
+            onClick={() => onOpenFile?.(section.entry)}
+            disabled={!onOpenFile}
+          >
+            <FolderOpen size={14} />
+            <span>Open in Files</span>
+          </button>
+        </header>
+      )}
       {section.collapsed ? null : (
         <>
           {section.error ? (
-            <div className="diff-content-state is-error">{section.error}</div>
+            <div className="diff-content-state is-error">
+              <span>{section.error}</span>
+              {onSelectFile ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectFile(section.entry)}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {!section.file && !section.error ? (
             <div className="diff-content-state">
               {loading ? <span className="file-loading-spinner" /> : null}
-              {loading ? "Loading diff" : "Select this file to load its diff."}
+              {loading ? (
+                "Loading diff"
+              ) : onSelectFile ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectFile(section.entry)}
+                >
+                  Load diff
+                </button>
+              ) : (
+                "Select this file to load its diff."
+              )}
             </div>
           ) : null}
           {section.file && !section.file.diff && !section.imagePreview ? (
@@ -423,6 +511,7 @@ function areDiffFileSectionPropsEqual(
     previous.imagePreviewState === next.imagePreviewState &&
     previous.options === next.options &&
     previous.currentSearchMatch === next.currentSearchMatch &&
+    previous.embedded === next.embedded &&
     previous.onToggle === next.onToggle &&
     previous.onSelectFile === next.onSelectFile &&
     previous.onOpenFile === next.onOpenFile
@@ -443,6 +532,7 @@ export function DiffContentView({
   connectionClient,
   onSelectFile,
   onOpenFile,
+  embedded = false,
 }: {
   entry: GitDiffEntry | null;
   file: GitDiffFile | null;
@@ -457,6 +547,7 @@ export function DiffContentView({
   connectionClient: ConnectionClient;
   onSelectFile?: (entry: GitDiffEntry) => void;
   onOpenFile?: (entry: GitDiffEntry) => void;
+  embedded?: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -470,6 +561,9 @@ export function DiffContentView({
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchIndex, setSearchIndex] = useState(-1);
+  const [hunkIndex, setHunkIndex] = useState(-1);
+  const hunkIndexRef = useRef(-1);
+  const hunkNavigationRevisionRef = useRef(0);
   const [imagePreviews, setImagePreviews] = useState<
     Record<string, ImagePreviewState>
   >({});
@@ -513,12 +607,14 @@ export function DiffContentView({
           imagePreview,
           autoCollapse,
           collapsed:
-            !active || (manualCollapseStates.get(key) ?? defaultCollapsed),
+            !embedded &&
+            (!active || (manualCollapseStates.get(key) ?? defaultCollapsed)),
           error: fileErrors[key] ?? null,
         };
       }),
     [
       activeEntryKey,
+      embedded,
       fileErrors,
       filesByKey,
       manualCollapseStates,
@@ -558,12 +654,89 @@ export function DiffContentView({
     () => Object.values(filesByKey).some((candidate) => !!candidate.diff),
     [filesByKey],
   );
+  const hunkTargets = useMemo(
+    () => diffHunkTargets(file?.diff ?? ""),
+    [file?.diff],
+  );
   const handleSelectFile = useCallback((target: GitDiffEntry) => {
     selectFileRef.current?.(target);
   }, []);
   const handleOpenFile = useCallback((target: GitDiffEntry) => {
     openFileRef.current?.(target);
   }, []);
+  const goToHunk = useCallback(
+    (delta: -1 | 1) => {
+      if (!hunkTargets.length) return;
+      const nextIndex = nextDiffHunkIndex(
+        hunkIndexRef.current,
+        delta,
+        hunkTargets.length,
+      );
+      const target = hunkTargets[nextIndex];
+      hunkIndexRef.current = nextIndex;
+      setHunkIndex(nextIndex);
+      const navigationRevision = ++hunkNavigationRevisionRef.current;
+
+      let attempts = 0;
+      const reveal = () => {
+        if (hunkNavigationRevisionRef.current !== navigationRevision) return;
+        const section = sectionRef.current;
+        if (!section) return;
+        const activeArticle = Array.from(
+          section.querySelectorAll<HTMLElement>(".diff-file-section"),
+        ).find(
+          (candidate) => candidate.dataset.diffEntryKey === activeEntryKey,
+        );
+        const selectors = [
+          target.newLine === null
+            ? ""
+            : `[data-line='${target.newLine}'][data-line-type='change-addition']`,
+          target.oldLine === null
+            ? ""
+            : `[data-line='${target.oldLine}'][data-line-type='change-deletion']`,
+          target.newLine === null
+            ? ""
+            : `[data-line='${target.newLine}'][data-line-type^='change-']`,
+          target.oldLine === null
+            ? ""
+            : `[data-line='${target.oldLine}'][data-line-type^='change-']`,
+        ].filter(Boolean);
+        const line = activeArticle
+          ? deepQuerySelector(activeArticle, selectors)
+          : null;
+        if (line) {
+          line.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+        attempts += 1;
+        if (attempts === 8) {
+          const scroller = section.querySelector<HTMLElement>(
+            ".pierre-diff-scroll",
+          );
+          if (scroller) {
+            const targetLine = target.newLine ?? target.oldLine ?? 1;
+            const maxTargetLine = Math.max(
+              1,
+              ...hunkTargets.map(
+                (candidate) => candidate.newLine ?? candidate.oldLine ?? 1,
+              ),
+            );
+            const ratio = (targetLine - 1) / Math.max(1, maxTargetLine - 1);
+            const availableHeight = activeArticle
+              ? Math.max(0, activeArticle.scrollHeight - scroller.clientHeight)
+              : Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+            scroller.scrollTo({
+              top: (activeArticle?.offsetTop ?? 0) + ratio * availableHeight,
+              behavior: "auto",
+            });
+          }
+        }
+        if (attempts < 24) requestAnimationFrame(reveal);
+      };
+      requestAnimationFrame(reveal);
+    },
+    [activeEntryKey, hunkTargets],
+  );
   const completeImagePreview = useCallback(
     (key: string, state: ImagePreviewState) => {
       setImagePreviews((current) => ({ ...current, [key]: state }));
@@ -588,6 +761,12 @@ export function DiffContentView({
     }),
     [effectiveViewMode, theme, wrapEnabled],
   );
+
+  useEffect(() => {
+    hunkIndexRef.current = -1;
+    hunkNavigationRevisionRef.current += 1;
+    setHunkIndex(-1);
+  }, [activeEntryKey, file?.diff]);
 
   useEffect(() => {
     selectFileRef.current = onSelectFile;
@@ -728,6 +907,7 @@ export function DiffContentView({
   );
 
   useEffect(() => {
+    if (embedded) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() !== "f") return;
@@ -741,7 +921,7 @@ export function DiffContentView({
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
-  }, [focusSearch]);
+  }, [embedded, focusSearch]);
 
   const diffList = visibleEntries.length ? (
     <Virtualizer
@@ -760,6 +940,7 @@ export function DiffContentView({
           }
           options={pierreOptions}
           currentSearchMatch={currentSearchEntryKey === section.key}
+          embedded={embedded}
           onToggle={toggleSectionCollapsed}
           onSelectFile={onSelectFile ? handleSelectFile : undefined}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
@@ -771,11 +952,15 @@ export function DiffContentView({
   return (
     <section
       ref={sectionRef}
-      className="diff-content-view"
-      aria-label="Diff Viewer content"
+      className={`diff-content-view ${embedded ? "is-embedded" : ""}`}
+      aria-label={embedded ? "File changes" : "Diff Viewer content"}
       tabIndex={-1}
       onKeyDownCapture={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        if (
+          !embedded &&
+          (e.metaKey || e.ctrlKey) &&
+          e.key.toLowerCase() === "f"
+        ) {
           if (isEditableSearchTarget(e.target)) return;
           e.preventDefault();
           e.stopPropagation();
@@ -784,16 +969,18 @@ export function DiffContentView({
       }}
     >
       <div className="diff-content-head">
-        <div className="diff-content-title">
-          <strong>
-            {changedFileCount
-              ? `${changedFileCount} changed file${
-                  changedFileCount === 1 ? "" : "s"
-                }`
-              : "Diff Viewer"}
-          </strong>
-          {entry ? <span>{entry.path}</span> : null}
-        </div>
+        {embedded ? null : (
+          <div className="diff-content-title">
+            <strong>
+              {changedFileCount
+                ? `${changedFileCount} changed file${
+                    changedFileCount === 1 ? "" : "s"
+                  }`
+                : "Diff Viewer"}
+            </strong>
+            {entry ? <span>{entry.path}</span> : null}
+          </div>
+        )}
         {mobile ? (
           <button
             type="button"
@@ -805,71 +992,100 @@ export function DiffContentView({
           </button>
         ) : null}
         <div className="diff-content-actions">
-          <div className="diff-search-controls">
-            <label className="diff-search">
-              <Search size={13} />
-              <input
-                ref={searchInputRef}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    goToSearchMatch(e.shiftKey ? -1 : 1);
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSearchQuery("");
-                  }
-                }}
-                placeholder="Find loaded files"
-                disabled={!hasSearchableDiff}
-              />
-            </label>
-            <span
-              className="diff-search-count"
-              role="status"
-              aria-live="polite"
+          {hunkTargets.length ? (
+            <div
+              className="diff-hunk-navigation"
+              aria-label="Change navigation"
             >
-              {deferredSearchQuery && searchMatchCount
-                ? `${searchIndex + 1}/${searchMatchCount}`
-                : deferredSearchQuery
-                  ? "No results"
-                  : ""}
-            </span>
-            <button
-              type="button"
-              className="diff-search-button"
-              onClick={() => goToSearchMatch(-1)}
-              disabled={!searchMatchCount}
-              aria-label="Previous matching loaded file"
-            >
-              <ChevronUp size={14} />
-            </button>
-            <button
-              type="button"
-              className="diff-search-button"
-              onClick={() => goToSearchMatch(1)}
-              disabled={!searchMatchCount}
-              aria-label="Next matching loaded file"
-            >
-              <ChevronDown size={14} />
-            </button>
-            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => goToHunk(-1)}
+                aria-label="Previous change"
+                title="Previous change"
+              >
+                <ChevronUp size={14} />
+              </button>
+              <span>
+                {hunkIndex < 0 ? "–" : hunkIndex + 1}/{hunkTargets.length}{" "}
+                {hunkTargets.length === 1 ? "change" : "changes"}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToHunk(1)}
+                aria-label="Next change"
+                title="Next change"
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+          ) : null}
+          {!embedded ? (
+            <div className="diff-search-controls">
+              <label className="diff-search">
+                <Search size={13} />
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      goToSearchMatch(e.shiftKey ? -1 : 1);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSearchQuery("");
+                    }
+                  }}
+                  placeholder="Find loaded files"
+                  disabled={!hasSearchableDiff}
+                />
+              </label>
+              <span
+                className="diff-search-count"
+                role="status"
+                aria-live="polite"
+              >
+                {deferredSearchQuery && searchMatchCount
+                  ? `${searchIndex + 1}/${searchMatchCount}`
+                  : deferredSearchQuery
+                    ? "No results"
+                    : ""}
+              </span>
               <button
                 type="button"
                 className="diff-search-button"
-                onClick={() => {
-                  setSearchQuery("");
-                  focusSearch();
-                }}
-                aria-label="Clear diff search"
+                onClick={() => goToSearchMatch(-1)}
+                disabled={!searchMatchCount}
+                aria-label="Previous matching loaded file"
               >
-                <X size={14} />
+                <ChevronUp size={14} />
               </button>
-            ) : null}
-          </div>
+              <button
+                type="button"
+                className="diff-search-button"
+                onClick={() => goToSearchMatch(1)}
+                disabled={!searchMatchCount}
+                aria-label="Next matching loaded file"
+              >
+                <ChevronDown size={14} />
+              </button>
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className="diff-search-button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    focusSearch();
+                  }}
+                  aria-label="Clear diff search"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {!mobile ? (
             <div className="diff-display-controls">
               <div className="diff-view-toggle" aria-label="Diff view mode">

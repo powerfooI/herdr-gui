@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Align Files and Changes with shared Git status, keyboard file-tree navigation,
+  and inline per-file diff controls that preserve the selected view settings.
+
 ## 0.4.6 - 2026-08-25
 
 ### Added

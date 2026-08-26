@@ -1,5 +1,6 @@
 import {
   type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
@@ -22,6 +23,12 @@ import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
 import { downloadFileFromUrl } from "../downloadFile";
+import { gitDiffCode, type GitDiffCode } from "../gitDiffStatus";
+import {
+  refreshGitDiffSummary,
+  retireGitDiffSummaryResource,
+  useGitDiffSummaryState,
+} from "../gitDiffSummaryStore";
 import { store, useStoreSelector } from "../store";
 import {
   connectionClientScopeKey,
@@ -37,6 +44,11 @@ import type {
 } from "../types";
 import { CloseButton } from "./CloseButton";
 import { ConfirmDialog } from "./ModalDialogs";
+import {
+  focusTreeItem,
+  keyboardContextMenuPoint,
+  treeKeyboardAction,
+} from "./treeKeyboard";
 import {
   FilePreviewContent,
   type ActiveFilePreviewSelection,
@@ -82,6 +94,9 @@ type FileGitStatus = {
   tone: string;
   priority: number;
   count?: number;
+  entry?: GitDiffEntry;
+  entries?: GitDiffEntry[];
+  codes: GitDiffCode[];
 };
 
 const explorerCache = new Map<string, FileExplorerCache>();
@@ -148,6 +163,7 @@ export function clearFileExplorerResourceCache(
     const key = explorerCacheKey(client, undefined, showHidden, resourceKey);
     retireExplorerCache(key);
   }
+  retireGitDiffSummaryResource(client, resourceKey);
   storage.removeItem(
     connectionStorageKey(
       client.connectionId,
@@ -237,22 +253,89 @@ function readCachedPreview(key: string) {
   return preview;
 }
 
-function writeCachedPreview(key: string, preview: FilePreview) {
+function removeCachedPreview(key: string, retireRequest = false) {
   const existing = previewCache.get(key);
-  if (existing) previewCacheBytes -= estimatedPreviewBytes(existing);
+  if (existing) {
+    previewCacheBytes = Math.max(
+      0,
+      previewCacheBytes - estimatedPreviewBytes(existing),
+    );
+  }
   previewCache.delete(key);
+  if (retireRequest) {
+    const running = previewRequests.has(key);
+    previewRequests.delete(key);
+    if (running) {
+      previewRequestRevisions.set(
+        key,
+        (previewRequestRevisions.get(key) ?? 0) + 1,
+      );
+    } else {
+      previewRequestRevisions.delete(key);
+    }
+  } else if (!previewRequests.has(key)) {
+    previewRequestRevisions.delete(key);
+  }
+}
+
+function previewCacheKeyParts(key: string) {
+  try {
+    const parts = JSON.parse(key) as unknown[];
+    if (
+      typeof parts[0] !== "string" ||
+      typeof parts[1] !== "number" ||
+      parts[2] !== "preview" ||
+      typeof parts[3] !== "string" ||
+      typeof parts[4] !== "string"
+    ) {
+      return null;
+    }
+    return {
+      connectionId: parts[0],
+      generation: parts[1],
+      workspaceId: parts[3],
+      path: parts[4],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function invalidateFilePreviewCache(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId: string,
+  path: string,
+  recursive = false,
+) {
+  const keys = new Set([...previewCache.keys(), ...previewRequests.keys()]);
+  for (const key of keys) {
+    const parts = previewCacheKeyParts(key);
+    if (
+      !parts ||
+      parts.connectionId !== client.connectionId ||
+      parts.generation !== client.generation ||
+      parts.workspaceId !== workspaceId
+    ) {
+      continue;
+    }
+    if (
+      parts.path === path ||
+      (recursive && parts.path.startsWith(`${path}/`))
+    ) {
+      removeCachedPreview(key, true);
+    }
+  }
+}
+
+function writeCachedPreview(key: string, preview: FilePreview) {
+  removeCachedPreview(key);
   previewCache.set(key, preview);
   previewCacheBytes += estimatedPreviewBytes(preview);
 
   while (previewCacheBytes > MAX_PREVIEW_CACHE_BYTES && previewCache.size > 1) {
     const oldestKey = previewCache.keys().next().value;
     if (typeof oldestKey !== "string") break;
-    const oldest = previewCache.get(oldestKey);
-    previewCache.delete(oldestKey);
-    if (!previewRequests.has(oldestKey)) {
-      previewRequestRevisions.delete(oldestKey);
-    }
-    if (oldest) previewCacheBytes -= estimatedPreviewBytes(oldest);
+    removeCachedPreview(oldestKey);
   }
 }
 
@@ -379,12 +462,13 @@ function gitKindLabel(kind: GitDiffKind) {
   }
 }
 
-function buildGitStatusMaps(
+export function buildGitStatusMaps(
   summary: GitDiffSummary | null,
   explorerRoot?: string,
 ) {
   const fileStatuses = new Map<string, FileGitStatus>();
   const directoryChangedFiles = new Map<string, Set<string>>();
+  const directoryCodes = new Map<string, Set<GitDiffCode>>();
   if (!summary || !explorerRoot)
     return {
       fileStatuses,
@@ -400,17 +484,27 @@ function buildGitStatusMaps(
     );
     if (!mappedPath) continue;
     const existing = fileStatuses.get(mappedPath);
+    const codes = Array.from(
+      new Set([...(existing?.codes ?? []), gitDiffCode(entry)]),
+    );
+    const entries = [...(existing?.entries ?? []), entry];
     const next: FileGitStatus = {
       label: gitStatusLabel(entry),
       title: `${gitKindLabel(entry.kind)} ${entry.status}`,
       tone: gitStatusTone(entry),
       priority: gitStatusPriority(entry),
+      entry,
+      entries,
+      codes,
     };
     const currentDescriptions = descriptions.get(mappedPath) ?? [];
     currentDescriptions.push(next.title);
     descriptions.set(mappedPath, currentDescriptions);
     if (!existing || next.priority > existing.priority) {
       fileStatuses.set(mappedPath, next);
+    } else {
+      existing.codes = codes;
+      existing.entries = entries;
     }
 
     const parts = mappedPath.split("/").filter(Boolean);
@@ -420,6 +514,10 @@ function buildGitStatusMaps(
         directoryChangedFiles.get(directory) ?? new Set<string>();
       changedFiles.add(mappedPath);
       directoryChangedFiles.set(directory, changedFiles);
+      const codesBelow =
+        directoryCodes.get(directory) ?? new Set<GitDiffCode>();
+      codesBelow.add(gitDiffCode(entry));
+      directoryCodes.set(directory, codesBelow);
     }
   }
 
@@ -439,6 +537,7 @@ function buildGitStatusMaps(
       tone: "directory",
       priority: 10,
       count,
+      codes: Array.from(directoryCodes.get(path) ?? []),
     });
   }
 
@@ -458,7 +557,7 @@ export function requestFilePreview(
   const cached = readCachedPreview(key);
   if (cached && !options.refresh) return Promise.resolve(cached);
   const running = previewRequests.get(key);
-  if (running && !options.refresh) return running;
+  if (running) return running;
 
   const revision = (previewRequestRevisions.get(key) ?? 0) + 1;
   previewRequestRevisions.set(key, revision);
@@ -480,7 +579,9 @@ export function requestFilePreview(
     .finally(() => {
       if (previewRequests.get(key) === scopedTask) {
         previewRequests.delete(key);
-        if (!previewCache.has(key)) previewRequestRevisions.delete(key);
+      }
+      if (!previewCache.has(key) && !previewRequests.has(key)) {
+        previewRequestRevisions.delete(key);
       }
     });
   previewRequests.set(key, scopedTask);
@@ -670,19 +771,23 @@ export function FileExplorerPanel({
   resourceKey,
   initialDirectory,
   activePath,
+  keyboardActive = false,
   onClose,
   onPreviewChange,
+  onActiveDiffEntriesChange,
 }: {
   open: boolean;
   workspaceId?: string;
   resourceKey?: string;
   initialDirectory?: string;
   activePath?: string;
+  keyboardActive?: boolean;
   onClose: () => void;
   onPreviewChange?: (
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
   ) => void;
+  onActiveDiffEntriesChange?: (entries: GitDiffEntry[]) => void;
 }) {
   if (!open) return null;
 
@@ -697,7 +802,9 @@ export function FileExplorerPanel({
         showCloseButton={false}
         previewPlacement="external"
         activePath={activePath}
+        keyboardActive={keyboardActive}
         onPreviewChange={onPreviewChange}
+        onActiveDiffEntriesChange={onActiveDiffEntriesChange}
       />
     </aside>
   );
@@ -723,27 +830,57 @@ function FileExplorerEntryMenu({
   onDelete: (entry: FileExplorerEntry) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!state) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const close = () => onCloseRef.current();
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" || e.key === "Tab") {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const buttons = Array.from(
+        ref.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ??
+          [],
+      );
+      const currentIndex = buttons.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      if (!buttons.length || currentIndex < 0) return;
+      e.preventDefault();
+      const nextIndex =
+        e.key === "Home"
+          ? 0
+          : e.key === "End"
+            ? buttons.length - 1
+            : e.key === "ArrowDown"
+              ? (currentIndex + 1) % buttons.length
+              : (currentIndex - 1 + buttons.length) % buttons.length;
+      buttons[nextIndex]?.focus();
     };
     const t = setTimeout(() => {
       window.addEventListener("mousedown", onDown);
       window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", onClose, true);
+      window.addEventListener("scroll", close, true);
+      ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
     }, 0);
     return () => {
       clearTimeout(t);
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("scroll", close, true);
+      if (previousFocus?.isConnected)
+        previousFocus.focus({ preventScroll: true });
     };
-  }, [state, onClose]);
+  }, [state]);
 
   if (!state) return null;
 
@@ -780,11 +917,12 @@ function FileExplorerEntryMenu({
   };
 
   return (
-    <div ref={ref} className="context-menu" style={style}>
+    <div ref={ref} className="context-menu" style={style} role="menu">
       {items.map((item) => (
         <button
           key={item.label}
           className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
+          role="menuitem"
           onClick={() => {
             onClose();
             item.action();
@@ -806,7 +944,9 @@ function FileExplorerContent({
   showCloseButton,
   previewPlacement = "inline",
   activePath,
+  keyboardActive = false,
   onPreviewChange,
+  onActiveDiffEntriesChange,
 }: {
   open: boolean;
   workspaceId?: string;
@@ -816,10 +956,12 @@ function FileExplorerContent({
   showCloseButton: boolean;
   previewPlacement?: "inline" | "external";
   activePath?: string;
+  keyboardActive?: boolean;
   onPreviewChange?: (
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
   ) => void;
+  onActiveDiffEntriesChange?: (entries: GitDiffEntry[]) => void;
 }) {
   const workspaces = useStoreSelector((state) => state.workspaces);
   const connectionClient = useConnectionClient();
@@ -859,22 +1001,24 @@ function FileExplorerContent({
   );
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<FileExplorerEntry | null>(null);
-  const [gitSummary, setGitSummary] = useState<GitDiffSummary | null>(null);
-  const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<FileExplorerEntry | null>(
     null,
   );
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [focusedTreePath, setFocusedTreePath] = useState<string | null>(
+    activePath ?? null,
+  );
+  const [treeHasFocus, setTreeHasFocus] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const longPressTriggered = useRef(false);
-  const gitStatusRequestKeyRef = useRef<string | null>(null);
   const previewRequestKeyRef = useRef<string | null>(null);
   const previewRequestSequenceRef = useRef(0);
   const previousCacheResourceKeyRef = useRef<string | undefined>(undefined);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
+  const treeAutoFocusAppliedRef = useRef(false);
   const runtimeContext = explorerRuntimeContextKey(
     connectionClient,
     cacheWorkspaceId,
@@ -883,10 +1027,27 @@ function FileExplorerContent({
   const runtimeContextRef = useRef(runtimeContext);
   runtimeContextRef.current = runtimeContext;
   const { search, rootInfo, children, expanded, error } = cache;
-  const gitStatusMaps = useMemo(
-    () => buildGitStatusMaps(gitSummary, rootInfo?.root),
-    [gitSummary, rootInfo?.root],
+  const gitSummaryState = useGitDiffSummaryState(
+    connectionClient,
+    cacheWorkspaceId,
+    "working",
+    cacheResourceKey,
   );
+  const gitStatusMaps = useMemo(
+    () => buildGitStatusMaps(gitSummaryState.summary, rootInfo?.root),
+    [gitSummaryState.summary, rootInfo?.root],
+  );
+  const activeDiffEntries = useMemo(() => {
+    const status = activePath
+      ? gitStatusMaps.fileStatuses.get(activePath)
+      : undefined;
+    return status
+      ? [
+          ...(status.entries ?? []).filter((entry) => entry !== status.entry),
+          ...(status.entry ? [status.entry] : []),
+        ]
+      : [];
+  }, [activePath, gitStatusMaps]);
   const emitPreviewChange = (
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
@@ -899,6 +1060,10 @@ function FileExplorerContent({
   useEffect(() => {
     localStorage.setItem(showHiddenStorageKey, String(showHidden));
   }, [showHidden, showHiddenStorageKey]);
+
+  useEffect(() => {
+    onActiveDiffEntriesChange?.(activeDiffEntries);
+  }, [activeDiffEntries, onActiveDiffEntriesChange]);
 
   const updateCache = (patch: Partial<FileExplorerCache>) => {
     setCache((current) => {
@@ -985,47 +1150,18 @@ function FileExplorerContent({
     }
   };
 
-  const loadGitStatus = async () => {
-    if (!connectionClient.isCurrent()) return;
-    if (!workspace?.workspace_id) {
-      gitStatusRequestKeyRef.current = null;
-      setGitSummary(null);
-      setGitStatusLoading(false);
-      return;
-    }
-    const workspaceId = workspace.workspace_id;
-    const requestKey = connectionClientScopeKey(
-      connectionClient,
-      "git-status",
-      workspaceId,
-    );
-    gitStatusRequestKeyRef.current = requestKey;
-    setGitStatusLoading(true);
+  const loadGitStatus = async (afterCurrent = false) => {
+    if (!connectionClient.isCurrent() || !workspace?.workspace_id) return;
     try {
-      const summary = (await connectionClient.call("git.diff_summary", {
-        workspace_id: workspaceId,
-        mode: "working",
-      })) as GitDiffSummary;
-      if (
-        connectionClient.isCurrent() &&
-        gitStatusRequestKeyRef.current === requestKey
-      ) {
-        setGitSummary(summary);
-      }
+      await refreshGitDiffSummary(
+        connectionClient,
+        workspace.workspace_id,
+        "working",
+        cacheResourceKey,
+        { afterCurrent },
+      );
     } catch {
-      if (
-        connectionClient.isCurrent() &&
-        gitStatusRequestKeyRef.current === requestKey
-      ) {
-        setGitSummary(null);
-      }
-    } finally {
-      if (
-        connectionClient.isCurrent() &&
-        gitStatusRequestKeyRef.current === requestKey
-      ) {
-        setGitStatusLoading(false);
-      }
+      // Git status is supplementary; keep the file explorer usable on failure.
     }
   };
 
@@ -1069,9 +1205,6 @@ function FileExplorerContent({
     setDropTargetPath(null);
     setEntryMenu(null);
     setPendingDeleteEntry(null);
-    setGitSummary(null);
-    setGitStatusLoading(false);
-    gitStatusRequestKeyRef.current = null;
     if (resourceChanged && !activePath) {
       setPreviewEntry(null);
       setPreview(null);
@@ -1257,13 +1390,22 @@ function FileExplorerContent({
         }),
     [children],
   );
-  const searchEntries = query
-    ? loadedEntries.filter((entry) =>
-        [entry.name, entry.path].some((value) =>
-          value.toLowerCase().includes(query),
-        ),
-      )
-    : [];
+  const searchEntries = useMemo(
+    () =>
+      query
+        ? loadedEntries.filter((entry) =>
+            [entry.name, entry.path].some((value) =>
+              value.toLowerCase().includes(query),
+            ),
+          )
+        : [],
+    [loadedEntries, query],
+  );
+
+  useEffect(() => {
+    if (!activePath || !isWorkspaceRelativePath(activePath)) return;
+    setFocusedTreePath(activePath);
+  }, [activePath]);
 
   useEffect(() => {
     if (!activePath || !isWorkspaceRelativePath(activePath)) return;
@@ -1274,6 +1416,57 @@ function FileExplorerContent({
     ).find((candidate) => candidate.dataset.filePath === activePath);
     row?.scrollIntoView({ block: "nearest" });
   }, [activePath, children, expanded, query]);
+
+  useEffect(() => {
+    const items = Array.from(
+      fileTreeRef.current?.querySelectorAll<HTMLElement>(
+        ".file-row[role='treeitem']",
+      ) ?? [],
+    );
+    if (!items.length) {
+      if (focusedTreePath !== null) setFocusedTreePath(null);
+      return;
+    }
+    if (
+      focusedTreePath &&
+      items.some((item) => item.dataset.filePath === focusedTreePath)
+    ) {
+      return;
+    }
+    const next =
+      items.find((item) => item.dataset.filePath === activePath) ?? items[0];
+    setFocusedTreePath(next?.dataset.filePath ?? null);
+  }, [activePath, children, expanded, focusedTreePath, query, searchEntries]);
+
+  useEffect(() => {
+    if (!keyboardActive) {
+      treeAutoFocusAppliedRef.current = false;
+      return;
+    }
+    if (treeAutoFocusAppliedRef.current) return;
+    const tree = fileTreeRef.current;
+    const items = Array.from(
+      tree?.querySelectorAll<HTMLElement>(".file-row[role='treeitem']") ?? [],
+    );
+    if (!tree || !items.length) return;
+    const focusedElement = document.activeElement as HTMLElement | null;
+    const content = tree.closest(".file-explorer-content");
+    if (
+      focusedElement &&
+      (content?.contains(focusedElement) ||
+        focusedElement.closest("[role='tab']"))
+    ) {
+      treeAutoFocusAppliedRef.current = true;
+      return;
+    }
+    const target =
+      items.find((item) => item.dataset.filePath === focusedTreePath) ??
+      items.find((item) => item.dataset.filePath === activePath) ??
+      items[0];
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "nearest" });
+    treeAutoFocusAppliedRef.current = true;
+  }, [activePath, children, focusedTreePath, keyboardActive]);
 
   const toggleDirectory = (path: string) => {
     const next = new Set(expanded);
@@ -1288,6 +1481,9 @@ function FileExplorerContent({
 
   const loadPreview = async (entry: FileExplorerEntry) => {
     if (!workspace?.workspace_id || entry.type === "directory") return;
+    onActiveDiffEntriesChange?.(
+      gitStatusMaps.fileStatuses.get(entry.path)?.entries ?? [],
+    );
     const workspaceId = workspace.workspace_id;
     const key = filePreviewCacheKey(connectionClient, workspaceId, entry.path);
     const requestKey = `${key}:${++previewRequestSequenceRef.current}`;
@@ -1453,18 +1649,12 @@ function FileExplorerContent({
       selectedPath === entry.path ||
       (entry.type === "directory" &&
         selectedPath?.startsWith(`${entry.path}/`));
-    const cacheKey = filePreviewCacheKey(
+    invalidateFilePreviewCache(
       connectionClient,
       workspace.workspace_id,
       entry.path,
+      entry.type === "directory",
     );
-    previewCache.delete(cacheKey);
-    if (entry.type === "directory") {
-      const childCacheKeyPrefix = `${cacheKey}/`;
-      for (const key of previewCache.keys()) {
-        if (key.startsWith(childCacheKeyPrefix)) previewCache.delete(key);
-      }
-    }
     if (!deletedSelection) return;
     setPreviewEntry(null);
     setPreview(null);
@@ -1492,7 +1682,7 @@ function FileExplorerContent({
       clearDeletedPreview(entry);
       await loadDirectory(parentDirectoryPath(entry.path), true);
       if (!runtimeContextIsCurrent(requestContext)) return;
-      void loadGitStatus();
+      void loadGitStatus(true);
       store.notify({
         kind: "success",
         message:
@@ -1517,8 +1707,10 @@ function FileExplorerContent({
   const invalidateUploadedPreviews = (paths: string[]) => {
     if (!workspace?.workspace_id || !paths.length) return;
     for (const path of paths) {
-      previewCache.delete(
-        filePreviewCacheKey(connectionClient, workspace.workspace_id, path),
+      invalidateFilePreviewCache(
+        connectionClient,
+        workspace.workspace_id,
+        path,
       );
     }
     if (previewEntry && paths.includes(previewEntry.path)) {
@@ -1572,7 +1764,7 @@ function FileExplorerContent({
           result.status === "fulfilled" ? [result.value.path] : [],
         ),
       );
-      void loadGitStatus();
+      void loadGitStatus(true);
       const uploaded = results.length;
       store.notify({
         kind: "success",
@@ -1668,7 +1860,85 @@ function FileExplorerContent({
     longPressStart.current = null;
   };
 
-  const renderEntry = (entry: FileExplorerEntry, depth: number) => {
+  const activateEntry = (entry: FileExplorerEntry) => {
+    if (entry.type === "directory") toggleDirectory(entry.path);
+    else void loadPreview(entry);
+  };
+
+  const focusFirstChild = (current: HTMLElement) => {
+    const items = Array.from(
+      fileTreeRef.current?.querySelectorAll<HTMLElement>(
+        ".file-row[role='treeitem']",
+      ) ?? [],
+    );
+    const index = items.indexOf(current);
+    const child = items[index + 1];
+    if (
+      !child ||
+      Number(child.getAttribute("aria-level")) !==
+        Number(current.getAttribute("aria-level")) + 1
+    ) {
+      return;
+    }
+    current.tabIndex = -1;
+    child.tabIndex = 0;
+    child.focus({ preventScroll: true });
+    child.scrollIntoView({ block: "nearest" });
+  };
+
+  const handleEntryKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    entry: FileExplorerEntry,
+    isDirectory: boolean,
+    isExpanded: boolean,
+  ) => {
+    if (event.target !== event.currentTarget) return;
+    const action = treeKeyboardAction(event.key, event.shiftKey);
+    if (!action) return;
+    event.preventDefault();
+
+    if (
+      action === "next" ||
+      action === "previous" ||
+      action === "first" ||
+      action === "last"
+    ) {
+      focusTreeItem(event.currentTarget, action);
+      return;
+    }
+    if (action === "expand") {
+      if (isDirectory && !isExpanded) toggleDirectory(entry.path);
+      else if (isDirectory) focusFirstChild(event.currentTarget);
+      return;
+    }
+    if (action === "collapse") {
+      if (isDirectory && isExpanded) {
+        toggleDirectory(entry.path);
+        return;
+      }
+      const parentPath = parentDirectoryPath(entry.path);
+      const parent = Array.from(
+        fileTreeRef.current?.querySelectorAll<HTMLElement>(
+          ".file-row[role='treeitem']",
+        ) ?? [],
+      ).find((candidate) => candidate.dataset.filePath === parentPath);
+      parent?.focus({ preventScroll: true });
+      parent?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    event.stopPropagation();
+    if (action === "activate") activateEntry(entry);
+    else {
+      const point = keyboardContextMenuPoint(event.currentTarget);
+      openEntryMenu(entry, point.x, point.y);
+    }
+  };
+
+  const renderEntry = (
+    entry: FileExplorerEntry,
+    depth: number,
+    defaultTabStop = false,
+  ) => {
     const isDirectory = entry.type === "directory";
     const uploadDirectory = isDirectory
       ? entry.path
@@ -1689,13 +1959,30 @@ function FileExplorerContent({
         <div
           className={`file-row ${
             previewEntry?.path === entry.path ? "is-selected" : ""
-          } ${dropTargetPath === entry.path && isDirectory ? "is-drop-target" : ""} ${
-            uploading && isDirectory ? "is-uploading" : ""
-          }`}
+          } ${
+            treeHasFocus && focusedTreePath === entry.path ? "is-focused" : ""
+          } ${
+            dropTargetPath === entry.path && isDirectory ? "is-drop-target" : ""
+          } ${uploading && isDirectory ? "is-uploading" : ""}`}
           data-file-path={entry.path}
+          data-parent-path={parentDirectoryPath(entry.path)}
+          role="treeitem"
+          tabIndex={
+            focusedTreePath === entry.path ||
+            (!focusedTreePath && defaultTabStop)
+              ? 0
+              : -1
+          }
+          aria-level={depth + 1}
+          aria-selected={previewEntry?.path === entry.path}
+          aria-expanded={isDirectory ? isExpanded : undefined}
           style={{
             paddingLeft: FILE_TREE_BASE_INDENT + depth * FILE_TREE_INDENT,
           }}
+          onFocus={() => setFocusedTreePath(entry.path)}
+          onKeyDown={(event) =>
+            handleEntryKeyDown(event, entry, isDirectory, isExpanded)
+          }
           onDragOver={(e) => handleDirectoryDragOver(e, uploadDirectory)}
           onDragLeave={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -1713,24 +2000,25 @@ function FileExplorerContent({
           onPointerUp={handleEntryPointerEnd}
           onPointerCancel={handleEntryPointerEnd}
           onPointerLeave={handleEntryPointerEnd}
-          onClick={() => {
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
             if (longPressTriggered.current) {
               longPressTriggered.current = false;
               return;
             }
-            if (isDirectory) {
-              toggleDirectory(entry.path);
-            } else {
-              void loadPreview(entry);
-            }
+            activateEntry(entry);
           }}
         >
           <button
             type="button"
             className="file-twisty"
+            tabIndex={-1}
             disabled={!isDirectory}
             onClick={(e) => {
               e.stopPropagation();
+              e.currentTarget
+                .closest<HTMLElement>(".file-row")
+                ?.focus({ preventScroll: true });
               if (isDirectory) toggleDirectory(entry.path);
             }}
             aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
@@ -1760,10 +2048,20 @@ function FileExplorerContent({
           </span>
           {gitStatus ? (
             <span
-              className={`file-git-status is-${gitStatus.tone}`}
+              className="file-git-status"
               title={gitStatus.title}
+              role="img"
+              aria-label={gitStatus.title}
             >
-              {gitStatus.label}
+              {gitStatus.codes.map((code) => (
+                <span
+                  className={`git-status-code git-status-${code.toLowerCase()}`}
+                  key={code}
+                  aria-hidden="true"
+                >
+                  {code}
+                </span>
+              ))}
             </span>
           ) : null}
           {meta ? <span className="file-meta">{meta}</span> : null}
@@ -1774,11 +2072,15 @@ function FileExplorerContent({
             <button
               type="button"
               className="ghost file-action"
+              tabIndex={-1}
               title={
                 isDirectory ? "Download directory as tar.gz" : "Download file"
               }
               onClick={(e) => {
                 e.stopPropagation();
+                e.currentTarget
+                  .closest<HTMLElement>(".file-row")
+                  ?.focus({ preventScroll: true });
                 downloadEntry(entry);
               }}
             >
@@ -1787,9 +2089,13 @@ function FileExplorerContent({
             <button
               type="button"
               className="ghost file-action"
+              tabIndex={-1}
               title="Copy absolute path"
               onClick={(e) => {
                 e.stopPropagation();
+                e.currentTarget
+                  .closest<HTMLElement>(".file-row")
+                  ?.focus({ preventScroll: true });
                 void copyEntryPath(entry);
               }}
             >
@@ -1832,7 +2138,9 @@ function FileExplorerContent({
         </div>
       );
     }
-    return entries.map((entry) => renderEntry(entry, depth));
+    return entries.map((entry, index) =>
+      renderEntry(entry, depth, path === "" && index === 0),
+    );
   };
 
   const renderInitialLoading = () => (
@@ -1903,12 +2211,12 @@ function FileExplorerContent({
                 for (const path of pathsToRefresh) {
                   void loadDirectory(path, true);
                 }
-                void loadGitStatus();
+                void loadGitStatus(true);
                 if (previewEntry) void loadPreview(previewEntry);
               }}
             >
               <RefreshCw
-                className={gitStatusLoading ? "is-spinning" : ""}
+                className={gitSummaryState.loading ? "is-spinning" : ""}
                 size={15}
               />
             </button>
@@ -1925,6 +2233,12 @@ function FileExplorerContent({
             ref={fileTreeRef}
             className={`file-tree ${dropTargetPath === "" ? "is-drop-target" : ""}`}
             role="tree"
+            onFocusCapture={() => setTreeHasFocus(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setTreeHasFocus(false);
+              }
+            }}
             onDragOver={handleRootDragOver}
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -1946,7 +2260,9 @@ function FileExplorerContent({
             ) : null}
             {query ? (
               searchEntries.length ? (
-                searchEntries.map((entry) => renderEntry(entry, 0))
+                searchEntries.map((entry, index) =>
+                  renderEntry(entry, 0, index === 0),
+                )
               ) : (
                 <div className="file-row file-row-muted">
                   No loaded files match.

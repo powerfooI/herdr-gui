@@ -13,6 +13,7 @@ import {
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -23,7 +24,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { ConnectionClient } from "../api";
-import type { Pane, Workspace } from "../types";
+import type { GitDiffEntry, Pane, Workspace } from "../types";
 import {
   DEFAULT_INSPECTOR_NAVIGATION_RATIO,
   inspectorNavigationRatioAtPosition,
@@ -221,6 +222,10 @@ export function WorkspaceInspectorHost({
   const diffViewerRef = useRef<DiffViewerPanelHandle | null>(null);
   const splitId = useId();
   const [hostWidth, setHostWidth] = useState(0);
+  const [fileDiffState, setFileDiffState] = useState<{
+    resourceKey: string;
+    entries: GitDiffEntry[];
+  }>(() => ({ resourceKey: "", entries: [] }));
   const [drillInByView, setDrillInByView] = useState<
     Record<InspectorView, boolean>
   >(() => ({
@@ -230,6 +235,15 @@ export function WorkspaceInspectorHost({
   }));
   const resourceKey = resourceOwnerKey(state.scope);
   const contentResourceKey = resourceStateKey(state.scope);
+  const fileDiffEntries =
+    fileDiffState.resourceKey === contentResourceKey
+      ? fileDiffState.entries
+      : [];
+  const setFileDiffEntries = useCallback(
+    (entries: GitDiffEntry[]) =>
+      setFileDiffState({ resourceKey: contentResourceKey, entries }),
+    [contentResourceKey],
+  );
   const [navigationRatios, setNavigationRatios] = useState(() => {
     const preferences = readInspectorPreferences(localStorage, state.scope);
     return {
@@ -269,6 +283,21 @@ export function WorkspaceInspectorHost({
         ? !!diffSelection.entry
         : false;
   const hasDetail = detailAvailable && drillInByView[state.view];
+  const fileChangesEntries = fileSelection.entry
+    ? fileDiffEntries.filter(
+        (entry) => entry.path === fileSelection.entry?.path,
+      )
+    : [];
+  const primaryFileChangesEntry =
+    fileChangesEntries[fileChangesEntries.length - 1] ?? null;
+  const fileDiffSelectionMatches = fileChangesEntries.some(
+    (entry) =>
+      diffSelection.entry?.path === entry.path &&
+      diffSelection.entry.kind === entry.kind,
+  );
+  const fileChangesKey = fileChangesEntries
+    .map((entry) => `${entry.kind}:${entry.status}:${entry.path}`)
+    .join("|");
 
   useEffect(() => {
     if (state.view !== "files" || !fileSelection.entry) return;
@@ -276,6 +305,17 @@ export function WorkspaceInspectorHost({
   }, [fileSelection.entry, state.view]);
 
   const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" && state.view === "files") {
+      const treeItem = hostRef.current?.querySelector<HTMLElement>(
+        ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
+      );
+      if (treeItem) {
+        event.preventDefault();
+        treeItem.focus({ preventScroll: true });
+        treeItem.scrollIntoView({ block: "nearest" });
+      }
+      return;
+    }
     const views: InspectorView[] = historyAvailable
       ? ["files", "changes", "history"]
       : ["files", "changes"];
@@ -484,6 +524,9 @@ export function WorkspaceInspectorHost({
                 resourceKey={resourceKey}
                 initialDirectory={state.initialDirectory}
                 activePath={fileSelection.entry?.path}
+                keyboardActive={
+                  state.view === "files" && (!compact || !hasDetail)
+                }
                 onClose={onClose}
                 onPreviewChange={(selection, meta) => {
                   if (selection.entry && meta?.userInitiated) {
@@ -494,6 +537,7 @@ export function WorkspaceInspectorHost({
                   }
                   onFileSelectionChange?.(selection, meta);
                 }}
+                onActiveDiffEntriesChange={setFileDiffEntries}
               />
             </div>
             {splitEnabled ? (
@@ -511,6 +555,60 @@ export function WorkspaceInspectorHost({
                 preview={fileSelection.preview}
                 loading={fileSelection.loading}
                 error={fileSelection.error}
+                onOpenChanges={
+                  primaryFileChangesEntry
+                    ? () =>
+                        diffViewerRef.current?.selectWorkingEntries(
+                          fileChangesEntries,
+                        )
+                    : undefined
+                }
+                changesKey={fileChangesKey || undefined}
+                changesContent={
+                  primaryFileChangesEntry ? (
+                    <Suspense
+                      fallback={
+                        <div className="diff-content-state">
+                          <span className="file-loading-spinner" />
+                          Loading diff viewer
+                        </div>
+                      }
+                    >
+                      <DiffContentView
+                        key={`${contentResourceKey}:file-changes`}
+                        entry={
+                          fileDiffSelectionMatches
+                            ? diffSelection.entry
+                            : primaryFileChangesEntry
+                        }
+                        file={
+                          fileDiffSelectionMatches ? diffSelection.file : null
+                        }
+                        loading={
+                          !fileDiffSelectionMatches || diffSelection.loading
+                        }
+                        error={
+                          fileDiffSelectionMatches ? diffSelection.error : null
+                        }
+                        entries={fileChangesEntries}
+                        files={
+                          fileDiffSelectionMatches ? diffSelection.files : {}
+                        }
+                        fileErrors={
+                          fileDiffSelectionMatches
+                            ? diffSelection.fileErrors
+                            : {}
+                        }
+                        resourceKey={`${contentResourceKey}:file:${fileChangesKey}`}
+                        connectionClient={connectionClient}
+                        onSelectFile={(entry) =>
+                          diffViewerRef.current?.selectWorkingEntry(entry)
+                        }
+                        embedded
+                      />
+                    </Suspense>
+                  ) : undefined
+                }
               />
             </div>
           </div>

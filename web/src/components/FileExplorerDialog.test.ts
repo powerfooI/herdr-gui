@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionClient } from "../api";
-import type { FilePreview } from "../types";
+import type { FilePreview, GitDiffEntry, GitDiffSummary } from "../types";
 import {
+  buildGitStatusMaps,
   clearFileExplorerResourceCache,
   explorerCacheKey,
   explorerRuntimeContextKey,
   filePreviewCacheKey,
+  invalidateFilePreviewCache,
   prefetchFileExplorerWorkspace,
   requestFilePreview,
 } from "./FileExplorerDialog";
@@ -39,6 +41,42 @@ function client(
     acceptsServerGeneration: (value) => value === generation,
   };
 }
+
+describe("file explorer git status", () => {
+  test("preserves every diff entry for a partially staged file", () => {
+    const unstaged: GitDiffEntry = {
+      path: "src/components/App.tsx",
+      kind: "unstaged",
+      status: "modified",
+    };
+    const staged: GitDiffEntry = {
+      path: unstaged.path,
+      kind: "staged",
+      status: "modified",
+    };
+    const summary: GitDiffSummary = {
+      workspace_id: "workspace",
+      root: "/repo",
+      entries: [unstaged, staged],
+      counts: {
+        staged: 1,
+        unstaged: 1,
+        untracked: 0,
+        conflicted: 0,
+        branch: 0,
+      },
+    };
+
+    const status = buildGitStatusMaps(summary, "/repo").fileStatuses.get(
+      unstaged.path,
+    );
+
+    expect(status?.entry).toBe(staged);
+    expect(status?.entries).toEqual([unstaged, staged]);
+    expect(status?.label).toBe("Modified");
+    expect(status?.codes).toEqual(["M"]);
+  });
+});
 
 describe("connection-scoped file prefetch", () => {
   test("a retired prefetch cannot replace or detach its successor", async () => {
@@ -140,31 +178,55 @@ describe("connection-scoped file previews", () => {
     expect(calls).toBe(2);
   });
 
-  test("supersedes an in-flight preview when a refresh starts", async () => {
-    const resolvers: Array<(value: FilePreview) => void> = [];
+  test("deduplicates concurrent refresh consumers", async () => {
+    let resolvePreview: ((value: FilePreview) => void) | undefined;
     let calls = 0;
     const scopedClient = client("refresh-in-flight", 1, () => {
       calls += 1;
-      return new Promise<FilePreview>((resolve) => resolvers.push(resolve));
+      return new Promise<FilePreview>((resolve) => {
+        resolvePreview = resolve;
+      });
     });
 
-    const stale = requestFilePreview("same", "same.txt", {
+    const initial = requestFilePreview("same", "same.txt", {
       client: scopedClient,
     });
-    const fresh = requestFilePreview("same", "same.txt", {
+    const refresh = requestFilePreview("same", "same.txt", {
       client: scopedClient,
       refresh: true,
     });
-    expect(calls).toBe(2);
+    expect(refresh).toBe(initial);
+    expect(calls).toBe(1);
 
-    resolvers[0]?.(preview("stale"));
-    await expect(stale).rejects.toThrow("superseded");
-    resolvers[1]?.(preview("fresh"));
-    await expect(fresh).resolves.toMatchObject({ text: "fresh" });
-    await expect(
-      requestFilePreview("same", "same.txt", { client: scopedClient }),
-    ).resolves.toMatchObject({ text: "fresh" });
-    expect(calls).toBe(2);
+    resolvePreview?.(preview("shared"));
+    await expect(initial).resolves.toMatchObject({ text: "shared" });
+    await expect(refresh).resolves.toMatchObject({ text: "shared" });
+    expect(calls).toBe(1);
+  });
+
+  test("invalidates cached descendants without touching sibling paths", async () => {
+    let calls = 0;
+    const scopedClient = client(
+      "invalidate-directory",
+      1,
+      async (_method, params) => {
+        calls += 1;
+        return preview(String(params?.path));
+      },
+    );
+    for (const path of ["dir/a.txt", "dir/nested/b.txt", "dir-two/c.txt"]) {
+      await requestFilePreview("same", path, { client: scopedClient });
+    }
+    invalidateFilePreviewCache(scopedClient, "same", "dir", true);
+
+    await requestFilePreview("same", "dir/a.txt", { client: scopedClient });
+    await requestFilePreview("same", "dir/nested/b.txt", {
+      client: scopedClient,
+    });
+    await requestFilePreview("same", "dir-two/c.txt", {
+      client: scopedClient,
+    });
+    expect(calls).toBe(5);
   });
 
   test("evicts old previews when their estimated memory exceeds the budget", async () => {

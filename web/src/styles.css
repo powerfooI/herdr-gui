@@ -4481,6 +4481,12 @@ textarea:focus {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
+.file-row.is-focused,
+.file-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
+}
 .file-row.is-drop-target {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   outline: 1px dashed var(--accent);
@@ -4490,45 +4496,44 @@ textarea:focus {
   color: var(--text-strong);
 }
 .file-git-status {
-  max-width: 88px;
-  overflow: hidden;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.1;
-  text-overflow: ellipsis;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
   white-space: nowrap;
 }
-.file-git-status.is-modified {
-  border-color: color-mix(in srgb, var(--blue) 44%, var(--border));
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
+.git-status-code {
+  min-width: 10px;
+  color: var(--muted);
+  font:
+    800 10px / 1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  text-align: center;
+  opacity: 0.72;
+}
+.git-status-u {
   color: var(--blue);
 }
-.file-git-status.is-staged,
-.file-git-status.is-added {
-  border-color: color-mix(in srgb, var(--green) 46%, var(--border));
-  background: color-mix(in srgb, var(--green) 12%, transparent);
-  color: var(--green);
+.git-status-a {
+  color: var(--success-text);
 }
-.file-git-status.is-untracked {
-  border-color: color-mix(in srgb, var(--yellow) 46%, var(--border));
-  background: color-mix(in srgb, var(--yellow) 14%, transparent);
+.git-status-m {
   color: var(--warning-text);
 }
-.file-git-status.is-deleted,
-.file-git-status.is-conflict {
-  border-color: color-mix(in srgb, var(--red) 48%, var(--border));
-  background: var(--danger-soft);
+.git-status-d {
   color: var(--danger-text);
 }
-.file-git-status.is-directory {
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
-  color: var(--muted);
+.git-status-c {
+  color: var(--danger-text);
+}
+.file-row:hover .git-status-code,
+.diff-tree-row:hover .git-status-code,
+.diff-tree-row.is-selected .git-status-code {
+  opacity: 1;
 }
 .file-row-muted {
   display: block;
@@ -4648,13 +4653,40 @@ textarea:focus {
   justify-content: space-between;
   gap: 10px;
 }
-.file-preview-head strong {
+.file-preview-tabs {
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 7px;
+  background: var(--viewer-content-bg);
+}
+.file-preview-tabs button {
+  min-width: 0;
+  height: 24px;
   overflow: hidden;
-  color: var(--text-strong);
-  font-size: 13px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.file-preview-tabs button:first-child {
+  max-width: min(34vw, 260px);
+}
+.file-preview-tabs button:hover,
+.file-preview-tabs button.is-active {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.file-preview-tabs button.is-active {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .file-preview-mode-toggle {
   flex: 0 0 auto;
@@ -4674,6 +4706,18 @@ textarea:focus {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.file-preview-file-content,
+.file-preview-changes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.file-preview-changes > .diff-content-view {
+  border: none;
+  border-radius: 0;
 }
 .file-preview-state {
   flex: 1 1 auto;
@@ -5029,8 +5073,10 @@ textarea:focus {
 }
 .diff-tree-badges {
   display: inline-flex;
-  gap: 3px;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+  padding: 0 2px;
 }
 .diff-tree-stats {
   display: inline-flex;
@@ -5051,51 +5097,11 @@ textarea:focus {
 .diff-stat-del {
   color: var(--danger-text);
 }
-.diff-tree-badges .diff-kind {
-  max-width: 74px;
-}
 .diff-file-row:last-child {
   border-bottom: none;
 }
 .diff-file-row:hover,
 .diff-file-row.is-selected {
-  background: var(--accent-soft);
-}
-.diff-kind {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 1px 5px;
-  color: var(--muted);
-  font-size: 10px;
-  text-align: center;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.diff-kind-staged {
-  color: var(--success-text);
-  border-color: var(--green);
-  background: var(--success-soft);
-}
-.diff-kind-unstaged {
-  color: var(--warning-text);
-  border-color: var(--yellow);
-  background: var(--warning-soft);
-}
-.diff-kind-untracked {
-  color: var(--blue);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.diff-kind-conflicted {
-  color: var(--danger-text);
-  border-color: var(--danger-border);
-  background: var(--danger-soft);
-}
-.diff-kind-branch {
-  color: var(--blue);
-  border-color: var(--blue);
   background: var(--accent-soft);
 }
 .diff-file-main {
@@ -5156,6 +5162,14 @@ textarea:focus {
   border-bottom: 1px solid var(--viewer-border);
   background: var(--viewer-header-bg);
 }
+.diff-content-view.is-embedded .diff-content-head {
+  min-height: 38px;
+  justify-content: flex-end;
+  padding: 5px 8px;
+}
+.diff-content-view.is-embedded .diff-content-actions {
+  flex-basis: auto;
+}
 .diff-content-title {
   min-width: 0;
   flex: 1 1 160px;
@@ -5182,6 +5196,44 @@ textarea:focus {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+}
+.diff-hunk-navigation {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 8px;
+  background: var(--viewer-content-bg);
+}
+.diff-hunk-navigation button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.diff-hunk-navigation button:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.diff-hunk-navigation span {
+  min-width: 64px;
+  color: var(--muted);
+  font:
+    11px / 1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  text-align: center;
+  white-space: nowrap;
 }
 .diff-search-controls {
   min-width: 0;
@@ -5323,6 +5375,9 @@ textarea:focus {
   background: var(--diff-bg);
 }
 .diff-file-section:last-child {
+  border-bottom: none;
+}
+.diff-file-section.is-embedded {
   border-bottom: none;
 }
 .diff-file-section-head {
