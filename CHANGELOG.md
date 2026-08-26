@@ -7,6 +7,14 @@
 - Align Files and Changes with shared Git status, keyboard file-tree navigation,
   and inline per-file diff controls that preserve the selected view settings.
 
+### Fixed
+
+- Restore terminal content after returning from the lock screen or switching
+  apps in the mobile PWA: probe the bridge socket as soon as the page
+  foregrounds, repaint and re-attach terminals stuck without frames, and fall
+  back to a single rate-limited reload when the session cannot recover in
+  place instead of requiring a manual refresh.
+
 ## 0.4.6 - 2026-08-25
 
 ### Added

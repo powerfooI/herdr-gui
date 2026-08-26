@@ -79,6 +79,12 @@ import {
   type MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
 import { mobileTerminalShortcutExecution } from "../mobileTerminalShortcutAction";
+import {
+  readTerminalRecoveryReloadAt,
+  shouldArmTerminalRecoveryResume,
+  shouldReloadTerminalAfterResume,
+  writeTerminalRecoveryReloadAt,
+} from "../terminalRecovery";
 
 const SYSTEM_CLIPBOARD = "c" as ClipboardSelectionType;
 
@@ -520,6 +526,10 @@ export function TerminalView({
   }
   const attachTimeoutCountRef = useRef(0);
   const attachTimeoutTerminalRef = useRef<string | null>(null);
+  // Timestamp of the last foreground resume; gates the last-resort reload.
+  const resumedAtRef = useRef<number | null>(null);
+  // When the page last became hidden; measures the suspension length.
+  const hiddenAtRef = useRef<number | null>(null);
   const selectedPaneInLayout =
     s.selectedPaneId &&
     s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
@@ -1834,6 +1844,26 @@ export function TerminalView({
                 .catch(() => null);
               if (attachTimeoutCountRef.current > 2) {
                 setTerminalLoading(false);
+                // Repeated attaches produced no frames right after a
+                // foreground resume: the session is wedged in a way in-place
+                // recovery cannot fix (silently killed socket, wedged
+                // stream). Reload once, rate-limited, replicating the
+                // manual refresh that restores the terminal.
+                const now = Date.now();
+                if (
+                  shouldReloadTerminalAfterResume({
+                    now,
+                    resumedAt: resumedAtRef.current,
+                    lastReloadAt: readTerminalRecoveryReloadAt(),
+                  })
+                ) {
+                  writeTerminalRecoveryReloadAt(now);
+                  window.location.reload();
+                  return;
+                }
+                setTerminalAttachError(
+                  "Terminal stopped receiving frames. Reload the app to reconnect.",
+                );
                 return;
               }
               setAttachRetry((value) => value + 1);
@@ -1864,6 +1894,61 @@ export function TerminalView({
     connectionClient,
     termInstance,
   ]);
+
+  // Mobile browsers freeze the page while hidden: the socket can die
+  // silently, rendering pauses, and composited content may come back blank.
+  // On return, force a repaint and re-arm a stuck attach so the terminal
+  // recovers without a full-page reload. A dead socket is handled by the
+  // store-level probe, which flips the status and re-arms the attach epoch.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const recoverTerminal = (fromResume: boolean) => {
+      if (document.visibilityState !== "visible") return;
+      if (fromResume) {
+        // Arm the last-resort reload only after a genuinely long suspension
+        // (mobile lock screen, app backgrounding). Desktop tab switches
+        // fire visibilitychange too; a measured short one keeps the cheap
+        // recovery below but never arms an automatic reload.
+        const now = Date.now();
+        const hiddenAt = hiddenAtRef.current;
+        hiddenAtRef.current = null;
+        if (shouldArmTerminalRecoveryResume({ now, hiddenAt })) {
+          resumedAtRef.current = now;
+        }
+      }
+      attachTimeoutCountRef.current = 0;
+      const term = termRef.current;
+      if (term) {
+        try {
+          term.refresh(0, term.rows - 1);
+        } catch {
+          // The attach recovery below still applies.
+        }
+      }
+      if (!desiredTerminalRef.current) return;
+      if (store.get().status !== "connected") return;
+      // A live attach keeps streaming on its own; only a terminal that lost
+      // its attach (watchdog give-up, failed attach) needs a nudge.
+      if (attachedRef.current || attachingRef.current) return;
+      setAttachRetry((value) => value + 1);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+      recoverTerminal(true);
+    };
+    const onForegroundEvent = () => recoverTerminal(false);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", onForegroundEvent);
+    window.addEventListener("focus", onForegroundEvent);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", onForegroundEvent);
+      window.removeEventListener("focus", onForegroundEvent);
+    };
+  }, []);
 
   const runMobileShortcut = (shortcut: MobileTerminalShortcut) => {
     const execution = mobileTerminalShortcutExecution(shortcut.action);

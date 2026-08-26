@@ -1085,4 +1085,151 @@ describe("bridge connection lifecycle", () => {
     expect(parseConnectionSummary({ ...base, type: "unknown" })).toBeNull();
     expect(parseConnectionSummary({ ...base, state: "bogus" })).toBeNull();
   });
+
+  test("probeConnectionNow is a no-op while disconnected", () => {
+    installBrowserGlobals(HangingWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge();
+    expect(() => bridge.probeConnectionNow()).not.toThrow();
+    expect(bridge.status).toBe("disconnected");
+  });
+
+  test("probeConnectionNow drops a socket that closed without a close event", async () => {
+    class FrozenWebSocket extends HangingWebSocket {
+      static instances: FrozenWebSocket[] = [];
+
+      constructor() {
+        super();
+        FrozenWebSocket.instances.push(this);
+        queueMicrotask(() => {
+          this.readyState = FrozenWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+
+      // Simulates the OS killing the socket while the page was frozen: the
+      // readyState moves on but no close event is ever delivered.
+      closeSilently() {
+        this.readyState = FrozenWebSocket.CLOSED;
+      }
+    }
+    installBrowserGlobals(FrozenWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(50, 1);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(FrozenWebSocket.instances[0]);
+    expect(bridge.status).toBe("connected");
+
+    FrozenWebSocket.instances[0].closeSilently();
+    bridge.probeConnectionNow();
+    expect(bridge.status).toBe("disconnected");
+
+    await Bun.sleep(10);
+    expect(FrozenWebSocket.instances.length).toBe(2);
+  });
+
+  test("does not advance the client generation twice when a probe rejects during teardown", async () => {
+    class ProbedWebSocket extends HangingWebSocket {
+      static instance: ProbedWebSocket;
+      sent: string[] = [];
+
+      constructor() {
+        super();
+        ProbedWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ProbedWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+
+      send(raw = "") {
+        this.sent.push(raw);
+      }
+    }
+    installBrowserGlobals(ProbedWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(50);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ProbedWebSocket.instance);
+    const generation = bridge.clientGeneration;
+
+    // Simulate the frozen-page resume burst: a heartbeat probe goes out on
+    // the zombie socket, then the delayed close event arrives. rejectPending
+    // rejects the probe, whose handler must not force a second teardown.
+    bridge.probeConnectionNow();
+    expect(ProbedWebSocket.instance.sent.length).toBe(1);
+    ProbedWebSocket.instance.onclose?.();
+    await Bun.sleep(1);
+
+    expect(bridge.clientGeneration).toBe(generation + 1);
+  });
+
+  test("handleDisconnect stays idempotent once the socket is fully torn down", async () => {
+    class OpeningWebSocket extends HangingWebSocket {
+      static instance: OpeningWebSocket;
+
+      constructor() {
+        super();
+        OpeningWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = OpeningWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+    }
+    installBrowserGlobals(OpeningWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(50);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(OpeningWebSocket.instance);
+    const generation = bridge.clientGeneration;
+
+    OpeningWebSocket.instance.onclose?.();
+    expect(bridge.clientGeneration).toBe(generation + 1);
+
+    // A repeated teardown with no live socket must not advance the client
+    // generation again: status handlers only fire on transitions, so
+    // generation-scoped clients captured the first advance and would never
+    // learn a second one.
+    const internals = bridge as unknown as {
+      handleDisconnect(ws: WebSocket | null, reason: string): void;
+    };
+    internals.handleDisconnect(null, "stale repeated teardown");
+    expect(bridge.clientGeneration).toBe(generation + 1);
+  });
+
+  test("probeConnectionNow pings an open socket and stays connected on reply", async () => {
+    class ProbedWebSocket extends HangingWebSocket {
+      static instance: ProbedWebSocket;
+      sent: string[] = [];
+
+      constructor() {
+        super();
+        ProbedWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ProbedWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+
+      send(raw = "") {
+        this.sent.push(raw);
+      }
+    }
+    installBrowserGlobals(ProbedWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(50);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ProbedWebSocket.instance);
+
+    bridge.probeConnectionNow();
+    expect(ProbedWebSocket.instance.sent.length).toBe(1);
+    const ping = JSON.parse(ProbedWebSocket.instance.sent[0]);
+    expect(ping.method).toBe("bridge.ping");
+
+    ProbedWebSocket.instance.onmessage?.({
+      data: JSON.stringify({ id: ping.id, result: { ok: true } }),
+    } as MessageEvent);
+    await Bun.sleep(5);
+    expect(bridge.status).toBe("connected");
+  });
 });

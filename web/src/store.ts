@@ -1775,6 +1775,10 @@ export const store = {
     // visible, focused, or back online instead of waiting out the throttle.
     const refreshOnReturn = () => {
       if (state.connectionPaused || state.status !== "connected") return;
+      // Mobile OSes can silently kill the socket while the page is frozen;
+      // probe now so reconnect and terminal re-attach start immediately
+      // instead of waiting for the next heartbeat tick.
+      bridge.probeConnectionNow();
       void refreshNow();
       void refreshBridgeStatus();
     };

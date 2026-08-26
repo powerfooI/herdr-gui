@@ -530,19 +530,48 @@ export class Bridge {
   private startHeartbeat() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
-      if (this.heartbeatInFlight) return;
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-      this.heartbeatInFlight = true;
-      this.call("bridge.ping", {}, HEARTBEAT_TIMEOUT_MS).then(
-        () => {
-          this.heartbeatInFlight = false;
-        },
-        () => {
-          this.heartbeatInFlight = false;
-          this.forceReconnect("bridge heartbeat timed out");
-        },
-      );
+      this.runHeartbeatProbe();
     }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private runHeartbeatProbe() {
+    if (this.heartbeatInFlight) return;
+    this.heartbeatInFlight = true;
+    this.call("bridge.ping", {}, HEARTBEAT_TIMEOUT_MS).then(
+      () => {
+        this.heartbeatInFlight = false;
+      },
+      () => {
+        this.heartbeatInFlight = false;
+        // A rejected ping can also arrive because the socket was already
+        // torn down (rejectPending during handleDisconnect). Only a live
+        // connection may be force-reconnected; otherwise the extra
+        // handleDisconnect would advance the client generation a second
+        // time without a status transition, silently desyncing every
+        // generation-scoped client captured at the first transition.
+        if (this._status === "connected") {
+          this.forceReconnect("bridge heartbeat timed out");
+        }
+      },
+    );
+  }
+
+  /**
+   * Probes a seemingly connected socket right away. Mobile operating systems
+   * can kill the WebSocket while the page is frozen without ever delivering
+   * a close event, so on a foreground resume the next scheduled heartbeat
+   * tick would be the first time a dead connection is noticed.
+   */
+  probeConnectionNow() {
+    if (this._status !== "connected") return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      // The close event never fired (the OS froze the page first), so drop
+      // the stale socket instead of waiting for the heartbeat interval.
+      this.forceReconnect("bridge socket is no longer open");
+      return;
+    }
+    this.runHeartbeatProbe();
   }
 
   private stopHeartbeat() {
@@ -572,6 +601,13 @@ export class Bridge {
 
   private handleDisconnect(ws: WebSocket | null, reason: string) {
     if (ws && this.ws !== ws) return;
+    // Defense in depth: once fully torn down, handleDisconnect is
+    // idempotent. Stale close events are filtered by the socket-identity
+    // check above and the heartbeat probe only force-reconnects a live
+    // connection, but no current or future forceReconnect path may advance
+    // the client generation twice without a status transition: listeners
+    // captured the first advance and would never learn the second.
+    if (!ws && this.ws === null && this._status === "disconnected") return;
     this.ws = null;
     this._hello = null;
     this.helloAcceptedForSocket = false;
