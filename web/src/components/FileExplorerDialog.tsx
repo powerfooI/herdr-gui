@@ -500,11 +500,17 @@ export function buildGitStatusMaps(
     const currentDescriptions = descriptions.get(mappedPath) ?? [];
     currentDescriptions.push(next.title);
     descriptions.set(mappedPath, currentDescriptions);
-    if (!existing || next.priority > existing.priority) {
-      fileStatuses.set(mappedPath, next);
-    } else {
+    const preferred =
+      !existing || next.priority > existing.priority ? next : existing;
+    const orderedEntries = [
+      ...entries.filter((candidate) => candidate !== preferred.entry),
+      ...(preferred.entry ? [preferred.entry] : []),
+    ];
+    if (preferred === next) {
+      fileStatuses.set(mappedPath, { ...next, entries: orderedEntries });
+    } else if (existing) {
       existing.codes = codes;
-      existing.entries = entries;
+      existing.entries = orderedEntries;
     }
 
     const parts = mappedPath.split("/").filter(Boolean);
@@ -1037,17 +1043,13 @@ function FileExplorerContent({
     () => buildGitStatusMaps(gitSummaryState.summary, rootInfo?.root),
     [gitSummaryState.summary, rootInfo?.root],
   );
-  const activeDiffEntries = useMemo(() => {
-    const status = activePath
-      ? gitStatusMaps.fileStatuses.get(activePath)
-      : undefined;
-    return status
-      ? [
-          ...(status.entries ?? []).filter((entry) => entry !== status.entry),
-          ...(status.entry ? [status.entry] : []),
-        ]
-      : [];
-  }, [activePath, gitStatusMaps]);
+  const activeDiffEntries = useMemo(
+    () =>
+      activePath
+        ? (gitStatusMaps.fileStatuses.get(activePath)?.entries ?? [])
+        : [],
+    [activePath, gitStatusMaps],
+  );
   const emitPreviewChange = (
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,

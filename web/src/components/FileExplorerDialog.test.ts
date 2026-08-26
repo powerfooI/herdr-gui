@@ -57,7 +57,7 @@ describe("file explorer git status", () => {
     const summary: GitDiffSummary = {
       workspace_id: "workspace",
       root: "/repo",
-      entries: [unstaged, staged],
+      entries: [staged, unstaged],
       counts: {
         staged: 1,
         unstaged: 1,
