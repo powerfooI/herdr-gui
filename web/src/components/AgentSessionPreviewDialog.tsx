@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo } from "react";
+import { createPortal } from "react-dom";
 import {
   Brain,
   ChevronRight,
@@ -142,7 +143,10 @@ export function AgentSessionPreviewDialog({
     summary?.detail ||
     "No readable session transcript was reported for this agent.";
 
-  return (
+  // Render at the document root for the same reason as AgentMessageDialog:
+  // on mobile the transformed .app box and the inspector slot's stacking
+  // context would otherwise let the topbar paint over the dialog.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
         ref={dialogRef}
@@ -319,7 +323,8 @@ export function AgentSessionPreviewDialog({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

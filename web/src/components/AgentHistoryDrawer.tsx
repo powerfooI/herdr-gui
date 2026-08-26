@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Copy, Download, Eye, RefreshCw, X } from "lucide-react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { Copy, Download, Eye, RefreshCw, X } from "lucide-react";
 import { useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import type { Pane } from "../types";
@@ -16,10 +23,7 @@ import {
   formatOptionalCompact,
   formatTokenTotal,
   tokenUsage,
-  visibleSessionMessages,
 } from "./agentSession";
-
-const SHOW_ASSISTANT_MESSAGES_KEY = "sessionInspectShowAssistantMessages";
 
 type AgentHistoryEntry = {
   id: string;
@@ -71,33 +75,18 @@ function messageSummary(text: string) {
   return `${lines.length} lines`;
 }
 
-function initialShowAssistantMessages() {
-  try {
-    return (
-      typeof localStorage === "undefined" ||
-      localStorage.getItem(SHOW_ASSISTANT_MESSAGES_KEY) !== "false"
-    );
-  } catch {
-    return true;
-  }
-}
-
-function persistShowAssistantMessages(value: boolean) {
-  try {
-    localStorage.setItem(SHOW_ASSISTANT_MESSAGES_KEY, String(value));
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
-function AgentHistoryMessageCard({
+// Cards are memoized because the timeline can hold hundreds of them and the
+// drawer's minimap viewport tracking re-renders on every scroll boundary.
+const AgentHistoryMessageCard = memo(function AgentHistoryMessageCard({
   entry,
   index,
+  highlighted = false,
   onExpand,
 }: {
   entry: AgentHistoryEntry;
   index: number;
-  onExpand: () => void;
+  highlighted?: boolean;
+  onExpand: (entry: AgentHistoryEntry) => void;
 }) {
   const contentRef = useRef<HTMLPreElement>(null);
   const [truncated, setTruncated] = useState(false);
@@ -121,7 +110,12 @@ function AgentHistoryMessageCard({
   const roleLabel = entry.role === "assistant" ? "Assistant" : "You";
   const roleAriaLabel = entry.role === "assistant" ? "assistant" : "user";
   return (
-    <article className={`agent-history-card is-${entry.role}`}>
+    <article
+      className={`agent-history-card is-${entry.role} ${
+        highlighted ? "is-minimap-target" : ""
+      }`}
+      data-sequence={index}
+    >
       <div className="agent-history-card-meta">
         <strong className="agent-history-card-role">{roleLabel}</strong>
         <small>#{index}</small>
@@ -142,13 +136,151 @@ function AgentHistoryMessageCard({
       <button
         type="button"
         className={`agent-history-card-open ${truncated ? "is-truncated" : ""}`}
-        onClick={onExpand}
+        onClick={() => onExpand(entry)}
         aria-label={`View ${roleAriaLabel} message ${index}`}
       >
         <pre ref={contentRef}>{entry.text}</pre>
         {truncated ? <span>View full message</span> : null}
       </button>
     </article>
+  );
+});
+
+type MessageMinimapVisibleRange = { start: number; end: number };
+
+function minimapPrefersReducedMotion() {
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  );
+}
+
+// The minimap keeps its bars in a uniform-width flex row, so a pointer
+// position maps to a message index from the strip geometry alone.
+function AgentHistoryMinimap({
+  entries,
+  visibleRange,
+  onSelect,
+}: {
+  entries: { message: AgentHistoryEntry; sequence: number }[];
+  visibleRange: MessageMinimapVisibleRange | null;
+  onSelect: (sequence: number) => void;
+}) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const scrubbingRef = useRef(false);
+  const visibleRangeRef = useRef<MessageMinimapVisibleRange | null>(null);
+  visibleRangeRef.current = visibleRange;
+
+  // With more messages than the strip can fit, the bars overflow and the
+  // strip scrolls horizontally; keep the raised wave inside the strip's own
+  // viewport instead of letting it drift out of sight. Suppressed while the
+  // user is scrubbing so the strip never moves under their finger.
+  const centerWave = useCallback(() => {
+    const strip = stripRef.current;
+    const range = visibleRangeRef.current;
+    if (!strip || !range || scrubbingRef.current) return;
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    const startBar = strip.children[range.start - 1];
+    const endBar = strip.children[range.end - 1];
+    if (!(startBar instanceof HTMLElement) || !(endBar instanceof HTMLElement))
+      return;
+    const stripRect = strip.getBoundingClientRect();
+    const waveLeft =
+      startBar.getBoundingClientRect().left - stripRect.left + strip.scrollLeft;
+    const waveRight =
+      endBar.getBoundingClientRect().right - stripRect.left + strip.scrollLeft;
+    const target = Math.max(
+      0,
+      Math.min(
+        strip.scrollWidth - strip.clientWidth,
+        (waveLeft + waveRight - strip.clientWidth) / 2,
+      ),
+    );
+    strip.scrollTo({
+      left: target,
+      behavior: minimapPrefersReducedMotion() ? "auto" : "smooth",
+    });
+  }, []);
+
+  useEffect(() => {
+    centerWave();
+  }, [centerWave, visibleRange]);
+
+  const sequenceAtClientX = useCallback(
+    (clientX: number) => {
+      const strip = stripRef.current;
+      const firstBar = strip?.firstElementChild;
+      if (!strip || !(firstBar instanceof HTMLElement)) return null;
+      const count = entries.length;
+      if (count === 0) return null;
+      // Keep the gap in sync with .agent-history-minimap in styles.css.
+      const stride = firstBar.offsetWidth + 2;
+      if (stride <= 0) return null;
+      const stripRect = strip.getBoundingClientRect();
+      const barsLeft =
+        firstBar.getBoundingClientRect().left -
+        stripRect.left +
+        strip.scrollLeft;
+      const contentX = clientX - stripRect.left + strip.scrollLeft - barsLeft;
+      const index = Math.max(
+        0,
+        Math.min(count - 1, Math.floor(contentX / stride)),
+      );
+      return entries[index]?.sequence ?? null;
+    },
+    [entries],
+  );
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Capture so a drag keeps scrubbing even off the strip.
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scrubbingRef.current = true;
+    const sequence = sequenceAtClientX(event.clientX);
+    if (sequence !== null) onSelect(sequence);
+  };
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Only scrub for drags that started on the strip (pointer capture keeps
+    // routing those here); ignore selections dragged across from elsewhere.
+    if (!scrubbingRef.current || event.buttons === 0) return;
+    const sequence = sequenceAtClientX(event.clientX);
+    if (sequence !== null) onSelect(sequence);
+  };
+  const handlePointerEnd = () => {
+    scrubbingRef.current = false;
+    centerWave();
+  };
+
+  return (
+    <div
+      ref={stripRef}
+      className="agent-history-minimap"
+      role="group"
+      aria-label="Message index"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+    >
+      {entries.map(({ message, sequence }) => {
+        const roleLabel = message.role === "assistant" ? "assistant" : "user";
+        const inView =
+          visibleRange !== null &&
+          sequence >= visibleRange.start &&
+          sequence <= visibleRange.end;
+        return (
+          <button
+            key={message.id}
+            type="button"
+            className={
+              `agent-history-minimap-bar is-${message.role}` +
+              (inView ? " is-in-view" : "")
+            }
+            title={`#${sequence} ${roleLabel}`}
+            aria-label={`Go to message ${sequence} (${roleLabel})`}
+            onClick={() => onSelect(sequence)}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -173,9 +305,6 @@ export function AgentHistoryDrawer({
   const [drawerTab, setDrawerTab] = useState<"messages" | "details">(
     "messages",
   );
-  const [showAssistantMessages, setShowAssistantMessages] = useState(
-    initialShowAssistantMessages,
-  );
   const [previewPane, setPreviewPane] = useState<Pane | null>(null);
   const [previewSummary, setPreviewSummary] =
     useState<AgentSessionSummary | null>(null);
@@ -185,6 +314,15 @@ export function AgentHistoryDrawer({
     useState<AgentHistoryEntry | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [highlightedSequence, setHighlightedSequence] = useState<number | null>(
+    null,
+  );
+  const [visibleRange, setVisibleRange] =
+    useState<MessageMinimapVisibleRange | null>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const visibleRangeKeyRef = useRef("");
+  const highlightTimerRef = useRef<number | null>(null);
   const loadSeqRef = useRef(0);
   const previewSeqRef = useRef(0);
 
@@ -252,6 +390,13 @@ export function AgentHistoryDrawer({
     // switched connection or replacement runtime.
     loadSeqRef.current += 1;
     previewSeqRef.current += 1;
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    setHighlightedSequence(null);
+    visibleRangeKeyRef.current = "";
+    setVisibleRange(null);
     setHistory(null);
     setSession(null);
     setDrawerTab("messages");
@@ -324,16 +469,112 @@ export function AgentHistoryDrawer({
     setPreviewError("");
   }, []);
 
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const messagesKey = history?.messages;
+
+  // Track which messages the timeline viewport contains so the minimap can
+  // raise their bars as a moving "wave" while scrolling. Geometry-based
+  // instead of IntersectionObserver: it updates every scroll frame and does
+  // not depend on observer delivery timing, which mobile browsers throttle
+  // aggressively during momentum scrolling.
+  useEffect(() => {
+    const root = contentRef.current;
+    const timeline = timelineRef.current;
+    if (!open || drawerTab !== "messages" || !root || !timeline) {
+      visibleRangeKeyRef.current = "";
+      setVisibleRange(null);
+      return;
+    }
+    const publish = (range: MessageMinimapVisibleRange | null) => {
+      const key = range ? `${range.start}:${range.end}` : "";
+      // Scrolling crosses card boundaries constantly; skip no-op publishes so
+      // the drawer only re-renders when the visible range actually changes.
+      if (key === visibleRangeKeyRef.current) return;
+      visibleRangeKeyRef.current = key;
+      setVisibleRange(range);
+    };
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      const rootRect = root.getBoundingClientRect();
+      // Clip the viewport rect to the visible screen as well. Normally the
+      // content container clips the timeline itself, but if an ancestor ends
+      // up being the scroller (mobile viewport quirks) the container's rect
+      // spans every card and would mark all bars in-view.
+      const viewTop = Math.max(rootRect.top, 0);
+      const viewBottom = Math.min(rootRect.bottom, window.innerHeight);
+      let min = Infinity;
+      let max = -Infinity;
+      for (const card of timeline.children) {
+        const rect = card.getBoundingClientRect();
+        if (rect.bottom <= viewTop || rect.top >= viewBottom) continue;
+        const sequence = Number((card as HTMLElement).dataset.sequence);
+        if (!Number.isFinite(sequence)) continue;
+        min = Math.min(min, sequence);
+        max = Math.max(max, sequence);
+      }
+      publish(min <= max ? { start: min, end: max } : null);
+    };
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(recompute);
+    };
+    schedule();
+    const resizeObserver = new ResizeObserver(schedule);
+    resizeObserver.observe(root);
+    // Scroll events do not bubble, but capture listeners on window fire for
+    // scrolls on any descendant, so this covers the content container and
+    // any ancestor that ends up scrolling instead.
+    window.addEventListener("scroll", schedule, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [drawerTab, messagesKey, open]);
+
   // Stable identity so the message dialog's focus effect only re-runs when the
   // message itself changes, not on every drawer re-render.
   const closeExpandedMessage = useCallback(() => setExpandedMessage(null), []);
 
+  const scrollToMessage = useCallback((sequence: number) => {
+    const card = timelineRef.current?.querySelector(
+      `[data-sequence="${sequence}"]`,
+    );
+    if (!(card instanceof HTMLElement)) return;
+    const reduceMotion = minimapPrefersReducedMotion();
+    card.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    setHighlightedSequence(sequence);
+    highlightTimerRef.current = window.setTimeout(() => {
+      highlightTimerRef.current = null;
+      setHighlightedSequence(null);
+    }, 1200);
+  }, []);
+
   const usage = tokenUsage(session);
   const messages = history?.messages ?? [];
-  const visibleMessages = visibleSessionMessages(
-    messages,
-    showAssistantMessages,
-  );
+  const messageEntries = messages.map((message, index) => ({
+    message,
+    sequence: index + 1,
+  }));
   const sessionReady = session?.status === "ok";
   const historyReady = history?.status === "ok" || messages.length > 0;
   const hasSessionData = sessionReady || historyReady;
@@ -356,6 +597,7 @@ export function AgentHistoryDrawer({
         className={`agent-history-drawer ${open ? "is-open" : ""} ${
           embedded ? "is-embedded" : ""
         }`}
+        data-drawer-tab={drawerTab}
         aria-label="Agent session"
         aria-hidden={!open}
       >
@@ -468,49 +710,18 @@ export function AgentHistoryDrawer({
                 role="tablist"
                 aria-label="Session drawer view"
               >
-                <div
-                  className={
-                    "agent-history-message-tab" +
-                    (drawerTab === "messages" ? " is-active" : "")
-                  }
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={drawerTab === "messages"}
+                  className={drawerTab === "messages" ? "is-active" : ""}
+                  onClick={() => setDrawerTab("messages")}
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={drawerTab === "messages"}
-                    onClick={() => setDrawerTab("messages")}
-                  >
-                    Messages
-                    {visibleMessages.length > 0 ? (
-                      <span>{visibleMessages.length}</span>
-                    ) : null}
-                  </button>
-                  {drawerTab === "messages" ? (
-                    <div
-                      className="agent-history-assistant-filter"
-                      title="Show assistant messages"
-                    >
-                      <Bot size={12} aria-hidden="true" />
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Show assistant messages"
-                        aria-checked={showAssistantMessages}
-                        className={
-                          "agent-history-assistant-switch" +
-                          (showAssistantMessages ? " is-on" : "")
-                        }
-                        onClick={() => {
-                          const next = !showAssistantMessages;
-                          setShowAssistantMessages(next);
-                          persistShowAssistantMessages(next);
-                        }}
-                      >
-                        <span />
-                      </button>
-                    </div>
+                  Messages
+                  {messageEntries.length > 0 ? (
+                    <span>{messageEntries.length}</span>
                   ) : null}
-                </div>
+                </button>
                 <button
                   type="button"
                   role="tab"
@@ -525,31 +736,43 @@ export function AgentHistoryDrawer({
 
             {error ? <div className="agent-history-error">{error}</div> : null}
             {drawerTab === "messages" ? (
-              <div className="agent-history-content" role="tabpanel">
-                {loading && messages.length === 0 ? (
-                  <div className="agent-history-state">
-                    <span className="terminal-loading-dot" />
-                    Loading messages
-                  </div>
-                ) : visibleMessages.length === 0 ? (
-                  <div className="agent-history-state">
-                    {messages.length > 0
-                      ? "No user messages were found in this session."
-                      : "No conversation messages were found in this session."}
-                  </div>
-                ) : (
-                  <div className="agent-history-timeline">
-                    {visibleMessages.map(({ message, sequence }) => (
-                      <AgentHistoryMessageCard
-                        entry={message}
-                        index={sequence}
-                        key={message.id}
-                        onExpand={() => setExpandedMessage(message)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <>
+                {messageEntries.length > 1 ? (
+                  <AgentHistoryMinimap
+                    entries={messageEntries}
+                    visibleRange={visibleRange}
+                    onSelect={scrollToMessage}
+                  />
+                ) : null}
+                <div
+                  className="agent-history-content"
+                  role="tabpanel"
+                  ref={contentRef}
+                >
+                  {loading && messages.length === 0 ? (
+                    <div className="agent-history-state">
+                      <span className="terminal-loading-dot" />
+                      Loading messages
+                    </div>
+                  ) : messageEntries.length === 0 ? (
+                    <div className="agent-history-state">
+                      No conversation messages were found in this session.
+                    </div>
+                  ) : (
+                    <div className="agent-history-timeline" ref={timelineRef}>
+                      {messageEntries.map(({ message, sequence }) => (
+                        <AgentHistoryMessageCard
+                          entry={message}
+                          index={sequence}
+                          key={message.id}
+                          highlighted={highlightedSequence === sequence}
+                          onExpand={setExpandedMessage}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="agent-history-details" role="tabpanel">
                 <DetailRow label="Workspace" value={workspaceLabel} />

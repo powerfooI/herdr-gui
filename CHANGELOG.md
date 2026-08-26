@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed
+
+- Improve the session History view on phones: hide the Turns/Tokens overview
+  strip from the Messages tab (it appears under the Details tab instead),
+  hide the Inspector's Files/Changes/History tab bar on phones (the bottom
+  navigation switches views already), shrink the full-message preview font,
+  and render the message and transcript dialogs at the document root so they
+  stay within the visible viewport and above the top bar instead of being
+  covered by it when the on-screen keyboard or pinch zoom shrinks the app.
+- Stop showing hover tooltips for touch taps on phones: focus-triggered
+  tooltips now require keyboard-style (:focus-visible) focus, so tapping the
+  bottom navigation no longer leaves a tooltip stuck until the next tap.
+- Keep the session History drawer's bottom buttons above the phone's safe
+  area so they stay tappable instead of sliding under the browser's bottom
+  bar or home indicator.
+- Always show user and assistant messages together in the session History
+  view (dropping the assistant-message filter switch) and add a message
+  minimap above the timeline with one color-coded bar per message. Bars for
+  the messages in view grow taller as a moving wave while scrolling (the
+  strip auto-scrolls to keep the wave visible for long histories), and
+  tapping or dragging anywhere on the strip scrubs the timeline to the
+  matching position with a brief card highlight.
+
 ## 0.4.7 - 2026-08-26
 
 ### Changed

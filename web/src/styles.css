@@ -1531,6 +1531,12 @@ textarea:focus {
   .close-button svg {
     transition: none;
   }
+  .agent-history-card.is-minimap-target {
+    animation: none;
+  }
+  .agent-history-minimap-bar {
+    transition: none;
+  }
 }
 
 /* ===== main 2-column body (sidebar | resizer | main) ===== */
@@ -2780,6 +2786,11 @@ textarea:focus {
   width: min(720px, 100%);
   max-height: min(760px, calc(100vh - 36px));
   overflow: auto;
+  /* Auto margins center the modal like align/justify-content would, but let
+     an oversized modal align to the start edge instead so the backdrop can
+     scroll every part of it into view (flex centering would clip the top
+     beyond reach whenever the containing block is shorter than the modal). */
+  margin: auto;
   padding: 18px;
   border: 1px solid color-mix(in srgb, var(--shell-border) 84%, var(--text) 16%);
   border-radius: 16px;
@@ -3955,7 +3966,7 @@ textarea:focus {
 }
 .agent-session-modal {
   width: min(1040px, 100%);
-  height: min(820px, calc(100dvh - 36px));
+  height: min(820px, calc(100dvh - 36px), 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -7046,6 +7057,19 @@ textarea:focus {
 .agent-history-card:hover {
   border-color: var(--border);
 }
+.agent-history-card.is-minimap-target {
+  animation: agent-history-card-flash 1.1s ease-out;
+}
+@keyframes agent-history-card-flash {
+  0% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  100% {
+    border-color: var(--border-soft);
+    box-shadow: none;
+  }
+}
 .agent-history-card-meta {
   min-width: 0;
   display: flex;
@@ -7203,67 +7227,58 @@ textarea:focus {
   background: var(--panel-2);
   border-radius: 999px;
 }
-.agent-history-message-tab {
-  min-width: 0;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  border-bottom: 2px solid transparent;
-}
-.agent-history-message-tab.is-active {
-  border-bottom-color: var(--accent);
-}
-.agent-history-message-tab > button[role="tab"] {
-  min-width: 0;
-  padding-right: 4px;
-  border-bottom: none;
-}
-.agent-history-assistant-filter {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 7px 0 2px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.agent-history-assistant-switch {
-  position: relative;
-  width: 30px;
-  height: 18px;
+.agent-history-minimap {
   flex: 0 0 auto;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--input-bg);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
-  transition:
-    border-color 140ms ease,
-    background 140ms ease;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  /* Fixed height so the wave's taller bars grow into the padding instead of
+     pushing the timeline around. */
+  height: 30px;
+  box-sizing: border-box;
+  padding: 8px 10px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border-soft);
+  scrollbar-width: none;
+  /* Horizontal drags scrub the timeline; vertical ones keep scrolling it. */
+  touch-action: pan-y;
 }
-.agent-history-assistant-switch > span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+.agent-history-minimap::-webkit-scrollbar {
+  display: none;
+}
+.agent-history-minimap-bar {
+  /* Bars always fill the strip width, so any horizontal position maps
+     linearly to a message index when scrubbing. */
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 1.5px;
   background: var(--muted);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  opacity: 0.45;
+  /* The wave grows bars via transform (compositor-only) instead of height:
+     no layout thrash while scrolling, and immune to repaint issues on
+     mobile browsers inside transformed/overflow-hidden ancestors. */
+  transform-origin: bottom;
   transition:
     transform 140ms ease,
-    background 140ms ease;
+    opacity 140ms ease;
 }
-.agent-history-assistant-switch.is-on {
-  border-color: color-mix(in srgb, var(--accent) 78%, var(--border));
-  background: color-mix(in srgb, var(--accent) 30%, var(--input-bg));
+.agent-history-minimap-bar.is-user {
+  background: var(--blue);
 }
-.agent-history-assistant-switch.is-on > span {
-  background: var(--accent);
-  transform: translateX(12px);
+.agent-history-minimap-bar.is-assistant {
+  background: var(--green);
 }
-.agent-history-assistant-switch:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
-  outline-offset: 2px;
+.agent-history-minimap-bar.is-in-view {
+  transform: scaleY(1.6);
+  opacity: 1;
+}
+.agent-history-minimap-bar:hover,
+.agent-history-minimap-bar:focus-visible {
+  opacity: 1;
 }
 .agent-history-content {
   min-height: 0;
@@ -7381,7 +7396,10 @@ textarea:focus {
 }
 .agent-message-modal {
   width: min(820px, 100%);
-  max-height: min(760px, calc(100dvh - 36px));
+  /* The dialog renders in document.body via a portal; the 100% cap keeps it
+     inside its fixed backdrop even when visual viewport units (dvh) resolve
+     larger than the visible area on mobile. */
+  max-height: min(760px, calc(100dvh - 36px), 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -7689,6 +7707,12 @@ textarea:focus {
   .workspace-inspector-actions .workspace-inspector-expand-action {
     display: none;
   }
+  /* The bottom mobile nav already switches between Files/Changes/History
+     and highlights the active view, so the in-inspector tab bar only costs
+     vertical space on phones. */
+  .workspace-inspector-tabs {
+    display: none;
+  }
   .topbar-start,
   .topbar-actions {
     gap: 8px;
@@ -7968,13 +7992,16 @@ textarea:focus {
   }
   .agent-session-modal {
     width: 100%;
-    height: calc(
-      100dvh -
-      28px -
-      env(safe-area-inset-top, 0px) -
-      env(safe-area-inset-bottom, 0px)
+    height: min(
+      calc(
+        100dvh -
+        28px -
+        env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+      ),
+      100%
     );
-    max-height: calc(100vh - 28px);
+    max-height: min(calc(100vh - 28px), 100%);
   }
   .agent-session-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8114,6 +8141,10 @@ textarea:focus {
     flex-basis: auto;
     border-radius: 0;
     transform: translateX(18px);
+    /* The mobile app height includes the bottom safe area; keep the drawer's
+       content (especially the footer buttons) above it so it stays tappable
+       and clear of the browser's bottom chrome. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .agent-history-drawer.is-open {
     width: auto;
@@ -8140,16 +8171,36 @@ textarea:focus {
   .agent-history-timeline {
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
+  /* The overview strip duplicates what the Details tab can hold; keep it out
+     of the Messages view on small screens so the timeline gets the space. */
+  .agent-history-drawer[data-drawer-tab="messages"] > .agent-history-overview {
+    display: none;
+  }
+  /* On the Details tab the strip belongs under the tab bar with the rest of
+     the details, not pinned above it (DOM order stays unchanged). */
+  .agent-history-drawer[data-drawer-tab="details"]
+  > .agent-history-drawer-head {
+    order: -3;
+  }
+  .agent-history-drawer[data-drawer-tab="details"] > .agent-history-tabs {
+    order: -2;
+  }
+  .agent-history-drawer[data-drawer-tab="details"] > .agent-history-overview {
+    order: -1;
+  }
   .agent-history-card pre {
     max-height: 145px;
     font-size: 12px;
   }
   .agent-message-modal {
-    max-height: calc(
-      100dvh -
-      36px -
-      env(safe-area-inset-top, 0px) -
-      env(safe-area-inset-bottom, 0px)
+    max-height: min(
+      calc(
+        100dvh -
+        36px -
+        env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+      ),
+      100%
     );
   }
   .agent-message-modal-content {
@@ -8159,6 +8210,12 @@ textarea:focus {
       env(safe-area-inset-top, 0px) -
       env(safe-area-inset-bottom, 0px)
     );
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .agent-message-markdown {
+    font-size: 12px;
+    line-height: 1.55;
   }
   .pane-switcher {
     flex: 0 0 auto;

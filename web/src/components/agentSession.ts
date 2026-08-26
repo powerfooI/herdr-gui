@@ -161,11 +161,6 @@ export type AgentSessionTurn = {
   steps: AgentSessionTrajectoryStep[];
 };
 
-export type SequencedSessionMessage<T> = {
-  message: T;
-  sequence: number;
-};
-
 export type AgentSessionSummary = {
   status: "ok" | "missing_session" | "missing_file";
   detail?: string;
@@ -220,18 +215,6 @@ export function groupTrajectoryTurns(
   }
 
   return groups;
-}
-
-// Filtering must preserve the original conversation index so switching between
-// user-only and full conversation views does not renumber the same message.
-export function visibleSessionMessages<
-  T extends { role: "user" | "assistant" },
->(messages: T[], showAssistant: boolean): SequencedSessionMessage<T>[] {
-  return messages.flatMap((message, index) =>
-    showAssistant || message.role === "user"
-      ? [{ message, sequence: index + 1 }]
-      : [],
-  );
 }
 
 // Build a compact one-line preview for a tool call, preferring the most

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Copy } from "lucide-react";
 import { UI_LOCALE } from "../uiLocale";
 import { CloseButton } from "./CloseButton";
@@ -58,7 +59,11 @@ export function AgentMessageDialog({
   if (!message) return null;
   const roleLabel = message.role === "assistant" ? "Assistant" : "User";
 
-  return (
+  // Render at the document root: on mobile the transformed .app box becomes
+  // the containing block for fixed elements, and the inspector slot's stacking
+  // context (z-index 3) would leave the topbar (z-index 120) painted over the
+  // dialog. A body-level backdrop escapes both.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
         ref={dialogRef}
@@ -116,6 +121,7 @@ export function AgentMessageDialog({
           <pre className="agent-message-modal-content">{message.text}</pre>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -111,7 +111,12 @@ export function GlobalTooltip() {
     };
     const onFocusIn = (event: FocusEvent) => {
       const target = tooltipTarget(event.target);
-      if (target) showFor(target);
+      // Only keyboard-driven focus deserves a tooltip. Touch taps also focus
+      // buttons on some mobile browsers, and a tooltip shown then lingers
+      // until the next tap blurs the button. Browsers exclude exactly that
+      // case from :focus-visible while keeping keyboard navigation focused.
+      if (!target?.matches(":focus-visible")) return;
+      showFor(target);
     };
     const onFocusOut = () => hide();
     const onPointerDown = () => hide();

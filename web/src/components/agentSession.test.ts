@@ -9,7 +9,6 @@ import {
   shouldShowAgentStatusLabel,
   summarizeTabAgents,
   toolArgumentsPreview,
-  visibleSessionMessages,
 } from "./agentSession";
 
 function step(
@@ -118,24 +117,6 @@ describe("agent session presentation", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].number).toBeNull();
     expect(groups[0].steps).toHaveLength(2);
-  });
-
-  test("filters assistant messages without renumbering user messages", () => {
-    const messages = [
-      { role: "user" as const, text: "first" },
-      { role: "assistant" as const, text: "response" },
-      { role: "user" as const, text: "second" },
-    ];
-
-    expect(visibleSessionMessages(messages, true)).toMatchObject([
-      { sequence: 1, message: { text: "first" } },
-      { sequence: 2, message: { text: "response" } },
-      { sequence: 3, message: { text: "second" } },
-    ]);
-    expect(visibleSessionMessages(messages, false)).toMatchObject([
-      { sequence: 1, message: { text: "first" } },
-      { sequence: 3, message: { text: "second" } },
-    ]);
   });
 
   test("previews tool call arguments by priority key", () => {
