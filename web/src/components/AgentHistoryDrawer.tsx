@@ -249,37 +249,73 @@ function AgentHistoryMinimap({
     centerWave();
   };
 
+  // Thin position indicator for the strip's own horizontal scroll, updated
+  // imperatively so native strip scrolls don't need React re-renders.
+  const thumbRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = stripRef.current;
+    const thumb = thumbRef.current;
+    if (!strip || !thumb) return;
+    const update = () => {
+      const { scrollLeft, scrollWidth, clientWidth } = strip;
+      if (scrollWidth <= clientWidth + 1) {
+        thumb.style.display = "none";
+        return;
+      }
+      thumb.style.display = "block";
+      thumb.style.width = `${(clientWidth / scrollWidth) * 100}%`;
+      thumb.style.left = `${(scrollLeft / scrollWidth) * 100}%`;
+    };
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(strip);
+    strip.addEventListener("scroll", update, { passive: true });
+    return () => {
+      resizeObserver.disconnect();
+      strip.removeEventListener("scroll", update);
+    };
+  }, [entries.length]);
+
   return (
-    <div
-      ref={stripRef}
-      className="agent-history-minimap"
-      role="group"
-      aria-label="Message index"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerEnd}
-      onPointerCancel={handlePointerEnd}
-    >
-      {entries.map(({ message, sequence }) => {
-        const roleLabel = message.role === "assistant" ? "assistant" : "user";
-        const inView =
-          visibleRange !== null &&
-          sequence >= visibleRange.start &&
-          sequence <= visibleRange.end;
-        return (
-          <button
-            key={message.id}
-            type="button"
-            className={
-              `agent-history-minimap-bar is-${message.role}` +
-              (inView ? " is-in-view" : "")
-            }
-            title={`#${sequence} ${roleLabel}`}
-            aria-label={`Go to message ${sequence} (${roleLabel})`}
-            onClick={() => onSelect(sequence)}
-          />
-        );
-      })}
+    <div className="agent-history-minimap-wrap">
+      <div
+        ref={stripRef}
+        className="agent-history-minimap"
+        role="group"
+        aria-label="Message index"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
+        {entries.map(({ message, sequence }) => {
+          const roleLabel = message.role === "assistant" ? "assistant" : "user";
+          const inView =
+            visibleRange !== null &&
+            sequence >= visibleRange.start &&
+            sequence <= visibleRange.end;
+          return (
+            <button
+              key={message.id}
+              type="button"
+              className={
+                `agent-history-minimap-bar is-${message.role}` +
+                (inView ? " is-in-view" : "")
+              }
+              title={`#${sequence} ${roleLabel}`}
+              aria-label={`Go to message ${sequence} (${roleLabel})`}
+              onClick={() => onSelect(sequence)}
+            />
+          );
+        })}
+      </div>
+      <div className="agent-history-minimap-scrollbar" aria-hidden="true">
+        <div
+          ref={thumbRef}
+          className="agent-history-minimap-scrollbar-thumb"
+          style={{ display: "none" }}
+        />
+      </div>
     </div>
   );
 }
@@ -600,7 +636,6 @@ export function AgentHistoryDrawer({
         className={`agent-history-drawer ${open ? "is-open" : ""} ${
           embedded ? "is-embedded" : ""
         }`}
-        data-drawer-tab={drawerTab}
         aria-label="Agent session"
         aria-hidden={!open}
       >
@@ -644,37 +679,6 @@ export function AgentHistoryDrawer({
             ) : null}
           </div>
         </div>
-
-        {sessionReady ? (
-          <section
-            className="agent-history-overview"
-            aria-label="Session overview"
-          >
-            <div>
-              <strong>{formatCount(session.stats.turns)}</strong>
-              <span>Turns</span>
-            </div>
-            <div>
-              <strong>{formatTokenTotal(session)}</strong>
-              <span>Tokens</span>
-            </div>
-            <div>
-              <strong
-                title={updatedAt ? formatHistoryTime(updatedAt) : undefined}
-              >
-                {updatedAt ? formatRelativeTime(updatedAt) : "-"}
-              </strong>
-              <span>Updated</span>
-            </div>
-            <p>
-              Input {formatOptionalCompact(usage?.input_tokens)}
-              <span>·</span>
-              Cached {formatOptionalCompact(usage?.cached_input_tokens)}
-              <span>·</span>
-              Output {formatOptionalCompact(usage?.output_tokens)}
-            </p>
-          </section>
-        ) : null}
 
         {unavailable ? (
           <div className="agent-history-unavailable" role="status">
@@ -778,6 +782,38 @@ export function AgentHistoryDrawer({
               </>
             ) : (
               <div className="agent-history-details" role="tabpanel">
+                {sessionReady ? (
+                  <section
+                    className="agent-history-overview"
+                    aria-label="Session overview"
+                  >
+                    <div>
+                      <strong>{formatCount(session.stats.turns)}</strong>
+                      <span>Turns</span>
+                    </div>
+                    <div>
+                      <strong>{formatTokenTotal(session)}</strong>
+                      <span>Tokens</span>
+                    </div>
+                    <div>
+                      <strong
+                        title={
+                          updatedAt ? formatHistoryTime(updatedAt) : undefined
+                        }
+                      >
+                        {updatedAt ? formatRelativeTime(updatedAt) : "-"}
+                      </strong>
+                      <span>Updated</span>
+                    </div>
+                    <p>
+                      Input {formatOptionalCompact(usage?.input_tokens)}
+                      <span>·</span>
+                      Cached {formatOptionalCompact(usage?.cached_input_tokens)}
+                      <span>·</span>
+                      Output {formatOptionalCompact(usage?.output_tokens)}
+                    </p>
+                  </section>
+                ) : null}
                 <DetailRow label="Workspace" value={workspaceLabel} />
                 <DetailRow label="Agent" value={pane.agent ?? "-"} />
                 <DetailRow label="Pane" value={shortId(pane.pane_id)} />

@@ -5,6 +5,7 @@ export const OVERLAY_SCROLLBAR_EXCLUDED_SELECTOR = [
   ".context-menu",
   ".pane-jump-popover",
   ".agent-session-export-menu",
+  ".agent-history-minimap",
   ".terminal-mobile-keys-panel",
   "[role=dialog]",
   "[role=menu]",

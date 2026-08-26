@@ -7118,6 +7118,11 @@ textarea:focus {
   border-bottom: 1px solid var(--border-soft);
   background: color-mix(in srgb, var(--panel-2) 52%, transparent);
 }
+.agent-history-details > .agent-history-overview {
+  margin-bottom: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
 .agent-history-overview > div {
   min-width: 0;
   display: grid;
@@ -7227,8 +7232,12 @@ textarea:focus {
   background: var(--panel-2);
   border-radius: 999px;
 }
-.agent-history-minimap {
+.agent-history-minimap-wrap {
+  position: relative;
   flex: 0 0 auto;
+  border-bottom: 1px solid var(--border-soft);
+}
+.agent-history-minimap {
   display: flex;
   align-items: flex-end;
   gap: 2px;
@@ -7236,16 +7245,32 @@ textarea:focus {
      pushing the timeline around. */
   height: 30px;
   box-sizing: border-box;
-  padding: 8px 10px 6px;
+  padding: 7px 10px 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--border-soft);
   scrollbar-width: none;
   /* Horizontal drags scrub the timeline; vertical ones keep scrolling it. */
   touch-action: pan-y;
 }
 .agent-history-minimap::-webkit-scrollbar {
   display: none;
+}
+/* Thin position indicator for the strip's own horizontal scroll; the global
+   overlay scrollbar is excluded here because its thumb is too heavy for a
+   30px strip. */
+.agent-history-minimap-scrollbar {
+  position: absolute;
+  right: 10px;
+  bottom: 1px;
+  left: 10px;
+  height: 3px;
+  pointer-events: none;
+}
+.agent-history-minimap-scrollbar-thumb {
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--muted);
+  opacity: 0.7;
 }
 .agent-history-minimap-bar {
   /* Bars always fill the strip width, so any horizontal position maps
@@ -8170,23 +8195,6 @@ textarea:focus {
   }
   .agent-history-timeline {
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-  }
-  /* The overview strip duplicates what the Details tab can hold; keep it out
-     of the Messages view on small screens so the timeline gets the space. */
-  .agent-history-drawer[data-drawer-tab="messages"] > .agent-history-overview {
-    display: none;
-  }
-  /* On the Details tab the strip belongs under the tab bar with the rest of
-     the details, not pinned above it (DOM order stays unchanged). */
-  .agent-history-drawer[data-drawer-tab="details"]
-  > .agent-history-drawer-head {
-    order: -3;
-  }
-  .agent-history-drawer[data-drawer-tab="details"] > .agent-history-tabs {
-    order: -2;
-  }
-  .agent-history-drawer[data-drawer-tab="details"] > .agent-history-overview {
-    order: -1;
   }
   .agent-history-card pre {
     max-height: 145px;
