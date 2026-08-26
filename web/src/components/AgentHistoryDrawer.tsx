@@ -75,6 +75,47 @@ function messageSummary(text: string) {
   return `${lines.length} lines`;
 }
 
+// Temporary diagnostics for the minimap wave, enabled with ?debug-minimap=1.
+const MINIMAP_DEBUG_ENABLED =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("debug-minimap");
+
+function MinimapWaveDebug({
+  contentRef,
+  visibleRange,
+  open,
+  drawerTab,
+  messageCount,
+}: {
+  contentRef: React.RefObject<HTMLDivElement | null>;
+  visibleRange: MessageMinimapVisibleRange | null;
+  open: boolean;
+  drawerTab: string;
+  messageCount: number;
+}) {
+  const [line, setLine] = useState("");
+  useEffect(() => {
+    const update = () => {
+      const el = contentRef.current;
+      const bars = document.querySelectorAll(
+        ".agent-history-minimap-bar.is-in-view",
+      ).length;
+      const first = document.querySelector(".agent-history-minimap-bar");
+      const t = first ? getComputedStyle(first).transform : "?";
+      setLine(
+        `dbg4 open=${open} tab=${drawerTab} msgs=${messageCount} ` +
+          `st=${el ? Math.round(el.scrollTop) : "?"} ` +
+          `wave=${visibleRange ? `${visibleRange.start}-${visibleRange.end}` : "null"} ` +
+          `bars=${bars} t=${t.slice(0, 20)}`,
+      );
+    };
+    update();
+    const timer = window.setInterval(update, 400);
+    return () => window.clearInterval(timer);
+  }, [contentRef, visibleRange, open, drawerTab, messageCount]);
+  return <div className="minimap-debug-overlay">{line}</div>;
+}
+
 // Cards are memoized because the timeline can hold hundreds of them and the
 // drawer's minimap viewport tracking re-renders on every scroll boundary.
 const AgentHistoryMessageCard = memo(function AgentHistoryMessageCard({
@@ -524,7 +565,7 @@ export function AgentHistoryDrawer({
   useEffect(() => {
     const root = contentRef.current;
     const timeline = timelineRef.current;
-    if (!open || drawerTab !== "messages" || !root || !timeline) {
+    if (drawerTab !== "messages" || !root || !timeline) {
       visibleRangeKeyRef.current = "";
       setVisibleRange(null);
       return;
@@ -541,6 +582,12 @@ export function AgentHistoryDrawer({
     const recompute = () => {
       frame = 0;
       const rootRect = root.getBoundingClientRect();
+      // A hidden container (e.g. the inspector showing another view) has an
+      // empty rect; skip the scan so background scrolls stay O(1) here.
+      if (rootRect.width === 0 || rootRect.height === 0) {
+        publish(null);
+        return;
+      }
       // Clip the viewport rect to the visible screen as well. Normally the
       // content container clips the timeline itself, but if an ancestor ends
       // up being the scroller (mobile viewport quirks) the container's rect
@@ -582,7 +629,7 @@ export function AgentHistoryDrawer({
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener("resize", schedule);
     };
-  }, [drawerTab, messagesKey, open]);
+  }, [drawerTab, messagesKey]);
 
   // Stable identity so the message dialog's focus effect only re-runs when the
   // message itself changes, not on every drawer re-render.
@@ -870,6 +917,15 @@ export function AgentHistoryDrawer({
             ) : null}
           </>
         )}
+        {MINIMAP_DEBUG_ENABLED ? (
+          <MinimapWaveDebug
+            contentRef={contentRef}
+            visibleRange={visibleRange}
+            open={open}
+            drawerTab={drawerTab}
+            messageCount={messages.length}
+          />
+        ) : null}
       </aside>
       <AgentMessageDialog
         message={expandedMessage}
