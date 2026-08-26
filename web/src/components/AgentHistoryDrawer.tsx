@@ -515,7 +515,10 @@ export function AgentHistoryDrawer({
       let max = -Infinity;
       for (const card of timeline.children) {
         const rect = card.getBoundingClientRect();
-        if (rect.bottom <= viewTop || rect.top >= viewBottom) continue;
+        // Cards stack vertically in DOM order, so once one starts below the
+        // viewport every later card is below it too.
+        if (rect.top >= viewBottom) break;
+        if (rect.bottom <= viewTop) continue;
         const sequence = Number((card as HTMLElement).dataset.sequence);
         if (!Number.isFinite(sequence)) continue;
         min = Math.min(min, sequence);
