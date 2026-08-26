@@ -245,9 +245,11 @@ function AgentHistoryMinimap({
     if (sequence !== null) onSelect(sequence);
   };
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // Only scrub for drags that started on the strip (pointer capture keeps
-    // routing those here); ignore selections dragged across from elsewhere.
-    if (!scrubbingRef.current || event.buttons === 0) return;
+    // Only scrub for drags that started on the strip; pointer capture keeps
+    // routing those here until pointerup/pointercancel clears the ref. (No
+    // event.buttons check: some touch implementations report buttons = 0
+    // mid-drag, which would silently break scrubbing.)
+    if (!scrubbingRef.current) return;
     const sequence = sequenceAtClientX(event.clientX);
     if (sequence !== null) onSelect(sequence);
   };
@@ -292,6 +294,12 @@ function AgentHistoryMinimap({
     onSelect(Math.max(1, Math.min(count, next)));
   };
 
+  const currentSequence = visibleRange?.start ?? 1;
+  const currentEntry = entries[currentSequence - 1];
+  const currentValueText = currentEntry
+    ? `#${currentSequence} ${currentEntry.message.role === "assistant" ? "assistant" : "user"}`
+    : undefined;
+
   return (
     <div className="agent-history-minimap-wrap">
       <div
@@ -303,7 +311,8 @@ function AgentHistoryMinimap({
         aria-orientation="horizontal"
         aria-valuemin={1}
         aria-valuemax={entries.length}
-        aria-valuenow={visibleRange?.start ?? 1}
+        aria-valuenow={currentSequence}
+        aria-valuetext={currentValueText}
         onKeyDown={handleKeyDown}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -573,9 +582,31 @@ export function AgentHistoryDrawer({
       // spans every card and would mark all bars in-view.
       const viewTop = Math.max(rootRect.top, 0);
       const viewBottom = Math.min(rootRect.bottom, window.innerHeight);
+      const cards = timeline.children;
+      const count = cards.length;
+      // Seed the scan near the expected first visible card (scroll fraction
+      // × count) instead of scanning from the top, then back up to the true
+      // boundary. Heights vary so the seed is approximate, but the walk is
+      // bounded by the estimation error instead of the full history, which
+      // matters for long sessions and for frames with a dirty layout (each
+      // rect read can otherwise force a layout of the whole timeline).
+      let start = 0;
+      if (count > 0 && root.scrollHeight > 0) {
+        const scrollViewTop = root.scrollTop + (viewTop - rootRect.top);
+        start = Math.min(
+          count - 1,
+          Math.max(0, Math.floor((scrollViewTop / root.scrollHeight) * count)),
+        );
+        while (start > 0) {
+          const prev = cards[start - 1].getBoundingClientRect();
+          if (prev.bottom <= viewTop) break;
+          start--;
+        }
+      }
       let min = Infinity;
       let max = -Infinity;
-      for (const card of timeline.children) {
+      for (let i = start; i < count; i++) {
+        const card = cards[i];
         const rect = card.getBoundingClientRect();
         // Cards stack vertically in DOM order, so once one starts below the
         // viewport every later card is below it too.
