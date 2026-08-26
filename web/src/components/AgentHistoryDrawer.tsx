@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from "react";
 import { Copy, Download, Eye, RefreshCw, X } from "lucide-react";
 import { useStoreSelector } from "../store";
@@ -159,10 +160,12 @@ function minimapPrefersReducedMotion() {
 function AgentHistoryMinimap({
   entries,
   visibleRange,
+  indicatorRef,
   onSelect,
 }: {
   entries: { message: AgentHistoryEntry; sequence: number }[];
   visibleRange: MessageMinimapVisibleRange | null;
+  indicatorRef: RefObject<HTMLDivElement>;
   onSelect: (sequence: number) => void;
 }) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -249,18 +252,6 @@ function AgentHistoryMinimap({
     centerWave();
   };
 
-  // The indicator marks which slice of the whole history the timeline
-  // viewport currently shows (like a minimap viewport rectangle), so it is
-  // derived from the visible range itself rather than the strip's own
-  // scroll position, which the wave-follow logic deliberately suppresses
-  // while scrubbing.
-  const total = entries.length;
-  const thumbVisible = visibleRange !== null && total > 0;
-  const thumbLeft = thumbVisible ? ((visibleRange.start - 1) / total) * 100 : 0;
-  const thumbWidth = thumbVisible
-    ? Math.max(((visibleRange.end - visibleRange.start + 1) / total) * 100, 2)
-    : 0;
-
   return (
     <div className="agent-history-minimap-wrap">
       <div
@@ -296,12 +287,9 @@ function AgentHistoryMinimap({
       </div>
       <div className="agent-history-minimap-scrollbar" aria-hidden="true">
         <div
+          ref={indicatorRef}
           className="agent-history-minimap-scrollbar-thumb"
-          style={
-            thumbVisible
-              ? { left: `${thumbLeft}%`, width: `${thumbWidth}%` }
-              : { display: "none" }
-          }
+          style={{ display: "none" }}
         />
       </div>
     </div>
@@ -345,6 +333,7 @@ export function AgentHistoryDrawer({
     useState<MessageMinimapVisibleRange | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const minimapIndicatorRef = useRef<HTMLDivElement>(null);
   const visibleRangeKeyRef = useRef("");
   const highlightTimerRef = useRef<number | null>(null);
   const loadSeqRef = useRef(0);
@@ -555,6 +544,27 @@ export function AgentHistoryDrawer({
         max = Math.max(max, sequence);
       }
       publish(min <= max ? { start: min, end: max } : null);
+      // Move the minimap indicator like a real scrollbar: a continuous,
+      // per-frame linear mapping of the timeline's scroll geometry (the same
+      // math native scrollbars use), applied imperatively so it glides with
+      // the scroll instead of stepping with the wave state.
+      const thumb = minimapIndicatorRef.current;
+      const track = thumb?.parentElement;
+      if (thumb && track) {
+        const maxScroll = root.scrollHeight - root.clientHeight;
+        if (maxScroll <= 1) {
+          thumb.style.display = "none";
+        } else {
+          const trackWidth = track.clientWidth;
+          const thumbWidth = Math.max(
+            (root.clientHeight / root.scrollHeight) * trackWidth,
+            12,
+          );
+          thumb.style.display = "block";
+          thumb.style.width = `${thumbWidth}px`;
+          thumb.style.transform = `translateX(${(root.scrollTop / maxScroll) * (trackWidth - thumbWidth)}px)`;
+        }
+      }
     };
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(recompute);
@@ -742,6 +752,7 @@ export function AgentHistoryDrawer({
                   <AgentHistoryMinimap
                     entries={messageEntries}
                     visibleRange={visibleRange}
+                    indicatorRef={minimapIndicatorRef}
                     onSelect={scrollToMessage}
                   />
                 ) : null}

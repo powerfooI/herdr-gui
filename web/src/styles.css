@@ -1537,9 +1537,6 @@ textarea:focus {
   .agent-history-minimap-bar {
     transition: none;
   }
-  .agent-history-minimap-scrollbar-thumb {
-    transition: none;
-  }
 }
 
 /* ===== main 2-column body (sidebar | resizer | main) ===== */
@@ -7272,13 +7269,11 @@ textarea:focus {
 .agent-history-minimap-scrollbar-thumb {
   position: absolute;
   top: 0;
+  left: 0;
   height: 100%;
   border-radius: 1.5px;
   background: var(--accent);
   opacity: 0.55;
-  transition:
-    left 100ms ease,
-    width 100ms ease;
 }
 .agent-history-minimap-bar {
   /* Bars always fill the strip width, so any horizontal position maps
