@@ -806,30 +806,6 @@ async function resolveLastStepRange({
     if (!snapshot) {
       throw new Error("last-step snapshot expired; refresh Changes");
     }
-    const [baselineExists, currentExists] = await Promise.all([
-      treeExists({
-        root,
-        tree: snapshot.baseline,
-        host,
-        shQuote,
-        runProcessWithCodeTimeout,
-      }),
-      treeExists({
-        root,
-        tree: snapshot.current,
-        host,
-        shQuote,
-        runProcessWithCodeTimeout,
-      }),
-    ]);
-    if (!baselineExists) {
-      baselines?.deleteSnapshot(snapshotId);
-      throw new Error("last-step snapshot expired; refresh Changes");
-    }
-    if (!currentExists) {
-      baselines?.deleteSnapshot(snapshotId);
-      throw new Error("last-step snapshot expired; refresh Changes");
-    }
     return snapshot;
   }
 
@@ -1090,6 +1066,28 @@ export async function readDiffFile({
       ? result.code === 0 || result.code === 1
       : result.code === 0;
   if (!diffExitOk) {
+    if (mode === "last-step" && snapshotId && lastStepRange) {
+      const [baselineExists, currentExists] = await Promise.all([
+        treeExists({
+          root,
+          tree: lastStepRange.baseline,
+          host,
+          shQuote,
+          runProcessWithCodeTimeout,
+        }),
+        treeExists({
+          root,
+          tree: lastStepRange.current,
+          host,
+          shQuote,
+          runProcessWithCodeTimeout,
+        }),
+      ]);
+      if (!baselineExists || !currentExists) {
+        lastStepBaselines?.deleteSnapshot(snapshotId);
+        throw new Error("last-step snapshot expired; refresh Changes");
+      }
+    }
     throw new Error(
       (result.stderr || result.stdout || `git diff exited ${result.code}`)
         .trim()

@@ -575,6 +575,57 @@ describe("last-step worktree snapshots", () => {
     }
   });
 
+  test("does not revalidate snapshot trees for every file patch", async () => {
+    const root = await initRepository();
+    let catFileCalls = 0;
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (argv.join(" ").includes("cat-file --batch-check")) {
+        catFileCalls += 1;
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "initial");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "changed\n");
+      await baselines.completeWorkspace("workspace");
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(catFileCalls).toBe(2);
+
+      catFileCalls = 0;
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(file.diff).toContain("+changed");
+      expect(catFileCalls).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("returns a usable summary token when a newer step completes mid-request", async () => {
     const root = await initRepository();
     let blockNameStatus = false;
