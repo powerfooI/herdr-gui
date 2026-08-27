@@ -35,6 +35,7 @@ type Generation = {
 const MEMBERSHIP_EVENT_TYPES = new Set([
   "pane_agent_detected",
   "pane_closed",
+  "pane_moved",
   "tab_closed",
   "workspace_closed",
 ]);

@@ -237,6 +237,41 @@ test("rebuilds the subscription when a membership event changes the pane set", a
   await loop.stop();
 });
 
+test("rebuilds immediately when a pane move replaces the subscribed pane id", async () => {
+  let panes = [agentPane("w1:p1")];
+  const herdr = fakeHerdr({ panes: () => panes });
+  await herdr.ready;
+  const client = new HerdrClient(herdr.path);
+  const loop = createAgentStatusSubscriptionLoop({
+    herdr: client,
+    connectionId: "test",
+    retryDelayMs: 10,
+    rebuildDebounceMs: 5,
+    membershipPollMs: 10_000,
+  });
+
+  loop.start();
+  await waitFor(() => herdr.subscribeCalls.length === 1);
+
+  panes = [agentPane("w2:p2")];
+  loop.handleHerdrEvent({
+    event: "pane.moved",
+    data: {
+      type: "pane_moved",
+      previous_pane_id: "w1:p1",
+      previous_workspace_id: "w1",
+      pane: { pane_id: "w2:p2", workspace_id: "w2", agent: "pi" },
+    },
+  });
+
+  await waitFor(() => herdr.subscribeCalls.length === 2);
+  expect(herdr.subscribeCalls[1]?.subscriptions).toEqual([
+    { type: "pane.agent_status_changed", pane_id: "w2:p2" },
+  ]);
+
+  await loop.stop();
+});
+
 test("ignores unrelated events and membership events that do not change the set", async () => {
   const herdr = fakeHerdr({ panes: () => [agentPane("w1:p1")] });
   await herdr.ready;

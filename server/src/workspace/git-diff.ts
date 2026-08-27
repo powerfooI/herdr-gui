@@ -46,7 +46,7 @@ export type LastStepBaselineStore = {
     snapshotId: string,
   ) => { baseline: string; current: string } | undefined;
   deleteSnapshot: (snapshotId: string) => void;
-  delete: (root: string) => void;
+  invalidateWorkspace: (workspaceId: string, root: string) => void;
   dispose: () => Promise<void>;
 };
 
@@ -554,13 +554,15 @@ export function createLastStepBaselineStore(
       return { baseline: snapshot.baseline, current: snapshot.current };
     },
     deleteSnapshot: (snapshotId) => snapshots.delete(snapshotId),
-    delete(root) {
-      deleteSnapshots((_workspaceId, snapshotRoot) => snapshotRoot === root);
-      for (const [workspaceId, range] of completedRanges) {
-        if (range.root === root) {
-          completedRanges.delete(workspaceId);
-          completedVersions.delete(workspaceId);
-        }
+    invalidateWorkspace(workspaceId, root) {
+      deleteSnapshots(
+        (snapshotWorkspaceId, snapshotRoot) =>
+          snapshotWorkspaceId === workspaceId && snapshotRoot === root,
+      );
+      const range = completedRanges.get(workspaceId);
+      if (range?.root === root) {
+        completedRanges.delete(workspaceId);
+        completedVersions.delete(workspaceId);
       }
     },
     dispose() {
@@ -825,7 +827,7 @@ async function resolveLastStepRange({
     }),
   ]);
   if (!baselineExists || !currentExists) {
-    baselines?.delete(root);
+    baselines?.invalidateWorkspace(workspaceId, root);
     return null;
   }
   return completed;

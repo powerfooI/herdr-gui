@@ -1147,6 +1147,52 @@ describe("last-step worktree snapshots", () => {
     }
   });
 
+  test("invalidates only one workspace sharing a repository root", async () => {
+    const root = await initRepository();
+    const baselines = baselineStore();
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      await baselines.captureWorkspace("expired", async () => root);
+      await baselines.completeWorkspace("expired");
+      await baselines.captureWorkspace("valid", async () => root);
+      await baselines.completeWorkspace("valid");
+
+      const expiredRange = await baselines.resolveCompleted("expired", root);
+      const validRange = await baselines.resolveCompleted("valid", root);
+      if (!expiredRange || !validRange) {
+        throw new Error("expected both completed workspace ranges");
+      }
+      const expiredSnapshot = baselines.rememberSnapshot(
+        "expired",
+        root,
+        expiredRange.baseline,
+        expiredRange.current,
+      );
+      const validSnapshot = baselines.rememberSnapshot(
+        "valid",
+        root,
+        validRange.baseline,
+        validRange.current,
+      );
+
+      baselines.invalidateWorkspace("expired", root);
+
+      expect(await baselines.resolveCompleted("expired", root)).toBeUndefined();
+      expect(await baselines.resolveCompleted("valid", root)).toEqual(
+        validRange,
+      );
+      expect(
+        baselines.resolveSnapshot("expired", root, expiredSnapshot),
+      ).toBeUndefined();
+      expect(baselines.resolveSnapshot("valid", root, validSnapshot)).toEqual(
+        validRange,
+      );
+    } finally {
+      await baselines.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("preserves a valid baseline across transient cat-file failures", async () => {
     const root = await initRepository();
     let failCatFile = false;
@@ -1263,7 +1309,9 @@ describe("last-step worktree snapshots", () => {
       rememberSnapshot: () => "missing-snapshot",
       resolveSnapshot: () => undefined,
       deleteSnapshot: () => undefined,
-      delete: () => {
+      invalidateWorkspace: (workspaceId, invalidatedRoot) => {
+        expect(workspaceId).toBe("workspace");
+        expect(invalidatedRoot).toBe(root);
         deleted = true;
       },
       dispose: async () => undefined,
