@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Add a Last step scope to Changes that shows the latest completed agent
+  activity period, including commits and untracked files, while retaining that
+  diff until the next period completes.
+
 ### Fixed
 
 - Improve the session History view on phones: move the Turns/Tokens overview

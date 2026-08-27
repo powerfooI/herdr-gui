@@ -24,7 +24,12 @@ import {
   resolveRemoteFilePaths,
   uploadRemoteFile,
 } from "./remote-files";
-import { pullGit, readDiffFile, readDiffSummary } from "./git-diff";
+import {
+  pullGit,
+  readDiffFile,
+  readDiffSummary,
+  type LastStepBaselineStore,
+} from "./git-diff";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
 
 const MAX_FILE_RESOLUTION_CANDIDATES = 32;
@@ -35,11 +40,13 @@ export function createFileHandlers({
   sshHost,
   runProcessWithCodeTimeout,
   shQuote,
+  lastStepBaselines,
 }: {
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
+  lastStepBaselines?: LastStepBaselineStore;
 }) {
   async function explorerRoot(
     workspaceId: string,
@@ -350,6 +357,7 @@ export function createFileHandlers({
       host: sshHost(),
       shQuote,
       runProcessWithCodeTimeout,
+      lastStepBaselines,
     });
   }
 
@@ -362,6 +370,7 @@ export function createFileHandlers({
       host: sshHost(),
       shQuote,
       runProcessWithCodeTimeout,
+      lastStepBaselines,
     });
   }
 

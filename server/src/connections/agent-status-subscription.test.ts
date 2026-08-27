@@ -164,10 +164,13 @@ test("subscribes per agent pane and forwards status events", async () => {
   await herdr.ready;
   const client = new HerdrClient(herdr.path);
   const events: unknown[] = [];
+  const paneLists: Array<{ result: unknown; revision?: number }> = [];
   client.on("event", (event) => events.push(event));
   const loop = createAgentStatusSubscriptionLoop({
     herdr: client,
     connectionId: "test",
+    onPaneListStart: () => 17,
+    onPaneList: (result, revision) => paneLists.push({ result, revision }),
     retryDelayMs: 10,
     rebuildDebounceMs: 5,
     membershipPollMs: 50,
@@ -175,6 +178,10 @@ test("subscribes per agent pane and forwards status events", async () => {
 
   loop.start();
   await waitFor(() => herdr.subscribeCalls.length === 1);
+  expect(paneLists[0]).toEqual({
+    result: { panes: [agentPane("w1:p1"), plainPane("w1:p2")] },
+    revision: 17,
+  });
   expect(herdr.subscribeCalls[0]?.subscriptions).toEqual([
     { type: "pane.agent_status_changed", pane_id: "w1:p1" },
   ]);
@@ -208,8 +215,8 @@ test("rebuilds the subscription when a membership event changes the pane set", a
 
   panes = [agentPane("w1:p1"), agentPane("w1:p2")];
   loop.handleHerdrEvent({
-    event: "pane_agent_detected",
-    data: { type: "pane_agent_detected" },
+    event: "pane.agent_detected",
+    data: { type: "pane.agent_detected" },
   });
   await waitFor(() => herdr.subscribeCalls.length === 2);
   expect(herdr.subscribeCalls[1]?.subscriptions).toEqual([
@@ -219,8 +226,8 @@ test("rebuilds the subscription when a membership event changes the pane set", a
 
   panes = [agentPane("w1:p2")];
   loop.handleHerdrEvent({
-    event: "workspace_closed",
-    data: { type: "workspace_closed" },
+    event: "workspace.closed",
+    data: { type: "workspace.closed" },
   });
   await waitFor(() => herdr.subscribeCalls.length === 3);
   expect(herdr.subscribeCalls[2]?.subscriptions).toEqual([

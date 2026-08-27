@@ -5,6 +5,7 @@ import {
   gitDiffSummaryKey,
   readGitDiffSummary,
   refreshGitDiffSummary,
+  retireGitDiffSummary,
   retireGitDiffSummaryResource,
   subscribeGitDiffSummary,
 } from "./gitDiffSummaryStore";
@@ -20,6 +21,7 @@ function summary(workspaceId: string): GitDiffSummary {
       untracked: 0,
       conflicted: 0,
       branch: 0,
+      "last-step": 0,
     },
   };
 }
@@ -164,6 +166,32 @@ describe("shared git diff summaries", () => {
     await initial;
     await expect(queued).rejects.toThrow("retired");
     expect(calls).toBe(1);
+  });
+
+  test("does not publish an in-flight last-step request after an activity edge", async () => {
+    const resolvers: Array<(value: GitDiffSummary) => void> = [];
+    const client: ConnectionClient = {
+      connectionId: "last-step-edge",
+      generation: 1,
+      serverRuntimeGeneration: 1,
+      isCurrent: () => true,
+      acceptsServerGeneration: () => true,
+      call: () =>
+        new Promise<GitDiffSummary>((resolve) => resolvers.push(resolve)),
+    };
+    const key = gitDiffSummaryKey(client, "workspace", "last-step");
+    const stale = refreshGitDiffSummary(client, "workspace", "last-step");
+    retireGitDiffSummary(client, "workspace", "last-step");
+    const current = refreshGitDiffSummary(client, "workspace", "last-step");
+
+    resolvers[0]?.(summary("stale"));
+    await stale;
+    expect(readGitDiffSummary(key).summary).toBeNull();
+
+    const fresh = summary("fresh");
+    resolvers[1]?.(fresh);
+    await current;
+    expect(readGitDiffSummary(key).summary).toBe(fresh);
   });
 
   test("does not publish a request retired by resource cleanup", async () => {

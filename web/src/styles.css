@@ -4992,7 +4992,7 @@ textarea:focus {
 }
 .diff-scope-toggle {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 28px;
   gap: 4px;
   margin-bottom: 10px;
   padding: 3px;

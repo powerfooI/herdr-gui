@@ -83,6 +83,8 @@ export function createAgentStatusSubscriptionLoop(args: {
   connectionId: string;
   onSubscribeError?: (error: Error) => void;
   onListError?: (error: Error) => void;
+  onPaneListStart?: () => number;
+  onPaneList?: (result: unknown, startedAtRevision?: number) => void;
   log?: (message: string) => void;
   retryDelayMs?: number;
   rebuildDebounceMs?: number;
@@ -168,9 +170,20 @@ export function createAgentStatusSubscriptionLoop(args: {
   }
 
   async function listAgentPaneIds(): Promise<string[] | null> {
+    let startedAtRevision: number | undefined;
+    try {
+      startedAtRevision = args.onPaneListStart?.();
+    } catch {
+      // Observers must not break the subscription loop.
+    }
     try {
       // Bounded so a hung downstream cannot hold runtime stop hostage.
       const result = await args.herdr.call("pane.list", {}, 5000);
+      try {
+        args.onPaneList?.(result, startedAtRevision);
+      } catch {
+        // Observers must not break the subscription loop.
+      }
       return agentPaneIdsFromPaneList(result);
     } catch (error) {
       report(args.onListError, error);
@@ -351,7 +364,7 @@ export function createAgentStatusSubscriptionLoop(args: {
     },
 
     handleHerdrEvent(event: unknown) {
-      const name = herdrEventName(event);
+      const name = herdrEventName(event)?.replaceAll(".", "_");
       if (name && MEMBERSHIP_EVENT_TYPES.has(name)) requestRebuild();
     },
 

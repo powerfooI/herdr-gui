@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -27,7 +28,13 @@ import {
 import { connectionStorageKey } from "../connectionStorage";
 import { gitDiffCode, gitDiffCodeLabel } from "../gitDiffStatus";
 import {
+  lastStepCompletionKey,
+  readLastStepCompletion,
+  subscribeLastStepCompletion,
+} from "../lastStepCompletionStore";
+import {
   refreshGitDiffSummary,
+  retireGitDiffSummary,
   retireGitDiffSummaryResource,
   useGitDiffSummaryState,
 } from "../gitDiffSummaryStore";
@@ -71,7 +78,7 @@ type DiffCache = {
   error: string | null;
 };
 
-type DiffScope = "working" | "branch-main";
+type DiffScope = "working" | "branch-main" | "last-step";
 
 const diffCache = new Map<string, DiffCache>();
 const diffCacheRevisions = new Map<string, number>();
@@ -105,7 +112,9 @@ function loadDiffScope(
     (resourceKey
       ? localStorage.getItem(diffScopeStorageKey(connectionId))
       : null);
-  return value === "branch-main" ? "branch-main" : "working";
+  if (value === "branch-main") return "branch-main";
+  if (value === "last-step") return "last-step";
+  return "working";
 }
 
 function diffEntryKey(entry: GitDiffEntry) {
@@ -306,6 +315,7 @@ function diffFileRequestKey(
   scope: DiffScope,
   entry: GitDiffEntry,
   revision: number,
+  snapshotId?: string,
 ) {
   return connectionClientScopeKey(
     client,
@@ -314,6 +324,7 @@ function diffFileRequestKey(
     scope,
     diffEntryKey(entry),
     revision,
+    snapshotId ?? "live",
   );
 }
 
@@ -342,9 +353,14 @@ function readStoredSelection(
     const value = JSON.parse(raw) as Partial<GitDiffEntry>;
     if (
       typeof value.path === "string" &&
-      ["staged", "unstaged", "untracked", "conflicted", "branch"].includes(
-        value.kind ?? "",
-      ) &&
+      [
+        "staged",
+        "unstaged",
+        "untracked",
+        "conflicted",
+        "branch",
+        "last-step",
+      ].includes(value.kind ?? "") &&
       typeof value.status === "string"
     ) {
       return value as GitDiffEntry;
@@ -373,7 +389,7 @@ export function clearDiffViewerResourceCache(
   resourceKey: string,
   storage: Pick<Storage, "removeItem"> = localStorage,
 ) {
-  for (const scope of ["working", "branch-main"] as const) {
+  for (const scope of ["working", "branch-main", "last-step"] as const) {
     retireDiffCache(diffCacheKey(client, undefined, scope, resourceKey));
     storage.removeItem(
       diffSelectionStorageKey(client.connectionId, resourceKey, scope),
@@ -473,9 +489,15 @@ function requestDiffFile(
   scope: DiffScope,
   entry: GitDiffEntry,
   revision: number,
+  snapshotId?: string,
 ) {
   if (!client.isCurrent()) {
     return Promise.reject(new Error("connection changed during diff request"));
+  }
+  if (scope === "last-step" && !snapshotId) {
+    return Promise.reject(
+      new Error("last-step diff requires a fresh summary snapshot"),
+    );
   }
   const requestKey = diffFileRequestKey(
     client,
@@ -483,6 +505,7 @@ function requestDiffFile(
     scope,
     entry,
     revision,
+    snapshotId,
   );
   const running = diffFileRequests.get(requestKey);
   if (running) return running;
@@ -490,7 +513,9 @@ function requestDiffFile(
     workspace_id: workspaceId,
     mode: scope,
     path: entry.path,
+    old_path: entry.old_path,
     kind: entry.kind,
+    snapshot_id: snapshotId,
   }) as Promise<GitDiffFile>;
   diffFileRequests.set(
     requestKey,
@@ -547,6 +572,7 @@ export function prefetchDiffFilesInBatches(
   const key = diffCacheKey(client, workspaceId, scope, resourceKey);
   const revision = diffCacheRevision(key);
   const cached = readDiffCache(client, workspaceId, scope, resourceKey);
+  const snapshotId = cached.summary?.snapshot_id;
   const queue = entries.filter((entry) => !cached.files[diffEntryKey(entry)]);
   if (!queue.length) return Promise.resolve();
 
@@ -562,6 +588,7 @@ export function prefetchDiffFilesInBatches(
           scope,
           entry,
           revision,
+          snapshotId,
         );
         if (!client.isCurrent() || diffCacheRevision(key) !== revision) return;
         cacheDiffFile(
@@ -776,6 +803,28 @@ export const DiffViewerPanel = forwardRef<
     : focusedWorkspace;
   const cacheWorkspaceId = workspace?.workspace_id;
   const cacheResourceKey = resourceKey ?? cacheWorkspaceId;
+  const completionKey = lastStepCompletionKey(
+    connectionClient.connectionId,
+    cacheWorkspaceId,
+  );
+  const subscribeToCompletion = useCallback(
+    (listener: () => void) =>
+      subscribeLastStepCompletion(completionKey, listener),
+    [completionKey],
+  );
+  const readCompletion = useCallback(
+    () => readLastStepCompletion(completionKey),
+    [completionKey],
+  );
+  const completionRevision = useSyncExternalStore(
+    subscribeToCompletion,
+    readCompletion,
+    readCompletion,
+  );
+  const completionRevisionRef = useRef({
+    key: completionKey,
+    revision: completionRevision,
+  });
   const [diffScope, setDiffScope] = useState<DiffScope>(() =>
     loadDiffScope(connectionClient.connectionId, cacheResourceKey),
   );
@@ -938,6 +987,7 @@ export const DiffViewerPanel = forwardRef<
   const loadSummary = async (
     previousSelected = cache.selected,
     afterCurrent = false,
+    clearCurrent = false,
   ) => {
     if (!workspace?.workspace_id || !connectionClient.isCurrent()) return;
     const workspaceId = workspace.workspace_id;
@@ -947,7 +997,17 @@ export const DiffViewerPanel = forwardRef<
       diffCacheKey(connectionClient, workspaceId, scope, cacheResourceKey),
     );
     setFileLoadingKey(null);
-    updateCache({ error: null });
+    updateCache(
+      clearCurrent
+        ? {
+            summary: null,
+            selected: null,
+            files: {},
+            fileErrors: {},
+            error: null,
+          }
+        : { error: null },
+    );
     try {
       await refreshGitDiffSummary(
         connectionClient,
@@ -962,6 +1022,49 @@ export const DiffViewerPanel = forwardRef<
       }
     }
   };
+
+  useEffect(() => {
+    const previous = completionRevisionRef.current;
+    completionRevisionRef.current = {
+      key: completionKey,
+      revision: completionRevision,
+    };
+    if (
+      !cacheWorkspaceId ||
+      previous.key !== completionKey ||
+      previous.revision === completionRevision
+    ) {
+      return;
+    }
+
+    if (diffScopeRef.current === "last-step") {
+      retireGitDiffSummary(
+        connectionClient,
+        cacheWorkspaceId,
+        "last-step",
+        cacheResourceKey,
+      );
+      void loadSummary(cache.selected, false, true);
+      return;
+    }
+    retireDiffCache(
+      diffCacheKey(
+        connectionClient,
+        cacheWorkspaceId,
+        "last-step",
+        cacheResourceKey,
+      ),
+    );
+    retireGitDiffSummary(
+      connectionClient,
+      cacheWorkspaceId,
+      "last-step",
+      cacheResourceKey,
+    );
+    // Completion notifications are not debounced with pane-list refreshes, so
+    // rapid quiet-to-active edges cannot leave the prior step cached forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheWorkspaceId, completionKey, completionRevision]);
 
   const loadFile = async (
     entry: GitDiffEntry,
@@ -1030,6 +1133,7 @@ export const DiffViewerPanel = forwardRef<
         scope,
         entry,
         revision,
+        cache.summary?.snapshot_id,
       );
       if (
         !isCurrentContext(workspaceId, scope) ||
@@ -1308,6 +1412,14 @@ export const DiffViewerPanel = forwardRef<
       <div className="diff-scope-toggle" aria-label="Diff scope">
         <button
           type="button"
+          className={diffScope === "last-step" ? "is-active" : ""}
+          onClick={() => setDiffScope("last-step")}
+          aria-pressed={diffScope === "last-step"}
+        >
+          Last step
+        </button>
+        <button
+          type="button"
           className={diffScope === "working" ? "is-active" : ""}
           onClick={() => setDiffScope("working")}
           aria-pressed={diffScope === "working"}
@@ -1352,7 +1464,12 @@ export const DiffViewerPanel = forwardRef<
         ) : (
           <div className="diff-empty">
             <FileDiff size={18} />
-            <span>No changes</span>
+            <span>
+              {diffScope === "last-step" &&
+              cache.summary?.baseline_available === false
+                ? "No completed agent step yet"
+                : "No changes"}
+            </span>
           </div>
         )}
       </div>

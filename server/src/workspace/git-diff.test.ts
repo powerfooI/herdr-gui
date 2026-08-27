@@ -1,11 +1,54 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { RunProcessWithCodeTimeout } from "./file-types";
 import {
+  createLastStepBaselineStore,
   parseBranchSummary,
   parseGeneratedAttributes,
   parseStatusSummary,
+  readDiffFile,
   readDiffSummary,
+  snapshotWorktreeTree,
   statusLabel,
+  type LastStepBaselineStore,
 } from "./git-diff";
+
+const runProcessWithCodeTimeout: RunProcessWithCodeTimeout = async (argv) => {
+  const process = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe" });
+  const [code, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+  return { code, stdout, stderr };
+};
+
+function shQuote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+async function git(root: string, ...args: string[]) {
+  const result = await runProcessWithCodeTimeout(
+    ["git", "-C", root, ...args],
+    5000,
+  );
+  if (result.code !== 0) throw new Error(result.stderr || result.stdout);
+  return result.stdout;
+}
+
+async function initRepository() {
+  const root = await mkdtemp(join(tmpdir(), "herdr-last-step-"));
+  await git(root, "init");
+  await git(root, "config", "user.email", "test@example.com");
+  await git(root, "config", "user.name", "Herdr Test");
+  return root;
+}
+
+function baselineStore() {
+  return createLastStepBaselineStore({ shQuote, runProcessWithCodeTimeout });
+}
 
 describe("git diff summary parsing", () => {
   test("labels git statuses", () => {
@@ -156,5 +199,867 @@ describe("git diff summary parsing", () => {
     expect(commands.some((command) => command.includes("check-attr -z"))).toBe(
       true,
     );
+  });
+});
+
+describe("last-step worktree snapshots", () => {
+  test("runs temporary-index snapshots through the SSH command path", async () => {
+    const calls: string[][] = [];
+    const tree = "a".repeat(40);
+    const result = await snapshotWorktreeTree({
+      root: "/repo with spaces",
+      host: "dev.example",
+      shQuote,
+      runProcessWithCodeTimeout: async (argv) => {
+        calls.push(argv);
+        return { code: 0, stdout: `${tree}\n`, stderr: "" };
+      },
+    });
+
+    expect(result).toBe(tree);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe("ssh");
+    expect(calls[0]).toContain("dev.example");
+    const command = calls[0]?.at(-1) ?? "";
+    expect(command).toContain("GIT_INDEX_FILE");
+    expect(command).toContain("git -C '/repo with spaces' add -A");
+    expect(command).toContain("write-tree");
+    expect(command).toContain("trap cleanup EXIT HUP INT TERM");
+  });
+
+  test("includes commits and untracked files made after the baseline", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "tracked.txt"), "before\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "initial");
+      const baselines = baselineStore();
+      await baselines.captureWorkspace("workspace", async () => root);
+
+      await writeFile(join(root, "tracked.txt"), "after commit\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "mid-turn");
+      await writeFile(join(root, "untracked.txt"), "new file\n");
+      await baselines.completeWorkspace("workspace");
+
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: { label: "Repo" },
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+
+      expect(summary.baseline_available).toBe(true);
+      expect(summary.entries).toEqual([
+        {
+          path: "tracked.txt",
+          old_path: undefined,
+          kind: "last-step",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+        },
+        {
+          path: "untracked.txt",
+          old_path: undefined,
+          kind: "last-step",
+          status: "added",
+          additions: 1,
+          deletions: 0,
+        },
+      ]);
+
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          kind: "last-step",
+          path: "tracked.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(file.kind).toBe("last-step");
+      expect(file.diff).toContain("-before");
+      expect(file.diff).toContain("+after commit");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps rename metadata in an individual last-step patch", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "old.txt"), "renamed content\n");
+      await git(root, "add", "old.txt");
+      await git(root, "commit", "-m", "initial");
+      const baselines = baselineStore();
+      await baselines.captureWorkspace("workspace", async () => root);
+      await rename(join(root, "old.txt"), join(root, "new.txt"));
+      await baselines.completeWorkspace("workspace");
+
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(summary.entries).toContainEqual(
+        expect.objectContaining({
+          path: "new.txt",
+          old_path: "old.txt",
+          kind: "last-step",
+          status: "renamed",
+        }),
+      );
+
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "new.txt",
+          old_path: "old.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(file.diff).toContain("rename from old.txt");
+      expect(file.diff).toContain("rename to new.txt");
+      expect(file.diff).not.toContain("new file mode");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps the previous completed step visible until the active step completes", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "tracked.txt"), "initial\n");
+      const baselines = baselineStore();
+
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "first completed step\n");
+      await baselines.completeWorkspace("workspace");
+      const first = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "second active step\n");
+      const whileActive = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(whileActive.base).toBe(first.base);
+      expect(whileActive.snapshot_id).not.toBe(first.snapshot_id);
+
+      await baselines.completeWorkspace("workspace");
+      const afterCompletion = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(afterCompletion.base).not.toBe(first.base);
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: afterCompletion.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(file.diff).toContain("-first completed step");
+      expect(file.diff).toContain("+second active step");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("queues a rapid second completion while the first is still finalizing", async () => {
+    const root = await initRepository();
+    let snapshotCall = 0;
+    let releaseFirstCompletion: () => void = () => undefined;
+    let signalFirstCompletion: () => void = () => undefined;
+    const firstCompletionStarted = new Promise<void>((resolve) => {
+      signalFirstCompletion = resolve;
+    });
+    const firstCompletionGate = new Promise<void>((resolve) => {
+      releaseFirstCompletion = resolve;
+    });
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (argv.join(" ").includes("herdr-git-index")) {
+        snapshotCall += 1;
+        if (snapshotCall === 2) {
+          signalFirstCompletion();
+          await firstCompletionGate;
+        }
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "initial\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "first step\n");
+      const firstCompletion = baselines.completeWorkspace("workspace");
+      await firstCompletionStarted;
+
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "second step\n");
+      releaseFirstCompletion();
+      expect(await firstCompletion).toBe(true);
+
+      const whileSecondIsActive = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      const firstFile = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: whileSecondIsActive.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(firstFile.diff).toContain("-initial");
+      expect(firstFile.diff).toContain("+first step");
+      expect(firstFile.diff).not.toContain("+second step");
+
+      expect(await baselines.completeWorkspace("workspace")).toBe(true);
+      const completedSecond = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      const secondFile = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: completedSecond.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(secondFile.diff).toContain("-first step");
+      expect(secondFile.diff).toContain("+second step");
+    } finally {
+      releaseFirstCompletion();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("binds file patches to the exact tree pair returned by the summary", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "initial");
+      const baselines = baselineStore();
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "at summary\n");
+      await baselines.completeWorkspace("workspace");
+
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(typeof summary.snapshot_id).toBe("string");
+      await writeFile(join(root, "tracked.txt"), "after summary\n");
+
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(file.diff).toContain("+at summary");
+      expect(file.diff).not.toContain("+after summary");
+
+      await baselines.captureWorkspace("workspace", async () => root);
+      const retainedFile = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(retainedFile.diff).toContain("+at summary");
+      await baselines.completeWorkspace("workspace");
+
+      let expiredError: unknown;
+      try {
+        await readDiffFile({
+          workspaceId: "workspace",
+          root,
+          params: {
+            mode: "last-step",
+            path: "tracked.txt",
+            snapshot_id: summary.snapshot_id,
+          },
+          shQuote,
+          runProcessWithCodeTimeout,
+          lastStepBaselines: baselines,
+        });
+      } catch (error) {
+        expiredError = error;
+      }
+      expect((expiredError as Error).message).toContain("snapshot expired");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("returns a usable summary token when a newer step completes mid-request", async () => {
+    const root = await initRepository();
+    let blockNameStatus = false;
+    let releaseNameStatus: () => void = () => undefined;
+    let signalNameStatus: () => void = () => undefined;
+    const nameStatusStarted = new Promise<void>((resolve) => {
+      signalNameStatus = resolve;
+    });
+    const nameStatusGate = new Promise<void>((resolve) => {
+      releaseNameStatus = resolve;
+    });
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (blockNameStatus && argv.join(" ").includes("diff --name-status")) {
+        blockNameStatus = false;
+        signalNameStatus();
+        await nameStatusGate;
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "initial\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "first step\n");
+      await baselines.completeWorkspace("workspace");
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "second step\n");
+
+      blockNameStatus = true;
+      const summaryTask = readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      await nameStatusStarted;
+      await baselines.completeWorkspace("workspace");
+      releaseNameStatus();
+      const summary = await summaryTask;
+
+      const file = await readDiffFile({
+        workspaceId: "workspace",
+        root,
+        params: {
+          mode: "last-step",
+          path: "tracked.txt",
+          snapshot_id: summary.snapshot_id,
+        },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(file.diff).toContain("-initial");
+      expect(file.diff).toContain("+first step");
+    } finally {
+      releaseNameStatus();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("expires a missing current tree without deleting the valid baseline", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      const baselines = baselineStore();
+      const baseline = await baselines.capture(root);
+      const validSnapshot = baselines.rememberSnapshot(
+        "workspace",
+        root,
+        baseline,
+        baseline,
+      );
+      const expiredSnapshot = baselines.rememberSnapshot(
+        "workspace",
+        root,
+        baseline,
+        "0".repeat(40),
+      );
+
+      let expiredError: unknown;
+      try {
+        await readDiffFile({
+          workspaceId: "workspace",
+          root,
+          params: {
+            mode: "last-step",
+            path: "tracked.txt",
+            snapshot_id: expiredSnapshot,
+          },
+          shQuote,
+          runProcessWithCodeTimeout,
+          lastStepBaselines: baselines,
+        });
+      } catch (error) {
+        expiredError = error;
+      }
+      expect((expiredError as Error).message).toContain("snapshot expired");
+      expect(await baselines.resolve("workspace", root)).toBe(baseline);
+      expect(
+        baselines.resolveSnapshot("workspace", root, validSnapshot),
+      ).toEqual({ baseline, current: baseline });
+      expect(
+        baselines.resolveSnapshot("workspace", root, expiredSnapshot),
+      ).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not let an older failed capture erase a newer same-root baseline", async () => {
+    const root = await initRepository();
+    let snapshotCall = 0;
+    let releaseFirst: () => void = () => undefined;
+    let signalFirstStarted: () => void = () => undefined;
+    const firstStarted = new Promise<void>((resolve) => {
+      signalFirstStarted = resolve;
+    });
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (argv.join(" ").includes("herdr-git-index")) {
+        snapshotCall += 1;
+        if (snapshotCall === 1) {
+          signalFirstStarted();
+          await firstGate;
+          return { code: 1, stdout: "", stderr: "older capture failed" };
+        }
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "current\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      const older = baselines.captureWorkspace("older", async () => root);
+      await firstStarted;
+      const newer = baselines.captureWorkspace("newer", async () => root);
+      await newer;
+      releaseFirst();
+      let olderError: unknown;
+      try {
+        await older;
+      } catch (error) {
+        olderError = error;
+      }
+      expect((olderError as Error).message).toContain("older capture failed");
+      expect(typeof (await baselines.resolve("newer", root))).toBe("string");
+    } finally {
+      releaseFirst();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves the real index in a linked worktree", async () => {
+    const root = await initRepository();
+    const linkedRoot = `${root}-linked`;
+    try {
+      await writeFile(join(root, "tracked.txt"), "base\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "initial");
+      await git(root, "worktree", "add", "-b", "linked-test", linkedRoot);
+      await writeFile(join(linkedRoot, "staged.txt"), "baseline\n");
+      await git(linkedRoot, "add", "staged.txt");
+      const beforeStatus = await git(linkedRoot, "status", "--porcelain=v1");
+      const baselines = baselineStore();
+      await baselines.captureWorkspace("workspace", async () => linkedRoot);
+      expect(await git(linkedRoot, "status", "--porcelain=v1")).toBe(
+        beforeStatus,
+      );
+
+      await writeFile(join(linkedRoot, "staged.txt"), "changed\n");
+      await baselines.completeWorkspace("workspace");
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root: linkedRoot,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(summary.entries).toContainEqual(
+        expect.objectContaining({
+          path: "staged.txt",
+          kind: "last-step",
+          status: "modified",
+        }),
+      );
+    } finally {
+      try {
+        await git(root, "worktree", "remove", "--force", linkedRoot);
+      } catch {
+        // The linked worktree may already be absent after a failed setup.
+      }
+      await rm(linkedRoot, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("snapshots an unborn repository without mutating the user index", async () => {
+    const root = await initRepository();
+    try {
+      await writeFile(join(root, "existing.txt"), "baseline\n");
+      await git(root, "add", "existing.txt");
+      const beforeStatus = await git(root, "status", "--porcelain=v1");
+      const baselines = baselineStore();
+      await baselines.captureWorkspace("workspace", async () => root);
+      const afterStatus = await git(root, "status", "--porcelain=v1");
+      expect(afterStatus).toBe(beforeStatus);
+
+      await writeFile(join(root, "existing.txt"), "changed\n");
+      await writeFile(join(root, "new.txt"), "new\n");
+      await baselines.completeWorkspace("workspace");
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+
+      expect(
+        summary.entries.map((entry) => [entry.path, entry.status]),
+      ).toEqual([
+        ["existing.txt", "modified"],
+        ["new.txt", "added"],
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("waits for step completion before publishing its replacement", async () => {
+    const root = await initRepository();
+    let holdSnapshots = false;
+    let catFileCalls = 0;
+    let releaseSnapshot = () => undefined;
+    let snapshotGate = Promise.resolve();
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      const command = argv.join(" ");
+      if (command.includes("cat-file --batch-check")) catFileCalls += 1;
+      if (holdSnapshots && command.includes("herdr-git-index")) {
+        await snapshotGate;
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "first baseline\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "second baseline\n");
+
+      holdSnapshots = true;
+      snapshotGate = new Promise<void>((resolve) => {
+        releaseSnapshot = () => {
+          holdSnapshots = false;
+          resolve();
+        };
+      });
+      const completion = baselines.completeWorkspace("workspace");
+      const summaryTask = readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(catFileCalls).toBe(0);
+
+      releaseSnapshot();
+      await completion;
+      const summary = await summaryTask;
+      expect(summary.baseline_available).toBe(true);
+      expect(summary.entries.map((entry) => entry.path)).toEqual([
+        "tracked.txt",
+      ]);
+    } finally {
+      releaseSnapshot();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("retains the completed step when the next baseline capture fails", async () => {
+    const root = await initRepository();
+    let failNextSnapshot = false;
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (failNextSnapshot && argv.join(" ").includes("herdr-git-index")) {
+        failNextSnapshot = false;
+        return { code: 1, stdout: "", stderr: "snapshot failed" };
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "old baseline\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "completed turn\n");
+      await baselines.completeWorkspace("workspace");
+      failNextSnapshot = true;
+      let captureError: unknown;
+      try {
+        await baselines.captureWorkspace("workspace", async () => root);
+      } catch (error) {
+        captureError = error;
+      }
+      expect(captureError).toBeInstanceOf(Error);
+      expect((captureError as Error).message).toContain("snapshot failed");
+      expect(await baselines.completeWorkspace("workspace")).toBe(false);
+
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      });
+      expect(summary.baseline_available).toBe(true);
+      expect(summary.entries.map((entry) => entry.path)).toEqual([
+        "tracked.txt",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves a valid baseline across transient cat-file failures", async () => {
+    const root = await initRepository();
+    let failCatFile = false;
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (failCatFile && argv.join(" ").includes("cat-file --batch-check")) {
+        return { code: 255, stdout: "", stderr: "ssh disconnected" };
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      await baselines.captureWorkspace("workspace", async () => root);
+      await writeFile(join(root, "tracked.txt"), "changed\n");
+      await baselines.completeWorkspace("workspace");
+      const args = {
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+        lastStepBaselines: baselines,
+      };
+
+      failCatFile = true;
+      let readError: unknown;
+      try {
+        await readDiffSummary(args);
+      } catch (error) {
+        readError = error;
+      }
+      expect(readError).toBeInstanceOf(Error);
+      expect((readError as Error).message).toContain("ssh disconnected");
+      failCatFile = false;
+      const summary = await readDiffSummary(args);
+      expect(summary.entries.map((entry) => entry.path)).toEqual([
+        "tracked.txt",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("drains and invalidates in-flight captures during disposal", async () => {
+    const root = await initRepository();
+    let releaseSnapshot: () => void = () => undefined;
+    let signalSnapshot: () => void = () => undefined;
+    const snapshotStarted = new Promise<void>((resolve) => {
+      signalSnapshot = resolve;
+    });
+    const snapshotGate = new Promise<void>((resolve) => {
+      releaseSnapshot = resolve;
+    });
+    const runner: RunProcessWithCodeTimeout = async (argv, timeoutMs) => {
+      if (argv.join(" ").includes("herdr-git-index")) {
+        signalSnapshot();
+        await snapshotGate;
+      }
+      return runProcessWithCodeTimeout(argv, timeoutMs);
+    };
+    try {
+      await writeFile(join(root, "tracked.txt"), "baseline\n");
+      const baselines = createLastStepBaselineStore({
+        shQuote,
+        runProcessWithCodeTimeout: runner,
+      });
+      const capture = baselines.captureWorkspace("workspace", async () => root);
+      await snapshotStarted;
+      let disposed = false;
+      const disposal = baselines.dispose().then(() => {
+        disposed = true;
+      });
+      await Promise.resolve();
+      expect(disposed).toBe(false);
+
+      releaseSnapshot();
+      let captureError: unknown;
+      try {
+        await capture;
+      } catch (error) {
+        captureError = error;
+      }
+      await disposal;
+      expect((captureError as Error & { code?: string }).code).toBe(
+        "LAST_STEP_STORE_DISPOSED",
+      );
+      expect(await baselines.resolve("workspace", root)).toBeUndefined();
+      await expect(
+        baselines.captureWorkspace("workspace", async () => root),
+      ).rejects.toMatchObject({ code: "LAST_STEP_STORE_DISPOSED" });
+    } finally {
+      releaseSnapshot();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("returns an empty state when the baseline object is missing", async () => {
+    const root = await initRepository();
+    let deleted = false;
+    const missingTree = "0".repeat(40);
+    const baselines: LastStepBaselineStore = {
+      capture: async () => missingTree,
+      captureWorkspace: async () => missingTree,
+      completeWorkspace: async () => false,
+      resolve: async () => missingTree,
+      resolveCompleted: async () => ({
+        baseline: missingTree,
+        current: missingTree,
+      }),
+      rememberSnapshot: () => "missing-snapshot",
+      resolveSnapshot: () => undefined,
+      deleteSnapshot: () => undefined,
+      delete: () => {
+        deleted = true;
+      },
+      dispose: async () => undefined,
+      clear: () => undefined,
+    };
+    try {
+      const summary = await readDiffSummary({
+        workspaceId: "workspace",
+        workspace: {},
+        root,
+        params: { mode: "last-step" },
+        shQuote,
+        runProcessWithCodeTimeout,
+        lastStepBaselines: baselines,
+      });
+      expect(summary.baseline_available).toBe(false);
+      expect(summary.entries).toEqual([]);
+      expect(deleted).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

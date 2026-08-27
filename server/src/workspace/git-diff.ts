@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sshCommandArgv } from "../bridge/ssh-command";
 import {
   GIT_DIFF_MAX_BYTES,
@@ -14,6 +15,61 @@ import type {
 } from "./file-types";
 
 const GIT_ATTRIBUTE_BATCH_SIZE = 100;
+const LAST_STEP_SNAPSHOT_LIMIT = 64;
+const LAST_STEP_STORE_DISPOSED = "LAST_STEP_STORE_DISPOSED";
+
+function lastStepStoreDisposedError() {
+  return Object.assign(new Error("last-step snapshot store is disposed"), {
+    code: LAST_STEP_STORE_DISPOSED,
+  });
+}
+
+export type LastStepBaselineStore = {
+  capture: (root: string) => Promise<string>;
+  captureWorkspace: (
+    workspaceId: string,
+    resolveRoot: () => Promise<string>,
+  ) => Promise<string>;
+  completeWorkspace: (workspaceId: string) => Promise<boolean>;
+  resolve: (workspaceId: string, root: string) => Promise<string | undefined>;
+  resolveCompleted: (
+    workspaceId: string,
+    root: string,
+  ) => Promise<{ baseline: string; current: string } | undefined>;
+  rememberSnapshot: (
+    workspaceId: string,
+    root: string,
+    baseline: string,
+    current: string,
+  ) => string;
+  resolveSnapshot: (
+    workspaceId: string,
+    root: string,
+    snapshotId: string,
+  ) => { baseline: string; current: string } | undefined;
+  deleteSnapshot: (snapshotId: string) => void;
+  delete: (root: string) => void;
+  dispose: () => Promise<void>;
+  clear: () => void;
+};
+
+type WorkspaceBaselineState =
+  | { status: "pending"; promise: Promise<string>; version: number }
+  | { status: "ready"; root: string; baseline: string; version: number }
+  | { status: "unavailable"; version: number };
+
+type WorkspaceActivityCycle = {
+  version: number;
+  capture: Promise<{ root: string; baseline: string }>;
+  completion?: Promise<boolean>;
+  nextCapture?: Promise<{ root: string; baseline: string }>;
+};
+
+type GitCommandContext = {
+  host?: string;
+  shQuote: (value: string) => string;
+  runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
+};
 
 export function statusLabel(code: string, kind: GitDiffKind) {
   if (kind === "untracked") return "untracked";
@@ -98,7 +154,10 @@ export function parseStatusSummary(output: string): GitDiffEntry[] {
   );
 }
 
-export function parseBranchSummary(output: string): GitDiffEntry[] {
+export function parseBranchSummary(
+  output: string,
+  kind: "branch" | "last-step" = "branch",
+): GitDiffEntry[] {
   return output
     .split(/\r?\n/)
     .filter(Boolean)
@@ -111,8 +170,8 @@ export function parseBranchSummary(output: string): GitDiffEntry[] {
       return {
         path,
         old_path: oldPath,
-        kind: "branch" as const,
-        status: statusLabel(rawStatus[0] ?? "M", "branch"),
+        kind,
+        status: statusLabel(rawStatus[0] ?? "M", kind),
       };
     })
     .filter((entry) => entry.path)
@@ -180,7 +239,40 @@ function entryKeyForStats(entry: Pick<GitDiffEntry, "kind" | "path">) {
 }
 
 function diffMode(params: Record<string, unknown>): GitDiffMode {
-  return params.mode === "branch-main" ? "branch-main" : "working";
+  if (params.mode === "branch-main") return "branch-main";
+  if (params.mode === "last-step") return "last-step";
+  return "working";
+}
+
+function diffFileKind(mode: GitDiffMode, requestedKind: unknown): GitDiffKind {
+  if (mode === "branch-main") return "branch";
+  if (mode === "last-step") return "last-step";
+  if (
+    requestedKind === "staged" ||
+    requestedKind === "untracked" ||
+    requestedKind === "conflicted"
+  ) {
+    return requestedKind;
+  }
+  return "unstaged";
+}
+
+function workingDiffFileCommand(
+  kind: GitDiffKind,
+  path: string,
+  pathspec: string,
+  shQuote: (value: string) => string,
+) {
+  switch (kind) {
+    case "staged":
+      return `diff --cached --no-ext-diff -- ${pathspec}`;
+    case "untracked":
+      return `diff --no-ext-diff --no-index -- /dev/null ${shQuote(path)}`;
+    case "conflicted":
+      return `diff --cc --no-ext-diff -- ${pathspec}`;
+    default:
+      return `diff --no-ext-diff -- ${pathspec}`;
+  }
 }
 
 function runGitShellCommand({
@@ -203,6 +295,324 @@ function runGitShellCommand({
     host ? sshCommandArgv(host, fullCommand) : ["sh", "-lc", fullCommand],
     timeoutMs,
   );
+}
+
+export async function snapshotWorktreeTree({
+  root,
+  host,
+  shQuote,
+  runProcessWithCodeTimeout,
+}: { root: string } & GitCommandContext): Promise<string> {
+  const command = `
+set -eu
+index_file=$(mktemp "\${TMPDIR:-/tmp}/herdr-git-index.XXXXXX")
+cleanup() { rm -f "$index_file" "$index_file.lock"; }
+trap cleanup EXIT HUP INT TERM
+rm -f "$index_file"
+export GIT_INDEX_FILE="$index_file"
+if git -C ${shQuote(root)} rev-parse --verify --quiet 'HEAD^{commit}' >/dev/null; then
+  git -C ${shQuote(root)} read-tree HEAD
+else
+  git -C ${shQuote(root)} read-tree --empty
+fi
+git -C ${shQuote(root)} add -A
+git -C ${shQuote(root)} write-tree
+`;
+  const result = await runProcessWithCodeTimeout(
+    host ? sshCommandArgv(host, command) : ["sh", "-lc", command],
+    GIT_DIFF_TIMEOUT_MS,
+  );
+  const tree = result.stdout.trim();
+  if (result.code !== 0 || !/^[0-9a-f]{40,64}$/.test(tree)) {
+    throw new Error(
+      (result.stderr || result.stdout || `git write-tree exited ${result.code}`)
+        .trim()
+        .slice(0, 1000),
+    );
+  }
+  return tree;
+}
+
+export function createLastStepBaselineStore(
+  context: GitCommandContext,
+): LastStepBaselineStore {
+  const baselines = new Map<string, string>();
+  const captureVersions = new Map<string, number>();
+  const workspaceStates = new Map<string, WorkspaceBaselineState>();
+  const completedRanges = new Map<
+    string,
+    { root: string; baseline: string; current: string }
+  >();
+  const completedVersions = new Map<string, number>();
+  const activityCycles = new Map<string, WorkspaceActivityCycle>();
+  const snapshots = new Map<
+    string,
+    { workspaceId: string; root: string; baseline: string; current: string }
+  >();
+  const inFlight = new Set<Promise<unknown>>();
+  let disposed = false;
+  let disposeTask: Promise<void> | null = null;
+
+  function assertActive() {
+    if (disposed) throw lastStepStoreDisposedError();
+  }
+
+  function track<T>(task: Promise<T>): Promise<T> {
+    inFlight.add(task);
+    const remove = () => inFlight.delete(task);
+    void task.then(remove, remove);
+    return task;
+  }
+
+  function clearState() {
+    baselines.clear();
+    captureVersions.clear();
+    workspaceStates.clear();
+    completedRanges.clear();
+    completedVersions.clear();
+    activityCycles.clear();
+    snapshots.clear();
+  }
+
+  function deleteSnapshots(
+    predicate: (workspaceId: string, root: string) => boolean,
+  ) {
+    for (const [snapshotId, snapshot] of snapshots) {
+      if (predicate(snapshot.workspaceId, snapshot.root)) {
+        snapshots.delete(snapshotId);
+      }
+    }
+  }
+
+  async function captureRoot(root: string, invalidateSnapshots = true) {
+    assertActive();
+    const version = (captureVersions.get(root) ?? 0) + 1;
+    captureVersions.set(root, version);
+    baselines.delete(root);
+    if (invalidateSnapshots) {
+      deleteSnapshots((_workspaceId, snapshotRoot) => snapshotRoot === root);
+    }
+    const tree = await snapshotWorktreeTree({ root, ...context });
+    assertActive();
+    if (captureVersions.get(root) === version) baselines.set(root, tree);
+    return { tree, version };
+  }
+
+  return {
+    async capture(root) {
+      const captured = await track(captureRoot(root));
+      return captured.tree;
+    },
+    captureWorkspace(workspaceId, resolveRoot) {
+      if (disposed) return Promise.reject(lastStepStoreDisposedError());
+      const priorCycle = activityCycles.get(workspaceId);
+      const version = (workspaceStates.get(workspaceId)?.version ?? 0) + 1;
+      let resolvedRoot: string | undefined;
+      let rootCaptureVersion: number | undefined;
+      const capture = track(
+        (async () => {
+          try {
+            resolvedRoot = await resolveRoot();
+            const captured = await captureRoot(resolvedRoot, false);
+            rootCaptureVersion = captured.version;
+            if (activityCycles.get(workspaceId)?.version === version) {
+              workspaceStates.set(workspaceId, {
+                status: "ready",
+                root: resolvedRoot,
+                baseline: captured.tree,
+                version,
+              });
+            }
+            return { root: resolvedRoot, baseline: captured.tree };
+          } catch (error) {
+            if (activityCycles.get(workspaceId)?.version === version) {
+              if (
+                resolvedRoot &&
+                rootCaptureVersion !== undefined &&
+                captureVersions.get(resolvedRoot) === rootCaptureVersion
+              ) {
+                baselines.delete(resolvedRoot);
+                captureVersions.delete(resolvedRoot);
+              }
+              workspaceStates.set(workspaceId, {
+                status: "unavailable",
+                version,
+              });
+            }
+            throw error;
+          }
+        })(),
+      );
+      const cycle = { version, capture };
+      activityCycles.set(workspaceId, cycle);
+      if (priorCycle?.completion) priorCycle.nextCapture = capture;
+      const promise = capture.then((result) => result.baseline);
+      workspaceStates.set(workspaceId, {
+        status: "pending",
+        promise,
+        version,
+      });
+      return promise;
+    },
+    completeWorkspace(workspaceId) {
+      if (disposed) return Promise.reject(lastStepStoreDisposedError());
+      const cycle = activityCycles.get(workspaceId);
+      if (!cycle) return Promise.resolve(false);
+      if (cycle.completion) return cycle.completion;
+      const task = (async () => {
+        let captured: { root: string; baseline: string };
+        try {
+          captured = await cycle.capture;
+        } catch {
+          return false;
+        }
+        let current = await snapshotWorktreeTree({
+          root: captured.root,
+          ...context,
+        });
+        if (cycle.nextCapture) {
+          try {
+            const next = await cycle.nextCapture;
+            if (next.root === captured.root) current = next.baseline;
+          } catch {
+            // Do not publish a potentially late endpoint after a newer period
+            // started but failed to establish its boundary snapshot.
+            return false;
+          }
+        }
+        if (disposed) return false;
+        if ((completedVersions.get(workspaceId) ?? 0) >= cycle.version) {
+          return false;
+        }
+        completedVersions.set(workspaceId, cycle.version);
+        completedRanges.set(workspaceId, {
+          root: captured.root,
+          baseline: captured.baseline,
+          current,
+        });
+        deleteSnapshots(
+          (snapshotWorkspaceId) => snapshotWorkspaceId === workspaceId,
+        );
+        return true;
+      })();
+      cycle.completion = track(task);
+      return cycle.completion;
+    },
+    async resolve(workspaceId, root) {
+      if (disposed) return undefined;
+      let state = workspaceStates.get(workspaceId);
+      if (state?.status === "pending") {
+        try {
+          await state.promise;
+        } catch {
+          return undefined;
+        }
+        state = workspaceStates.get(workspaceId);
+      }
+      if (state?.status === "unavailable") return undefined;
+      if (state?.status === "ready") {
+        return state.root === root ? state.baseline : undefined;
+      }
+      return baselines.get(root);
+    },
+    async resolveCompleted(workspaceId, root) {
+      if (disposed) return undefined;
+      const completion = activityCycles.get(workspaceId)?.completion;
+      if (completion) {
+        try {
+          await completion;
+        } catch {
+          // Preserve the previous completed range when finalization fails.
+        }
+      }
+      const range = completedRanges.get(workspaceId);
+      if (!range || range.root !== root) return undefined;
+      return { baseline: range.baseline, current: range.current };
+    },
+    rememberSnapshot(workspaceId, root, baseline, current) {
+      assertActive();
+      const snapshotId = randomUUID();
+      snapshots.set(snapshotId, { workspaceId, root, baseline, current });
+      while (snapshots.size > LAST_STEP_SNAPSHOT_LIMIT) {
+        const oldest = snapshots.keys().next().value;
+        if (typeof oldest !== "string") break;
+        snapshots.delete(oldest);
+      }
+      return snapshotId;
+    },
+    resolveSnapshot(workspaceId, root, snapshotId) {
+      const snapshot = snapshots.get(snapshotId);
+      if (
+        !snapshot ||
+        snapshot.workspaceId !== workspaceId ||
+        snapshot.root !== root
+      ) {
+        return undefined;
+      }
+      return { baseline: snapshot.baseline, current: snapshot.current };
+    },
+    deleteSnapshot: (snapshotId) => snapshots.delete(snapshotId),
+    delete(root) {
+      baselines.delete(root);
+      deleteSnapshots((_workspaceId, snapshotRoot) => snapshotRoot === root);
+      captureVersions.delete(root);
+      for (const [workspaceId, state] of workspaceStates) {
+        if (state.status === "ready" && state.root === root) {
+          workspaceStates.set(workspaceId, {
+            status: "unavailable",
+            version: state.version,
+          });
+        }
+      }
+      for (const [workspaceId, range] of completedRanges) {
+        if (range.root === root) {
+          completedRanges.delete(workspaceId);
+          completedVersions.delete(workspaceId);
+        }
+      }
+    },
+    dispose() {
+      if (disposeTask) return disposeTask;
+      disposed = true;
+      disposeTask = (async () => {
+        // Git subprocess failures are owned by their original callers. This
+        // shutdown boundary only drains every task before final state clearing.
+        await Promise.allSettled(Array.from(inFlight));
+        clearState();
+      })();
+      return disposeTask;
+    },
+    clear() {
+      clearState();
+    },
+  };
+}
+
+async function treeExists({
+  root,
+  tree,
+  host,
+  shQuote,
+  runProcessWithCodeTimeout,
+}: { root: string; tree: string } & GitCommandContext) {
+  const result = await runGitShellCommand({
+    root,
+    command: `cat-file --batch-check=${shQuote("%(objectname) %(objecttype)")} <<'HERDR_EOF'\n${tree}\nHERDR_EOF`,
+    host,
+    shQuote,
+    runProcessWithCodeTimeout,
+  });
+  if (result.code !== 0) {
+    throw new Error(
+      (result.stderr || result.stdout || `git cat-file exited ${result.code}`)
+        .trim()
+        .slice(0, 1000),
+    );
+  }
+  const output = result.stdout.trim();
+  if (output === `${tree} missing`) return false;
+  if (output === `${tree} tree`) return true;
+  throw new Error(`unexpected git cat-file response: ${output.slice(0, 1000)}`);
 }
 
 async function collectGeneratedPaths({
@@ -241,6 +651,7 @@ async function collectStats({
   root,
   mode,
   base,
+  target,
   entries,
   host,
   shQuote,
@@ -249,6 +660,7 @@ async function collectStats({
   root: string;
   mode: GitDiffMode;
   base: string | undefined;
+  target?: string;
   entries: GitDiffEntry[];
   host?: string;
   shQuote: (value: string) => string;
@@ -266,17 +678,20 @@ async function collectStats({
     }
   };
 
-  if (mode === "branch-main") {
+  if (mode === "branch-main" || mode === "last-step") {
+    const kind = mode === "branch-main" ? "branch" : "last-step";
+    const range =
+      mode === "branch-main"
+        ? `${shQuote(base ?? "main")}...HEAD`
+        : `${shQuote(base ?? "")} ${shQuote(target ?? "")}`;
     const result = await runGitShellCommand({
       root,
-      command: `diff --numstat --find-renames ${shQuote(base ?? "main")}...HEAD`,
+      command: `diff --numstat --find-renames ${range}`,
       host,
       shQuote,
       runProcessWithCodeTimeout,
     });
-    if (result.code === 0 || result.code === 1) {
-      mergeStats("branch", result.stdout);
-    }
+    if (result.code === 0 || result.code === 1) mergeStats(kind, result.stdout);
     return stats;
   }
 
@@ -372,6 +787,77 @@ exit 1
   return result.stdout.trim();
 }
 
+async function resolveLastStepRange({
+  workspaceId,
+  root,
+  baselines,
+  snapshotId,
+  host,
+  shQuote,
+  runProcessWithCodeTimeout,
+}: {
+  workspaceId: string;
+  root: string;
+  baselines?: LastStepBaselineStore;
+  snapshotId?: string;
+} & GitCommandContext) {
+  if (snapshotId) {
+    const snapshot = baselines?.resolveSnapshot(workspaceId, root, snapshotId);
+    if (!snapshot) {
+      throw new Error("last-step snapshot expired; refresh Changes");
+    }
+    const [baselineExists, currentExists] = await Promise.all([
+      treeExists({
+        root,
+        tree: snapshot.baseline,
+        host,
+        shQuote,
+        runProcessWithCodeTimeout,
+      }),
+      treeExists({
+        root,
+        tree: snapshot.current,
+        host,
+        shQuote,
+        runProcessWithCodeTimeout,
+      }),
+    ]);
+    if (!baselineExists) {
+      baselines?.delete(root);
+      throw new Error("last-step snapshot expired; refresh Changes");
+    }
+    if (!currentExists) {
+      baselines?.deleteSnapshot(snapshotId);
+      throw new Error("last-step snapshot expired; refresh Changes");
+    }
+    return snapshot;
+  }
+
+  const completed = await baselines?.resolveCompleted(workspaceId, root);
+  if (!completed) return null;
+  const [baselineExists, currentExists] = await Promise.all([
+    treeExists({
+      root,
+      tree: completed.baseline,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    }),
+    treeExists({
+      root,
+      tree: completed.current,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    }),
+  ]);
+  if (!baselineExists || !currentExists) {
+    baselines?.delete(root);
+    return null;
+  }
+  return completed;
+}
+
 export async function readDiffSummary({
   workspaceId,
   workspace,
@@ -380,6 +866,7 @@ export async function readDiffSummary({
   host,
   shQuote,
   runProcessWithCodeTimeout,
+  lastStepBaselines,
 }: {
   workspaceId: string;
   workspace: any;
@@ -388,6 +875,7 @@ export async function readDiffSummary({
   host?: string;
   shQuote: (value: string) => string;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
+  lastStepBaselines?: LastStepBaselineStore;
 }) {
   const mode = diffMode(params);
   const base =
@@ -399,47 +887,79 @@ export async function readDiffSummary({
           runProcessWithCodeTimeout,
         })
       : undefined;
-  const result =
-    mode === "branch-main"
-      ? await runGitShellCommand({
+  const lastStepRange =
+    mode === "last-step"
+      ? await resolveLastStepRange({
+          workspaceId,
           root,
-          command: `diff --name-status --find-renames ${shQuote(base ?? "main")}...HEAD`,
+          baselines: lastStepBaselines,
           host,
           shQuote,
           runProcessWithCodeTimeout,
         })
-      : await runGitShellCommand({
-          root,
-          command: "status --porcelain=v1 --untracked-files=all",
-          host,
-          shQuote,
-          runProcessWithCodeTimeout,
-        });
+      : null;
+  let result = { code: 0, stdout: "", stderr: "" };
+  if (mode === "branch-main") {
+    result = await runGitShellCommand({
+      root,
+      command: `diff --name-status --find-renames ${shQuote(base ?? "main")}...HEAD`,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    });
+  } else if (mode === "last-step" && lastStepRange) {
+    result = await runGitShellCommand({
+      root,
+      command: `diff --name-status --find-renames ${shQuote(lastStepRange.baseline)} ${shQuote(lastStepRange.current)}`,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    });
+  } else if (mode === "working") {
+    result = await runGitShellCommand({
+      root,
+      command: "status --porcelain=v1 --untracked-files=all",
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    });
+  }
   if (result.code !== 0) {
     throw new Error(
       (
         result.stderr ||
         result.stdout ||
-        `git ${mode === "branch-main" ? "diff" : "status"} exited ${result.code}`
+        `git ${mode === "working" ? "status" : "diff"} exited ${result.code}`
       )
         .trim()
         .slice(0, 1000),
     );
   }
-  const entries =
-    mode === "branch-main"
-      ? parseBranchSummary(result.stdout)
-      : parseStatusSummary(result.stdout);
-  const [stats, generatedPaths] = await Promise.all([
-    collectStats({
+  let entries: GitDiffEntry[];
+  if (mode === "branch-main") {
+    entries = parseBranchSummary(result.stdout);
+  } else if (mode === "last-step") {
+    entries = parseBranchSummary(result.stdout, "last-step");
+  } else {
+    entries = parseStatusSummary(result.stdout);
+  }
+  let statsTask: Promise<Map<string, { additions: number; deletions: number }>>;
+  if (mode === "last-step" && !lastStepRange) {
+    statsTask = Promise.resolve(new Map());
+  } else {
+    statsTask = collectStats({
       root,
       mode,
-      base,
+      base: mode === "last-step" ? lastStepRange?.baseline : base,
+      target: lastStepRange?.current,
       entries,
       host,
       shQuote,
       runProcessWithCodeTimeout,
-    }),
+    });
+  }
+  const [stats, generatedPaths] = await Promise.all([
+    statsTask,
     collectGeneratedPaths({
       root,
       entries,
@@ -457,12 +977,23 @@ export async function readDiffSummary({
       ? { ...entryWithStats, generated: true }
       : entryWithStats;
   });
+  const lastStepSnapshotId =
+    mode === "last-step" && lastStepRange
+      ? lastStepBaselines?.rememberSnapshot(
+          workspaceId,
+          root,
+          lastStepRange.baseline,
+          lastStepRange.current,
+        )
+      : undefined;
   return {
     workspace_id: workspaceId,
     repo_name: workspace?.worktree?.repo_name ?? workspace?.label ?? "",
     root,
     mode,
-    base,
+    base: mode === "last-step" ? lastStepRange?.baseline : base,
+    baseline_available: mode !== "last-step" || lastStepRange !== null,
+    snapshot_id: lastStepSnapshotId,
     entries: entriesWithStats,
     counts: {
       staged: entriesWithStats.filter((entry) => entry.kind === "staged")
@@ -476,6 +1007,9 @@ export async function readDiffSummary({
       ).length,
       branch: entriesWithStats.filter((entry) => entry.kind === "branch")
         .length,
+      "last-step": entriesWithStats.filter(
+        (entry) => entry.kind === "last-step",
+      ).length,
     },
   };
 }
@@ -487,6 +1021,7 @@ export async function readDiffFile({
   host,
   shQuote,
   runProcessWithCodeTimeout,
+  lastStepBaselines,
 }: {
   workspaceId: string;
   root: string;
@@ -494,10 +1029,21 @@ export async function readDiffFile({
   host?: string;
   shQuote: (value: string) => string;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
+  lastStepBaselines?: LastStepBaselineStore;
 }) {
   const path = sanitizeExplorerPath(params.path);
   if (!path) throw new Error("git.diff_file requires path");
+  const oldPath = sanitizeExplorerPath(params.old_path);
+  const diffPaths = oldPath && oldPath !== path ? [oldPath, path] : [path];
+  const pathspec = diffPaths.map(shQuote).join(" ");
   const mode = diffMode(params);
+  const snapshotId =
+    typeof params.snapshot_id === "string" && params.snapshot_id
+      ? params.snapshot_id
+      : undefined;
+  if (mode === "last-step" && !snapshotId) {
+    throw new Error("last-step diff requires a fresh summary snapshot");
+  }
   const base =
     mode === "branch-main"
       ? await resolveMainBase({
@@ -507,31 +1053,38 @@ export async function readDiffFile({
           runProcessWithCodeTimeout,
         })
       : undefined;
-  const kind =
-    mode === "branch-main"
-      ? "branch"
-      : params.kind === "staged" ||
-          params.kind === "untracked" ||
-          params.kind === "conflicted"
-        ? params.kind
-        : "unstaged";
-  const gitCommand =
-    mode === "branch-main"
-      ? `diff --no-ext-diff --find-renames ${shQuote(base ?? "main")}...HEAD -- ${shQuote(path)}`
-      : kind === "staged"
-        ? `diff --cached --no-ext-diff -- ${shQuote(path)}`
-        : kind === "untracked"
-          ? `diff --no-ext-diff --no-index -- /dev/null ${shQuote(path)}`
-          : kind === "conflicted"
-            ? `diff --cc --no-ext-diff -- ${shQuote(path)}`
-            : `diff --no-ext-diff -- ${shQuote(path)}`;
-  const result = await runGitShellCommand({
-    root,
-    command: gitCommand,
-    host,
-    shQuote,
-    runProcessWithCodeTimeout,
-  });
+  const lastStepRange =
+    mode === "last-step"
+      ? await resolveLastStepRange({
+          workspaceId,
+          root,
+          baselines: lastStepBaselines,
+          snapshotId,
+          host,
+          shQuote,
+          runProcessWithCodeTimeout,
+        })
+      : null;
+  const kind = diffFileKind(mode, params.kind);
+  let gitCommand: string | null = null;
+  if (mode === "branch-main") {
+    gitCommand = `diff --no-ext-diff --find-renames ${shQuote(base ?? "main")}...HEAD -- ${pathspec}`;
+  } else if (mode === "last-step" && lastStepRange) {
+    gitCommand = `diff --no-ext-diff --find-renames ${shQuote(lastStepRange.baseline)} ${shQuote(lastStepRange.current)} -- ${pathspec}`;
+  } else if (mode === "working") {
+    gitCommand = workingDiffFileCommand(kind, path, pathspec, shQuote);
+  }
+
+  let result = { code: 0, stdout: "", stderr: "" };
+  if (gitCommand) {
+    result = await runGitShellCommand({
+      root,
+      command: gitCommand,
+      host,
+      shQuote,
+      runProcessWithCodeTimeout,
+    });
+  }
   const diffExitOk =
     kind === "untracked"
       ? result.code === 0 || result.code === 1

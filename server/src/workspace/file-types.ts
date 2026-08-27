@@ -58,9 +58,10 @@ export type GitDiffKind =
   | "unstaged"
   | "untracked"
   | "conflicted"
-  | "branch";
+  | "branch"
+  | "last-step";
 
-export type GitDiffMode = "working" | "branch-main";
+export type GitDiffMode = "working" | "branch-main" | "last-step";
 
 export type GitDiffEntry = {
   path: string;

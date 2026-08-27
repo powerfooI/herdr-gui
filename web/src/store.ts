@@ -12,6 +12,7 @@ import {
 } from "./connectionStorage";
 import { disposeTerminalConnection } from "./terminalConnection";
 import { isReconnectRetryableError } from "./reconnectRetry";
+import { publishLastStepCompletion } from "./lastStepCompletionStore";
 import {
   clearTerminalRelayViewports,
   forgetTerminalRelayViewportsExcept,
@@ -1759,6 +1760,15 @@ export const store = {
           event.connection_generation,
         )
       ) {
+        if (
+          event.event === "workspace.last_step_completed" &&
+          typeof event.data.workspace_id === "string"
+        ) {
+          publishLastStepCompletion(
+            event.connection_id,
+            event.data.workspace_id,
+          );
+        }
         scheduleRefresh();
       }
     });

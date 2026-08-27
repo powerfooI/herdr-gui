@@ -3,7 +3,7 @@ import type { ConnectionClient } from "./api";
 import type { GitDiffSummary } from "./types";
 import { connectionClientScopeKey } from "./useConnectionClient";
 
-export type GitDiffSummaryMode = "working" | "branch-main";
+export type GitDiffSummaryMode = "working" | "branch-main" | "last-step";
 
 export type GitDiffSummaryState = {
   summary: GitDiffSummary | null;
@@ -84,6 +84,20 @@ function keyMatchesResource(
   } catch {
     return false;
   }
+}
+
+export function retireGitDiffSummary(
+  client: Pick<ConnectionClient, "connectionId" | "generation">,
+  workspaceId: string,
+  mode: GitDiffSummaryMode,
+  resourceKey = workspaceId,
+) {
+  const key = gitDiffSummaryKey(client, workspaceId, mode, resourceKey);
+  states.delete(key);
+  requests.delete(key);
+  trailingRequests.delete(key);
+  activeTokens.delete(key);
+  notify(key);
 }
 
 export function retireGitDiffSummaryResource(

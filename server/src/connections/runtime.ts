@@ -19,6 +19,11 @@ import {
 } from "../utils/process-utils";
 import { createWorkspaceAutoSync } from "../workspace/auto-sync";
 import { createFileHandlers } from "../workspace/files";
+import {
+  createLastStepBaselineStore,
+  type LastStepBaselineStore,
+} from "../workspace/git-diff";
+import { createLastStepTurnTracker } from "../workspace/last-step-turns";
 import { runBinaryProcessWithTimeout } from "../workspace/process";
 import { createStatusEnricher } from "../workspace/status";
 import { createWorktreeHookRunner } from "../worktree/worktree-hooks";
@@ -75,6 +80,10 @@ export function createLegacyConnectionRuntime(args: {
   onEvent: (event: unknown, identity: ConnectionIdentity) => void;
   onError?: (error: unknown, identity: ConnectionIdentity) => void;
   onTransportExit?: (error: SshTunnelError) => void;
+  /** Test seam for deterministic shutdown coverage. */
+  lastStepBaselines?: LastStepBaselineStore;
+  resolveLastStepWorkspaceGitRoot?: (workspaceId: string) => Promise<string>;
+  lastStepTransitionDebounceMs?: number;
 }) {
   const { config } = args;
   const identity = { ...(args.identity ?? LEGACY_DEFAULT_CONNECTION) };
@@ -99,11 +108,19 @@ export function createLegacyConnectionRuntime(args: {
   const { handleHerdrInfo } = createHerdrInfoHandler({
     ping: () => herdr.ping(),
   });
+  const lastStepBaselines =
+    args.lastStepBaselines ??
+    createLastStepBaselineStore({
+      host: sshHost(),
+      runProcessWithCodeTimeout,
+      shQuote,
+    });
   const files = createFileHandlers({
     herdr,
     sshHost,
     runProcessWithCodeTimeout,
     shQuote,
+    lastStepBaselines,
   });
   const status = createStatusEnricher({
     connectionId: identity.id,
@@ -188,6 +205,44 @@ export function createLegacyConnectionRuntime(args: {
     },
   });
 
+  const lastStepTurns = createLastStepTurnTracker({
+    captureWorkspaceBaseline: async (workspaceId) => {
+      await lastStepBaselines.captureWorkspace(workspaceId, async () => {
+        if (args.resolveLastStepWorkspaceGitRoot) {
+          return args.resolveLastStepWorkspaceGitRoot(workspaceId);
+        }
+        const { root } = await files.resolveWorkspaceGitRoot({
+          workspace_id: workspaceId,
+        });
+        return root;
+      });
+    },
+    completeWorkspaceStep: async (workspaceId) => {
+      const published = await lastStepBaselines.completeWorkspace(workspaceId);
+      if (!published || disposed) return;
+      args.onEvent(
+        {
+          event: "workspace.last_step_completed",
+          data: {
+            type: "workspace.last_step_completed",
+            workspace_id: workspaceId,
+          },
+        },
+        identity,
+      );
+    },
+    onCaptureError: (error, workspaceId) =>
+      console.error(
+        `[bridge] last-step baseline failed connection=${identity.id} workspace=${workspaceId}:`,
+        sanitizeConnectionError(error),
+      ),
+    onCompleteError: (error, workspaceId) =>
+      console.error(
+        `[bridge] last-step completion failed connection=${identity.id} workspace=${workspaceId}:`,
+        sanitizeConnectionError(error),
+      ),
+    transitionDebounceMs: args.lastStepTransitionDebounceMs ?? 150,
+  });
   const agentStatusSubscriptions = createAgentStatusSubscriptionLoop({
     herdr,
     connectionId: identity.id,
@@ -202,10 +257,13 @@ export function createLegacyConnectionRuntime(args: {
         `[bridge] agent status pane list failed connection=${identity.id}:`,
         sanitizeConnectionError(error),
       ),
+    onPaneListStart: lastStepTurns.beginPaneList,
+    onPaneList: lastStepTurns.reconcilePaneList,
     log: (message) => console.log(`[bridge] ${message}`),
   });
 
   const onHerdrEvent = (event: unknown) => {
+    lastStepTurns.handleHerdrEvent(event);
     agentStatusSubscriptions.handleHerdrEvent(event);
     args.onEvent(event, identity);
   };
@@ -266,10 +324,15 @@ export function createLegacyConnectionRuntime(args: {
     if (disposed) return Promise.resolve();
     disposed = true;
     backgroundStarted = false;
+    herdr.off("event", onHerdrEvent);
+    herdr.off("error", onHerdrError);
     const autoSyncStop = workspaceAutoSync.stop();
     terminalBridge.dispose();
     const subscriptionStop = subscriptionLoop.stop();
     const agentStatusStop = agentStatusSubscriptions.stop();
+    const lastStepStop = lastStepTurns
+      .stop()
+      .then(() => lastStepBaselines.dispose());
     const transportCleanup = sshTunnel.cleanupAutoSshTunnel();
     const transportStop =
       transportStart?.catch(() => undefined) ?? Promise.resolve();
@@ -277,14 +340,10 @@ export function createLegacyConnectionRuntime(args: {
       autoSyncStop,
       subscriptionStop,
       agentStatusStop,
+      lastStepStop,
       transportCleanup,
       transportStop,
-    ])
-      .then(() => undefined)
-      .finally(() => {
-        herdr.off("event", onHerdrEvent);
-        herdr.off("error", onHerdrError);
-      });
+    ]).then(() => undefined);
     return stopTask;
   }
 

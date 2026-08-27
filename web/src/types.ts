@@ -166,7 +166,8 @@ export type GitDiffKind =
   | "unstaged"
   | "untracked"
   | "conflicted"
-  | "branch";
+  | "branch"
+  | "last-step";
 
 export interface GitDiffEntry {
   path: string;
@@ -182,8 +183,10 @@ export interface GitDiffSummary {
   workspace_id: string;
   repo_name?: string;
   root: string;
-  mode?: "working" | "branch-main";
+  mode?: "working" | "branch-main" | "last-step";
   base?: string;
+  baseline_available?: boolean;
+  snapshot_id?: string;
   entries: GitDiffEntry[];
   counts: Record<GitDiffKind, number>;
 }
