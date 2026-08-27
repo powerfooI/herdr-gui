@@ -21,4 +21,8 @@ test("publishes non-collapsible workspace completion revisions", () => {
   expect(readLastStepCompletion(otherKey)).toBe(0);
   expect(notifications).toBe(2);
   unsubscribe();
+  expect(readLastStepCompletion(key)).toBe(0);
+
+  publishLastStepCompletion("local", "workspace");
+  expect(readLastStepCompletion(key)).toBe(0);
 });

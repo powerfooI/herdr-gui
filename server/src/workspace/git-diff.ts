@@ -823,7 +823,7 @@ async function resolveLastStepRange({
       }),
     ]);
     if (!baselineExists) {
-      baselines?.delete(root);
+      baselines?.deleteSnapshot(snapshotId);
       throw new Error("last-step snapshot expired; refresh Changes");
     }
     if (!currentExists) {

@@ -9,7 +9,6 @@ type EventEnvelope = {
 };
 
 type PendingTransition = {
-  active: boolean;
   timer: ReturnType<typeof setTimeout>;
 };
 
@@ -161,7 +160,7 @@ export function createLastStepTurnTracker(args: {
       pendingTransitions.delete(workspaceId);
       commitTransition(workspaceId, active);
     }, transitionDebounceMs);
-    pendingTransitions.set(workspaceId, { active, timer });
+    pendingTransitions.set(workspaceId, { timer });
   }
 
   function cancelWorkspace(workspaceId: string) {

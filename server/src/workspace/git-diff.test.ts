@@ -641,7 +641,7 @@ describe("last-step worktree snapshots", () => {
     }
   });
 
-  test("expires a missing current tree without deleting the valid baseline", async () => {
+  test("expires only the snapshot whose tree is missing", async () => {
     const root = await initRepository();
     try {
       await writeFile(join(root, "tracked.txt"), "baseline\n");
@@ -684,6 +684,42 @@ describe("last-step worktree snapshots", () => {
       ).toEqual({ baseline, current: baseline });
       expect(
         baselines.resolveSnapshot("workspace", root, expiredSnapshot),
+      ).toBeUndefined();
+
+      const expiredBaselineSnapshot = baselines.rememberSnapshot(
+        "old-workspace",
+        root,
+        "0".repeat(40),
+        baseline,
+      );
+      let baselineError: unknown;
+      try {
+        await readDiffFile({
+          workspaceId: "old-workspace",
+          root,
+          params: {
+            mode: "last-step",
+            path: "tracked.txt",
+            snapshot_id: expiredBaselineSnapshot,
+          },
+          shQuote,
+          runProcessWithCodeTimeout,
+          lastStepBaselines: baselines,
+        });
+      } catch (error) {
+        baselineError = error;
+      }
+      expect((baselineError as Error).message).toContain("snapshot expired");
+      expect(await baselines.resolve("workspace", root)).toBe(baseline);
+      expect(
+        baselines.resolveSnapshot("workspace", root, validSnapshot),
+      ).toEqual({ baseline, current: baseline });
+      expect(
+        baselines.resolveSnapshot(
+          "old-workspace",
+          root,
+          expiredBaselineSnapshot,
+        ),
       ).toBeUndefined();
     } finally {
       await rm(root, { recursive: true, force: true });

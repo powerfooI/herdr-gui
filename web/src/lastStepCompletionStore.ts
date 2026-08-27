@@ -13,8 +13,10 @@ export function publishLastStepCompletion(
   workspaceId: string,
 ) {
   const key = lastStepCompletionKey(connectionId, workspaceId);
+  const current = listeners.get(key);
+  if (!current) return;
   revisions.set(key, (revisions.get(key) ?? 0) + 1);
-  for (const listener of listeners.get(key) ?? []) listener();
+  for (const listener of current) listener();
 }
 
 export function readLastStepCompletion(key: string) {
@@ -27,6 +29,9 @@ export function subscribeLastStepCompletion(key: string, listener: () => void) {
   listeners.set(key, current);
   return () => {
     current.delete(listener);
-    if (current.size === 0) listeners.delete(key);
+    if (current.size === 0) {
+      listeners.delete(key);
+      revisions.delete(key);
+    }
   };
 }
