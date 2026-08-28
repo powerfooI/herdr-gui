@@ -187,19 +187,23 @@ describe("connection-scoped file previews", () => {
       return preview(text);
     });
 
-    await expect(
-      requestFilePreview("same", "same.txt", { client: scopedClient }),
-    ).resolves.toMatchObject({ text: "before" });
+    const initial = await requestFilePreview("same", "same.txt", {
+      client: scopedClient,
+    });
+    expect(initial).toMatchObject({ text: "before" });
+    expect(typeof initial.resource_revision).toBe("number");
     text = "after";
     await expect(
       requestFilePreview("same", "same.txt", { client: scopedClient }),
     ).resolves.toMatchObject({ text: "before" });
-    await expect(
-      requestFilePreview("same", "same.txt", {
-        client: scopedClient,
-        refresh: true,
-      }),
-    ).resolves.toMatchObject({ text: "after" });
+    const refreshed = await requestFilePreview("same", "same.txt", {
+      client: scopedClient,
+      refresh: true,
+    });
+    expect(refreshed).toMatchObject({ text: "after" });
+    expect(refreshed.resource_revision).toBeGreaterThan(
+      initial.resource_revision ?? 0,
+    );
     expect(calls).toBe(2);
   });
 

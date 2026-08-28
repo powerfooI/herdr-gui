@@ -1023,6 +1023,7 @@ async function handleConnectionHttpRequest(
         response = await connection.files.downloadWorkspaceFile({
           workspace_id: url.searchParams.get("workspace_id"),
           path: url.searchParams.get("path"),
+          inline: url.searchParams.get("inline") === "1",
         });
       } catch (error) {
         response = new Response((error as Error).message, { status: 400 });

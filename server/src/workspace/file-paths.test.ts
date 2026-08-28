@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   downloadContentDisposition,
+  inlineContentDisposition,
   relativeExplorerPath,
   sanitizeExplorerPath,
   sanitizePreviewPath,
@@ -49,5 +50,8 @@ describe("workspace file path helpers", () => {
     const header = downloadContentDisposition("测试 file.txt");
     expect(header).toContain('filename="__ file.txt"');
     expect(header).toContain("filename*=UTF-8''%E6%B5%8B%E8%AF%95%20file.txt");
+    expect(inlineContentDisposition("guide.pdf")).toBe(
+      "inline; filename=\"guide.pdf\"; filename*=UTF-8''guide.pdf",
+    );
   });
 });

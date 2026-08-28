@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -9,6 +10,11 @@ import {
 } from "react";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import type { FileExplorerEntry, FilePreview } from "../types";
+import { useConnectionClient } from "../useConnectionClient";
+import {
+  resolveWorkspaceMarkdownImageUrl,
+  workspaceFileUrl,
+} from "../workspaceFileUrl";
 import { MarkdownPreview } from "./markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { highlightCodeTokens } from "./syntaxHighlighting";
@@ -25,6 +31,8 @@ export type FilePreviewSelectionMeta = {
 };
 
 type AppTheme = "dark" | "light";
+
+const PDF_INLINE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 
 type CodeMirrorPreviewDeps = Awaited<
   ReturnType<typeof importCodeMirrorPreviewDeps>
@@ -78,6 +86,10 @@ function isMermaidPath(path: string) {
   return lower.endsWith(".mmd") || lower.endsWith(".mermaid");
 }
 
+function isPdfPath(path: string) {
+  return path.toLowerCase().endsWith(".pdf");
+}
+
 function currentDocumentTheme(): AppTheme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
@@ -123,6 +135,7 @@ export function FilePreviewContent({
   changesKey?: string;
   onOpenChanges?: () => void;
 }) {
+  const connectionClient = useConnectionClient();
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
   const fileTabRef = useRef<HTMLButtonElement | null>(null);
@@ -140,8 +153,41 @@ export function FilePreviewContent({
   const hasPreviewText = previewText !== null;
   const hasMarkdownPreview = hasPreviewText && isMarkdownPath(previewPath);
   const hasMermaidPreview = hasPreviewText && isMermaidPath(previewPath);
+  const hasPdfPreview = Boolean(preview && isPdfPath(previewPath));
+  const pdfTooLarge =
+    hasPdfPreview && (preview?.size ?? 0) > PDF_INLINE_PREVIEW_MAX_BYTES;
   const hasRichPreview = hasMarkdownPreview || hasMermaidPreview;
   const renderRichPreview = hasRichPreview && previewMode === "rendered";
+  const inlinePreviewUrl = useMemo(() => {
+    if (!preview?.workspace_id || !previewPath) return null;
+    return workspaceFileUrl(
+      connectionClient,
+      preview.workspace_id,
+      previewPath,
+      { inline: true, revision: preview.resource_revision },
+    );
+  }, [
+    connectionClient,
+    preview?.resource_revision,
+    preview?.workspace_id,
+    previewPath,
+  ]);
+  const markdownImageUrlResolver = useMemo(() => {
+    if (!preview?.workspace_id || !previewPath) return undefined;
+    return (source: string) =>
+      resolveWorkspaceMarkdownImageUrl(
+        source,
+        previewPath,
+        connectionClient,
+        preview.workspace_id,
+        preview.resource_revision,
+      );
+  }, [
+    connectionClient,
+    preview?.resource_revision,
+    preview?.workspace_id,
+    previewPath,
+  ]);
   const changesAvailable =
     changesContent !== undefined && !!changesKey && !!onOpenChanges;
   const showingChanges = detailTab === "changes" && changesAvailable;
@@ -301,18 +347,41 @@ export function FilePreviewContent({
               />
             </div>
           ) : null}
-          {!loading && !error && preview?.binary && !preview.image_data_url ? (
+          {!loading &&
+          !error &&
+          hasPdfPreview &&
+          !pdfTooLarge &&
+          inlinePreviewUrl ? (
+            <iframe
+              className="file-preview-pdf"
+              src={inlinePreviewUrl}
+              title={`PDF preview: ${entry?.name ?? previewPath}`}
+            />
+          ) : null}
+          {!loading && !error && pdfTooLarge ? (
+            <div className="file-preview-state">
+              PDF is too large to preview. Use Download from the file menu.
+            </div>
+          ) : null}
+          {!loading &&
+          !error &&
+          preview?.binary &&
+          !preview.image_data_url &&
+          !hasPdfPreview ? (
             <div className="file-preview-state">
               Binary file cannot be previewed.
             </div>
           ) : null}
-          {!loading && !error && preview?.truncated ? (
+          {!loading && !error && preview?.truncated && !hasPdfPreview ? (
             <div className="file-preview-banner">
               Preview truncated at 512 KB.
             </div>
           ) : null}
           {!loading && !error && hasMarkdownPreview && renderRichPreview ? (
-            <MarkdownPreview text={previewText} />
+            <MarkdownPreview
+              text={previewText}
+              imageUrlResolver={markdownImageUrlResolver}
+            />
           ) : null}
           {!loading && !error && hasMermaidPreview && renderRichPreview ? (
             <MermaidDiagram
@@ -320,7 +389,11 @@ export function FilePreviewContent({
               className="file-preview-mermaid"
             />
           ) : null}
-          {!loading && !error && hasPreviewText && !renderRichPreview ? (
+          {!loading &&
+          !error &&
+          hasPreviewText &&
+          !renderRichPreview &&
+          !hasPdfPreview ? (
             <CodeMirrorPreview
               text={previewText}
               path={previewPath}

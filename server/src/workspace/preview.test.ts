@@ -3,6 +3,7 @@ import { PREVIEW_IMAGE_MAX_BYTES, PREVIEW_MAX_BYTES } from "./file-constants";
 import {
   decodePreviewBuffer,
   imageMimeForPath,
+  inlinePreviewMimeForPath,
   previewLimitForPath,
   trimIncompleteUtf8Tail,
 } from "./preview";
@@ -12,6 +13,13 @@ describe("workspace preview helpers", () => {
     expect(imageMimeForPath("image.PNG")).toBe("image/png");
     expect(imageMimeForPath("photo.jpeg")).toBe("image/jpeg");
     expect(imageMimeForPath("archive.tar")).toBeNull();
+  });
+
+  test("detects MIME types allowed for inline previews", () => {
+    expect(inlinePreviewMimeForPath("docs/guide.PDF")).toBe("application/pdf");
+    expect(inlinePreviewMimeForPath("images/demo.webp")).toBe("image/webp");
+    expect(inlinePreviewMimeForPath("page.html")).toBeNull();
+    expect(inlinePreviewMimeForPath("vector.svg")).toBeNull();
   });
 
   test("chooses larger limits only for previewable images", () => {

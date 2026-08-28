@@ -44,6 +44,11 @@ export function imageMimeForPath(path: string) {
   }
 }
 
+export function inlinePreviewMimeForPath(path: string) {
+  if (path.toLowerCase().endsWith(".pdf")) return "application/pdf";
+  return imageMimeForPath(path);
+}
+
 export function previewLimitForPath(path: string, size: number) {
   return imageMimeForPath(path) && size <= PREVIEW_IMAGE_MAX_BYTES
     ? PREVIEW_IMAGE_MAX_BYTES

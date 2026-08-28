@@ -107,6 +107,7 @@ const previewRequests = new Map<string, Promise<FilePreview>>();
 const previewRequestRevisions = new Map<string, number>();
 const MAX_PREVIEW_CACHE_BYTES = 16 * 1024 * 1024;
 let previewCacheBytes = 0;
+let previewResourceRevision = 0;
 const FILE_TREE_INDENT = 10;
 const FILE_TREE_BASE_INDENT = 6;
 const FILE_SHOW_HIDDEN_PREFIX = "fileExplorerShowHidden:";
@@ -579,8 +580,13 @@ export function requestFilePreview(
       if (previewRequestRevisions.get(key) !== revision) {
         throw new Error("file preview request superseded");
       }
-      writeCachedPreview(key, preview);
-      return preview;
+      previewResourceRevision += 1;
+      const versionedPreview = {
+        ...preview,
+        resource_revision: previewResourceRevision,
+      };
+      writeCachedPreview(key, versionedPreview);
+      return versionedPreview;
     })
     .finally(() => {
       if (previewRequests.get(key) === scopedTask) {

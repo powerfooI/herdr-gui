@@ -4774,6 +4774,13 @@ textarea:focus {
   border-radius: 6px;
   box-shadow: 0 0 0 1px var(--border);
 }
+.file-preview-pdf {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--panel);
+}
 .file-preview-code {
   flex: 1 1 auto;
   min-height: 0;

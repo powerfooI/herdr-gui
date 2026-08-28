@@ -61,7 +61,18 @@ export function relativePreviewPath(rootReal: string, targetReal: string) {
   return relative(rootReal, targetReal).split(sep).join("/");
 }
 
-export function downloadContentDisposition(filename: string) {
+function contentDisposition(
+  filename: string,
+  disposition: "attachment" | "inline",
+) {
   const fallback = filename.replace(/[^\x20-\x7e]|["\r\n]/g, "_") || "download";
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+export function downloadContentDisposition(filename: string) {
+  return contentDisposition(filename, "attachment");
+}
+
+export function inlineContentDisposition(filename: string) {
+  return contentDisposition(filename, "inline");
 }

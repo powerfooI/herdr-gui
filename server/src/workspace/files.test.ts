@@ -106,6 +106,7 @@ describe("workspace file handlers", () => {
   test("returns download responses with safe headers", async () => {
     await withTempDir(async (root) => {
       await writeFile(join(root, "测试.txt"), "hello");
+      await writeFile(join(root, "guide.pdf"), "%PDF-1.7");
       const handlers = createFileHandlers({
         herdr: {
           call: async (method: string) => {
@@ -140,6 +141,25 @@ describe("workspace file handlers", () => {
         encodeURIComponent("测试.txt"),
       );
       expect(await response.text()).toBe("hello");
+
+      const inlineResponse = await handlers.downloadWorkspaceFile({
+        workspace_id: "w1",
+        path: "guide.pdf",
+        inline: true,
+      });
+      expect(inlineResponse.headers.get("content-type")).toBe(
+        "application/pdf",
+      );
+      expect(inlineResponse.headers.get("content-disposition")).toContain(
+        "inline;",
+      );
+      expect(inlineResponse.headers.get("cache-control")).toBe(
+        "private, no-store",
+      );
+      expect(inlineResponse.headers.get("x-content-type-options")).toBe(
+        "nosniff",
+      );
+      expect(await inlineResponse.text()).toBe("%PDF-1.7");
     });
   });
 

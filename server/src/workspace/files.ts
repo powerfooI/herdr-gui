@@ -3,6 +3,7 @@ import { sshCommandArgv } from "../bridge/ssh-command";
 import { checkoutPath as getCheckoutPath } from "./utils";
 import {
   downloadContentDisposition,
+  inlineContentDisposition,
   sanitizeExplorerPath,
   sanitizePreviewPath,
   sanitizeUploadFilename,
@@ -31,6 +32,7 @@ import {
   type LastStepBaselineStore,
 } from "./git-diff";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
+import { inlinePreviewMimeForPath } from "./preview";
 
 const MAX_FILE_RESOLUTION_CANDIDATES = 32;
 const MAX_FILE_RESOLUTION_PATH_LENGTH = 4096;
@@ -237,14 +239,21 @@ export function createFileHandlers({
           shQuote,
         })
       : await downloadLocalFile(checkoutPath, path);
-    return new Response(download.body, {
-      headers: {
-        "content-type": download.contentType,
-        "content-length": String(download.size),
-        "content-disposition": downloadContentDisposition(download.filename),
-        "x-file-path": encodeURIComponent(download.path),
-      },
-    });
+    const inlineMime =
+      params.inline === true ? inlinePreviewMimeForPath(download.path) : null;
+    const headers: Record<string, string> = {
+      "content-type": inlineMime ?? download.contentType,
+      "content-length": String(download.size),
+      "content-disposition": inlineMime
+        ? inlineContentDisposition(download.filename)
+        : downloadContentDisposition(download.filename),
+      "x-file-path": encodeURIComponent(download.path),
+    };
+    if (inlineMime) {
+      headers["cache-control"] = "private, no-store";
+      headers["x-content-type-options"] = "nosniff";
+    }
+    return new Response(download.body, { headers });
   }
 
   async function uploadFile(params: Record<string, unknown>, request: Request) {

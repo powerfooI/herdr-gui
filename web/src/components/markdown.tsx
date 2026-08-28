@@ -58,7 +58,15 @@ export function isSafeMarkdownUrl(value: string) {
   return ["http:", "https:", "mailto:"].includes(protocolMatch[0]);
 }
 
-export function sanitizeMarkdownHtml(html: string) {
+type MarkdownRenderOptions = {
+  breaks?: boolean;
+  imageUrlResolver?: (source: string) => string | null;
+};
+
+export function sanitizeMarkdownHtml(
+  html: string,
+  options: Pick<MarkdownRenderOptions, "imageUrlResolver"> = {},
+) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
   const elements: Element[] = [];
@@ -103,11 +111,19 @@ export function sanitizeMarkdownHtml(html: string) {
         element.removeAttribute(attr.name);
         continue;
       }
-      if (
-        (name === "href" || name === "src") &&
-        !isSafeMarkdownUrl(attr.value)
-      ) {
-        element.removeAttribute(attr.name);
+      if (name === "href" || name === "src") {
+        if (!isSafeMarkdownUrl(attr.value)) {
+          element.removeAttribute(attr.name);
+          continue;
+        }
+        if (name === "src" && tag === "img" && options.imageUrlResolver) {
+          const resolved = options.imageUrlResolver(attr.value);
+          if (!resolved || !isSafeMarkdownUrl(resolved)) {
+            element.removeAttribute(attr.name);
+          } else {
+            element.setAttribute(attr.name, resolved);
+          }
+        }
       }
     }
 
@@ -122,7 +138,7 @@ export function sanitizeMarkdownHtml(html: string) {
 
 export function renderMarkdown(
   text: string,
-  options: { breaks?: boolean } = {},
+  options: MarkdownRenderOptions = {},
 ) {
   const html = marked.parse(text, {
     async: false,
@@ -132,19 +148,24 @@ export function renderMarkdown(
     breaks: options.breaks ?? false,
     gfm: true,
   });
-  return sanitizeMarkdownHtml(String(html));
+  return sanitizeMarkdownHtml(String(html), options);
 }
 
 export function MarkdownPreview({
   text,
   className = "",
   breaks = false,
+  imageUrlResolver,
 }: {
   text: string;
   className?: string;
   breaks?: boolean;
+  imageUrlResolver?: (source: string) => string | null;
 }) {
-  const html = useMemo(() => renderMarkdown(text, { breaks }), [text, breaks]);
+  const html = useMemo(
+    () => renderMarkdown(text, { breaks, imageUrlResolver }),
+    [text, breaks, imageUrlResolver],
+  );
   const articleRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -169,7 +190,13 @@ export function MarkdownPreview({
             figure.className = "mermaid-diagram";
             figure.setAttribute("role", "img");
             figure.setAttribute("aria-label", "Mermaid diagram");
-            figure.innerHTML = rendered.svg;
+            const svgDocument = new DOMParser().parseFromString(
+              rendered.svg,
+              "image/svg+xml",
+            );
+            const svg = svgDocument.documentElement;
+            if (svg.tagName.toLowerCase() !== "svg") continue;
+            figure.replaceChildren(document.importNode(svg, true));
             pre.replaceWith(figure);
           } else {
             const note = document.createElement("div");
