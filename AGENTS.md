@@ -6,9 +6,9 @@ This repo contains a Bun-powered bridge and a React/Vite frontend for Herdr.
 Frontend code lives in `web/src`, with reusable UI under `web/src/components`,
 assets under `web/src/assets`, and global styling in `web/src/styles.css`.
 Server and bridge code lives in `server/src`. Release helpers live in `scripts/`.
-Generated build output belongs in `server/public`, `server/src/public-files.gen.ts`,
-`server/herdr-gui*`, and `dist/`; these paths are ignored and should not be
-committed.
+Generated build output belongs in `web/dist`, `server/public`,
+`server/src/public-files.gen.ts`, `server/herdr-gui*`, and `dist/`; these paths
+are ignored and should not be committed.
 
 ## Build, Test, and Development Commands
 
@@ -26,8 +26,8 @@ committed.
 - `bun run format:check`: verify that all supported files are formatted.
 - `bun run lint`: lint all TypeScript and React code.
 - `bun run test`: run the Bun unit test suite.
-- `cd web && bun run typecheck`: run frontend TypeScript checks.
-- `cd server && bun run typecheck`: run server TypeScript checks.
+- `bun run typecheck`: run frontend and server TypeScript checks.
+- `bun run precommit`: run formatting, lint, type checks, and unit tests.
 
 ## Coding Style & Naming Conventions
 
@@ -38,13 +38,22 @@ global or editor fallback formatter. Prefer small, focused components in
 non-ASCII text. Use existing store and bridge helpers before adding new
 abstractions.
 
+## Documentation Guidelines
+
+Keep `README.md` concise and English-only. Use it as the project entry point and
+link to focused documents instead of embedding detailed operation or
+implementation material. Put the feature tour and shortcuts in `FEATURES.md`,
+deployment and configuration instructions in `docs/DEPLOYMENT.md`, and system
+design in `docs/ARCHITECTURE.md`. Keep deeper implementation or design records
+under `docs/`. Avoid duplicating the same instructions across documents because
+they drift independently.
+
 ## Testing Guidelines
 
 Unit tests live beside their modules as `*.test.ts` and use `bun:test`. Run
-`bun run format:check`, `bun run lint`, `bun run typecheck`, and `bun run test`
-before committing. For
-frontend-facing work, also run `cd web && bun run build`. Release work must
-package and inspect every supported platform archive and checksum.
+`bun run precommit` before committing. For frontend-facing work, also run
+`bun run build:web`. Release work must package and inspect every supported
+platform archive and checksum.
 
 ## Commit & Pull Request Guidelines
 

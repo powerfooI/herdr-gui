@@ -2,7 +2,7 @@
 
 ## Development Setup
 
-Install Bun 1.3 or newer, start a local Herdr server, then install dependencies:
+Install Bun 1.4 or newer, start a local Herdr server, then install dependencies:
 
 ```bash
 bun install
