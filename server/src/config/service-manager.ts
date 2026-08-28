@@ -97,7 +97,7 @@ function parseServiceCommand(args: string[]): ParsedServiceCommand | null {
 }
 
 function serviceHelp(): string {
-  return `Manage herdr-gui as a user service.
+  return `Manage Herdr Studio as a user service.
 
 Usage:
   herdr-gui service install [--force]

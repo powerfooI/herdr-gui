@@ -220,7 +220,7 @@ preserved in the browser.
 - A bundled glyph-only Nerd Font fallback for common terminal icons.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
   or Edge. PWA mode removes browser chrome but still requires a reachable
-  Herdr Studio server; it does not provide offline access.
+  `herdr-gui` server process; it does not provide offline access.
 - Reload the current browser or standalone PWA from **Menu → Reload page**.
 
 Mobile shortcut layouts and appearance preferences are stored in the current

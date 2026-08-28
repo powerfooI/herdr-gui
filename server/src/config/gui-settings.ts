@@ -134,7 +134,7 @@ export async function readGuiSettings(): Promise<GuiSettings> {
     cachedGuiSettings = normalizeGuiSettings(JSON.parse(await file.text()));
   } catch (e) {
     console.warn(
-      `[bridge] ignoring invalid herdr-gui settings: ${(e as Error).message}`,
+      `[bridge] ignoring invalid Herdr Studio settings: ${(e as Error).message}`,
     );
     cachedGuiSettings = defaultGuiSettings();
   }

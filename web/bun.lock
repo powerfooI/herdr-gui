@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "herdr-gui-web",
+      "name": "herdr-studio-web",
       "dependencies": {
         "@codemirror/commands": "^6.10.4",
         "@codemirror/lang-cpp": "^6.0.3",

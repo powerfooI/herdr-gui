@@ -17,6 +17,10 @@ shortcuts, and repository-local Paseo worktree hooks.
 
 ## Screenshots
 
+> These screenshots predate the product rebrand, so their header still shows
+> `herdr-gui`. The current application header reads **Herdr Studio**; the
+> illustrated layout and behavior are unchanged.
+
 ### Desktop
 
 [![Desktop workspace with a live terminal and session inspector][desktop-session]][desktop-session]
@@ -122,8 +126,8 @@ For day-to-day use, we recommend installing Herdr Studio as a standalone web app
 instead of keeping it in a normal browser tab. This gives it a dedicated app
 window and icon while removing browser chrome from the terminal UI.
 
-First start Herdr Studio and authenticate with the URL printed by the process, then
-install it from your browser:
+First start the `herdr-gui` process and authenticate with the URL it prints, then
+install Herdr Studio from your browser:
 
 - **iPhone or iPad (Safari):** tap **Share** → **Add to Home Screen**, keep
   **Open as Web App** enabled, then tap **Add**.
@@ -132,8 +136,8 @@ install it from your browser:
   **Create shortcut** is available, enable **Open as window**.
 
 Launch Herdr Studio afterward from the Home Screen, Dock, or Applications folder.
-The installed app still requires the Herdr Studio server to be running and
-reachable; PWA mode does not provide offline access.
+The installed app still requires the `herdr-gui` server process to be running
+and reachable; PWA mode does not provide offline access.
 
 ## Architecture
 

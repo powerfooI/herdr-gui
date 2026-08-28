@@ -9,6 +9,18 @@ function cookieHeader(response: Response): string {
 }
 
 describe("request authentication boundaries", () => {
+  test("brands the login page as Herdr Studio", async () => {
+    const handlers = createAuthHandlers({
+      authRequired: true,
+      password: "fixed-password",
+    });
+    const html = await handlers.loginPage().text();
+
+    expect(html).toContain("<title>Herdr Studio login</title>");
+    expect(html).toContain("<h2>▦ Herdr Studio</h2>");
+    expect(html).not.toContain("herdr-gui");
+  });
+
   test("does not derive authorization from reverse-proxy authorities", async () => {
     const handlers = createAuthHandlers({
       authRequired: true,

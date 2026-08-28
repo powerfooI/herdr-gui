@@ -2,7 +2,7 @@
 
 Status: **M1-M6 complete; M7 follow-up planned**
 Last updated: 2026-08-19
-Pull request: [#18 Add multi-server connection management](https://github.com/powerfooI/herdr-gui/pull/18)
+Pull request: [#18 Add multi-server connection management](https://github.com/powerfooI/herdr-studio/pull/18)
 
 ## Objective
 

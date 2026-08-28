@@ -119,7 +119,7 @@ export function renderSystemdService(
 ): string {
   return `# ${GENERATED_MARKER}
 [Unit]
-Description=herdr-gui
+Description=Herdr Studio
 Wants=network-online.target
 After=network-online.target
 

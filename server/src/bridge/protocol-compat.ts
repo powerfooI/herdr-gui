@@ -34,7 +34,7 @@ export function assertSupportedHerdrProtocol(protocol: number): void {
   }
   if (!isSupportedHerdrProtocol(protocol)) {
     throw new Error(
-      `Herdr protocol ${protocol} is not supported by this herdr-gui build ` +
+      `Herdr protocol ${protocol} is not supported by this Herdr Studio build ` +
         `(requires protocol ${MINIMUM_HERDR_PROTOCOL} or newer)`,
     );
   }

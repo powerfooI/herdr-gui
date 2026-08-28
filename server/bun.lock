@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "herdr-gui-server",
+      "name": "herdr-studio-server",
       "devDependencies": {
         "bun-types": "latest",
         "typescript": "^5.4.0",

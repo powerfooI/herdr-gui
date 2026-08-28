@@ -72,7 +72,7 @@ fragment。覆盖已有安装时，安装脚本和应用内更新都会把原 bi
 
 ### 旧版本更新
 
-旧版本用户直接重新执行安装命令即可覆盖旧 binary。推荐先停止正在运行的 Herdr Studio：
+旧版本用户直接重新执行安装命令即可覆盖旧 binary。推荐先停止正在运行的 `herdr-gui` 进程：
 
 ```bash
 pkill -f 'herdr-gui' || true

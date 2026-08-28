@@ -3,7 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 const LOGIN_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>herdr-gui login</title>
+<title>Herdr Studio login</title>
 <style>
   body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
     background:#0f1115;color:#e6e8ee;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
@@ -17,7 +17,7 @@ const LOGIN_HTML = `<!doctype html>
   .err{color:#ff9a9a;font-size:13px;margin-top:10px;min-height:18px}
 </style></head>
 <body><div class="box">
-  <h2>▦ herdr-gui</h2>
+  <h2>▦ Herdr Studio</h2>
   <input id="pw" type="password" placeholder="password or token" autofocus />
   <button id="btn">Log in</button>
   <div class="err" id="err"></div>

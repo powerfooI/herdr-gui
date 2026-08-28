@@ -37,7 +37,7 @@ export function classifySshTunnelFailure(
     diagnostic.includes("no matching host key type found")
   ) {
     return new SshTunnelError(
-      "SSH host-key verification failed; verify the host outside herdr-gui",
+      "SSH host-key verification failed; verify the host outside Herdr Studio",
       false,
       "host-key",
       exitCode,
@@ -116,7 +116,7 @@ export function assertSshTunnelPlatformSupported(
 ): void {
   if (platform === "win32") {
     throw new SshTunnelError(
-      "SSH connections from Windows are not supported because herdr-gui's stream-local forwarding cannot create a local Windows named pipe",
+      "SSH connections from Windows are not supported because Herdr Studio's stream-local forwarding cannot create a local Windows named pipe",
       false,
       "unsupported",
       -1,

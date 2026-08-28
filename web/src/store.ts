@@ -2541,7 +2541,7 @@ export const store = {
             dismissedUpdateVersion: latestVersion,
             notice: {
               kind: "info",
-              message: "Restarting Herdr Studio",
+              message: "Restarting the herdr-gui service",
               detail:
                 "The binary was updated. Waiting for the external process supervisor to start the new version.",
               loading: true,
@@ -2557,7 +2557,7 @@ export const store = {
           notice: {
             kind: "success",
             message: `Herdr Studio ${installedVersion} installed`,
-            detail: "Restart Herdr Studio to use the new version.",
+            detail: "Restart the herdr-gui process to use the new version.",
           },
         });
         return;
