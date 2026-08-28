@@ -8,6 +8,10 @@ basic pane control (send text, read output, split/close/zoom).
 See [FEATURES.md](./FEATURES.md) for a complete feature tour, keyboard
 shortcuts, and repository-local Paseo worktree hooks.
 
+> **Note:** Herdr Studio was formerly named `herdr-gui`. The command-line
+> binary, release archives, and on-disk configuration paths still use the
+> `herdr-gui` name; only the product branding has changed.
+
 中文使用说明见 [USAGE.md](./USAGE.md)。长期运行可直接使用
 [`herdr-gui service`](#run-as-a-user-service) 安装 systemd/launchd 用户服务。
 

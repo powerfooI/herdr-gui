@@ -3,6 +3,8 @@
 Herdr Studio 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务，在浏览器里展示 workspace、worktree、terminal 和 agent 状态。
 需要后台常驻时，直接查看 [使用用户服务管理](#使用用户服务管理)。
 
+> **说明**：Herdr Studio 原名 herdr-gui。命令行 binary、release 压缩包和磁盘配置路径仍沿用 herdr-gui 名称，仅产品品牌更名。
+
 ## 前置条件
 
 - 已安装并启动 Herdr。
