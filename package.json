@@ -1,17 +1,17 @@
 {
-  "name": "herdr-gui",
+  "name": "herdr-studio",
   "private": true,
   "version": "0.4.8",
-  "description": "A web GUI client for Herdr (local socket bridge + React dashboard).",
+  "description": "Herdr Studio — a web client for Herdr (local socket bridge + React dashboard).",
   "license": "MIT",
   "author": "Arthur",
-  "homepage": "https://github.com/powerfooI/herdr-gui",
+  "homepage": "https://github.com/powerfooI/herdr-studio",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/powerfooI/herdr-gui.git"
+    "url": "git+https://github.com/powerfooI/herdr-studio.git"
   },
   "bugs": {
-    "url": "https://github.com/powerfooI/herdr-gui/issues"
+    "url": "https://github.com/powerfooI/herdr-studio/issues"
   },
   "engines": {
     "bun": ">=1.4.0"

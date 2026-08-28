@@ -2326,8 +2326,8 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-start">
           <div className="brand">
-            <img className="logo" src="/herdr-icon.png" alt="" />
-            <span className="brand-title">herdr-gui</span>
+            <img className="logo" src="/herdr-icon.png" alt="Herdr" />
+            <span className="brand-title">Studio</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
           <ConnectionSwitcher />
@@ -2464,7 +2464,7 @@ export default function App() {
               <ToastMark kind="info" loading={s.updateInstalling} />
               <div className="toast-content">
                 <strong>
-                  herdr-gui {s.updateInfo.latest_version} is available
+                  Herdr Studio {s.updateInfo.latest_version} is available
                 </strong>
                 <p>
                   Current {s.updateInfo.current_version}

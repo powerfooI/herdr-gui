@@ -69,7 +69,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
   }
 
   if (args.help) {
-    console.log(`herdr-gui — web client for Herdr
+    console.log(`Herdr Studio — web client for Herdr
 
 Usage: herdr-gui [options]
        herdr-gui service <action>

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Rebrand the app as **Herdr Studio**: page title, brand header, in-app copy,
+  and documentation.
 - Disable pinch and double-tap zoom on phones so the terminal layout stays
   fixed.
 - Hide floating action buttons while the on-screen keyboard is open.

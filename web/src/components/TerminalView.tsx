@@ -925,7 +925,7 @@ export function TerminalView({
         setTerminalAttachError(
           typeof closed.reason === "string" &&
             closed.reason.includes("taken over")
-            ? "Terminal stream was taken over by another herdr-gui client"
+            ? "Terminal stream was taken over by another Herdr Studio client"
             : "Terminal stream closed by the server",
         );
         return;

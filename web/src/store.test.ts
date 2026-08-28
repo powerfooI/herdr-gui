@@ -134,7 +134,7 @@ describe("automatic update check preference", () => {
 
       await store.checkForUpdate();
       expect(fetchCalls).toBe(2);
-      expect(store.get().notice?.message).toBe("herdr-gui is up to date");
+      expect(store.get().notice?.message).toBe("Herdr Studio is up to date");
     } finally {
       __storeTesting.replaceState(previousState);
       globalThis.fetch = previousFetch;

@@ -168,4 +168,4 @@ jobs:
           --verify-tag
           --latest
           --generate-notes
-          --title "herdr-gui $GITHUB_REF_NAME"
+          --title "Herdr Studio $GITHUB_REF_NAME"

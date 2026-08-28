@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-herdr-gui includes or renders assets from third-party projects. Those assets
+Herdr Studio includes or renders assets from third-party projects. Those assets
 remain under their original licenses and are not relicensed by the project
 MIT license.
 
@@ -30,7 +30,7 @@ MIT License. See [`LICENSES/PI.txt`](./LICENSES/PI.txt).
 
 Herdr, Pi, Codex, Claude, Gemini, Kimi, Grok, and other product names and logos
 are trademarks of their respective owners. Their appearance identifies
-compatible tools and does not imply endorsement of herdr-gui.
+compatible tools and does not imply endorsement of Herdr Studio.
 
 JavaScript dependencies retain the licenses declared by their respective
 packages.

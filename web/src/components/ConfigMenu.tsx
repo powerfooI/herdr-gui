@@ -190,7 +190,7 @@ export function ConfigMenu({
           >
             <div className="config-summary">
               <div>
-                <strong>herdr-gui</strong>
+                <strong>Herdr Studio</strong>
                 <span>Version {APP_VERSION}</span>
               </div>
               <span

@@ -38,7 +38,7 @@ interface UpdateRuntime {
 }
 
 const DEFAULT_UPDATE_BASE_URL =
-  "https://github.com/powerfooI/herdr-gui/releases/latest/download";
+  "https://github.com/powerfooI/herdr-studio/releases/latest/download";
 const UPDATE_METADATA_MAX_BYTES = 4096;
 const UPDATE_CHECK_CACHE_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 15000;

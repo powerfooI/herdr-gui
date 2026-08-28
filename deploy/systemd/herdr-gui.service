@@ -1,6 +1,6 @@
 [Unit]
 Description=herdr-gui
-Documentation=https://github.com/powerfooI/herdr-gui
+Documentation=https://github.com/powerfooI/herdr-studio
 Wants=network-online.target
 After=network-online.target
 

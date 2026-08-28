@@ -1,6 +1,6 @@
-# herdr-gui Features
+# Herdr Studio Features
 
-herdr-gui is a browser and PWA client for a running
+Herdr Studio is a browser and PWA client for a running
 [Herdr](https://herdr.dev) server. It keeps Herdr's workspace, tab, pane, and
 agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.
@@ -58,7 +58,7 @@ Closed panes are removed from the history automatically.
 
 ## Agent Awareness and Session Inspection
 
-Herdr reports recognized agents and their state, and herdr-gui projects that
+Herdr reports recognized agents and their state, and Herdr Studio projects that
 information across the workspace tree, pane switcher, command menu, and Agent
 panel.
 
@@ -83,7 +83,7 @@ remote session unless its transcript is also locally accessible.
 
 ## Git Worktree Lifecycle
 
-herdr-gui adds a repository-scoped lifecycle view around Herdr workspaces:
+Herdr Studio adds a repository-scoped lifecycle view around Herdr workspaces:
 
 - Create a linked worktree from the latest fetched `origin/main` without
   modifying the source workspace's current branch or dirty files.
@@ -99,7 +99,7 @@ herdr-gui adds a repository-scoped lifecycle view around Herdr workspaces:
 
 ### Paseo Worktree Hooks
 
-herdr-gui understands the repository-local
+Herdr Studio understands the repository-local
 [Paseo worktree hook](https://paseo.sh/docs/worktrees) format in `paseo.json`.
 Add commands under `worktree`:
 
@@ -114,14 +114,14 @@ Add commands under `worktree`:
 }
 ```
 
-| Paseo hook | When herdr-gui runs it | Working directory |
+| Paseo hook | When Herdr Studio runs it | Working directory |
 | --- | --- | --- |
 | `setup` | After a new linked worktree has been created and opened | New worktree |
 | `opened` | After an existing linked worktree has been opened | Opened worktree |
 | `teardown` | Before a linked worktree is removed | Worktree being removed |
 | `removed` | After removal finishes | Source checkout |
 
-For `setup`, `opened`, and `teardown`, herdr-gui first looks for `paseo.json` in
+For `setup`, `opened`, and `teardown`, Herdr Studio first looks for `paseo.json` in
 the target checkout and falls back to the source checkout only when the target
 has no `paseo.json`. The first existing file wins. After removal, the target no
 longer exists, so `removed` normally uses the source checkout's configuration.
@@ -134,8 +134,8 @@ Commands run through `sh -c`. The following variables are available:
 | `PASEO_CHECKOUT_PATH` | Target worktree path, including the former path for `removed` |
 | `PASEO_SOURCE_CHECKOUT_PATH` | Parent/source checkout path when known |
 | `HERDR_GUI_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
-| `HERDR_GUI_HOOK_CHECKOUT_PATH` | Same target path exposed under a herdr-gui-specific name |
-| `HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH` | Same source path exposed under a herdr-gui-specific name |
+| `HERDR_GUI_HOOK_CHECKOUT_PATH` | Same target path exposed under a Herdr Studio-specific name |
+| `HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH` | Same source path exposed under a Herdr Studio-specific name |
 
 Operation notices show the hook outcome and bounded diagnostic output; failures
 can include the exit code, stderr, or an error. A failed `teardown` hook stops
@@ -158,10 +158,10 @@ Automatic branch updates periodically fetch `origin/main` and merge it into an
 enabled workspace's current branch. The default interval is 10 minutes, and the
 current interval and last result are visible in the UI.
 
-For safety, herdr-gui skips a run when the checkout is dirty or on a detached
+For safety, Herdr Studio skips a run when the checkout is dirty or on a detached
 HEAD. It verifies that the branch, HEAD, and worktree did not change while the
 fetch was running. A conflicting merge is aborted automatically. Updates run
-only while the workspace is open in the current herdr-gui connection.
+only while the workspace is open in the current Herdr Studio connection.
 
 Use **Menu → Automatic branch updates**, a workspace context menu, or Worktree
 Lifecycle to manage saved per-checkout settings.
@@ -220,7 +220,7 @@ preserved in the browser.
 - A bundled glyph-only Nerd Font fallback for common terminal icons.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
   or Edge. PWA mode removes browser chrome but still requires a reachable
-  herdr-gui server; it does not provide offline access.
+  Herdr Studio server; it does not provide offline access.
 - Reload the current browser or standalone PWA from **Menu → Reload page**.
 
 Mobile shortcut layouts and appearance preferences are stored in the current
@@ -228,7 +228,7 @@ browser and do not change Herdr server configuration.
 
 ## Remote, Multi-Client, and Operations
 
-- Connect to a remote Herdr with `--ssh-host`; herdr-gui automatically forwards
+- Connect to a remote Herdr with `--ssh-host`; Herdr Studio automatically forwards
   both the control and terminal-render Unix sockets over SSH.
 - Apply file operations, image paste, Git operations, and Paseo hooks on the
   same remote host, with remote session inspection subject to the metadata
@@ -241,7 +241,7 @@ browser and do not change Herdr server configuration.
   relevant pane.
 - Choose light/dark themes (or follow the system color scheme) and persistent accent colors.
 - Install and manage a systemd or launchd user service from the CLI.
-- Check for herdr-gui releases and perform a checksum-verified, one-click binary
+- Check for Herdr Studio releases and perform a checksum-verified, one-click binary
   update when running a standalone binary under a supported supervisor.
 - Use `/health` or `/healthz` for service probes.
 

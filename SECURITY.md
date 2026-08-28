@@ -13,10 +13,10 @@ maintainer through the address listed on their GitHub profile.
 
 ## Trust Model
 
-herdr-gui is a privileged local administration tool. A connected browser can
+Herdr Studio is a privileged local administration tool. A connected browser can
 interact with terminal sessions, run repository hooks, read session data, and
 upload or delete workspace files. Anyone who can access the UI should be
-treated as having the same authority as the user running herdr-gui.
+treated as having the same authority as the user running Herdr Studio.
 
 The server binds to `127.0.0.1` by default. Do not expose it directly to the
 public internet. When binding to a non-loopback address:

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-github_repository="powerfooI/herdr-gui"
+github_repository="powerfooI/herdr-studio"
 custom_release_base="${HERDR_GUI_RELEASE_BASE_URL:-}"
 install_dir="${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}"
 requested_version="${HERDR_GUI_VERSION:-}"

@@ -1,6 +1,6 @@
-# herdr-gui 使用说明
+# Herdr Studio 使用说明
 
-herdr-gui 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务，在浏览器里展示 workspace、worktree、terminal 和 agent 状态。
+Herdr Studio 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务，在浏览器里展示 workspace、worktree、terminal 和 agent 状态。
 需要后台常驻时，直接查看 [使用用户服务管理](#使用用户服务管理)。
 
 ## 前置条件
@@ -15,14 +15,14 @@ herdr-gui 是 Herdr 的 Web 图形界面。它启动一个本地 bridge 服务�
 Linux、macOS，以及 Windows x64、ARM64 发布产物通过 GitHub Releases 提供；加入原生 ARM64 支持前的历史版本只有 Windows x64 产物：
 
 ```text
-https://github.com/powerfooI/herdr-gui/releases
+https://github.com/powerfooI/herdr-studio/releases
 ```
 
 推荐普通用户安装到 `~/.local/bin`。安装脚本会自动选择当前系统架构对应的包，
 并在安装前校验发布归档对应的 SHA-256 文件：
 
 ```bash
-curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" | bash
+curl -fsSL "https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh" | bash
 ```
 
 Windows 用户从 latest release 下载其中提供的对应架构
@@ -49,7 +49,7 @@ herdr-gui
 如果要安装到系统路径，使用：
 
 ```bash
-curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" \
+curl -fsSL "https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh" \
   | sudo env HERDR_GUI_INSTALL_DIR=/usr/local/bin bash
 ```
 
@@ -58,7 +58,7 @@ curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/inst
 不设置版本时会安装 latest 包。如果希望安装固定版本：
 
 ```bash
-curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" \
+curl -fsSL "https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh" \
   | HERDR_GUI_VERSION=0.2.16 bash
 ```
 
@@ -70,7 +70,7 @@ fragment。覆盖已有安装时，安装脚本和应用内更新都会把原 bi
 
 ### 旧版本更新
 
-旧版本用户直接重新执行安装命令即可覆盖旧 binary。推荐先停止正在运行的 herdr-gui：
+旧版本用户直接重新执行安装命令即可覆盖旧 binary。推荐先停止正在运行的 Herdr Studio：
 
 ```bash
 pkill -f 'herdr-gui' || true
@@ -79,13 +79,13 @@ pkill -f 'herdr-gui' || true
 然后更新到最新版本：
 
 ```bash
-curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" | bash
+curl -fsSL "https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh" | bash
 ```
 
 如果之前安装在 `/usr/local/bin`：
 
 ```bash
-curl -fsSL "https://github.com/powerfooI/herdr-gui/releases/latest/download/install-herdr-gui.sh" \
+curl -fsSL "https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh" \
   | sudo env HERDR_GUI_INSTALL_DIR=/usr/local/bin bash
 ```
 
@@ -125,7 +125,7 @@ http://127.0.0.1:8787
 ./herdr-gui --host 0.0.0.0 --port 8781
 ```
 
-未设置密码时，herdr-gui 会把随机 token 保存在 Unix 的
+未设置密码时，Herdr Studio 会把随机 token 保存在 Unix 的
 `~/.config/herdr-gui/auth-token`（权限 `0600`）或 Windows 的
 `%APPDATA%\herdr-gui\auth-token`，并打印带 token 的内网访问地址，例如：
 
@@ -147,10 +147,10 @@ profile 时，默认本地 server 会以可写的 `Local` profile 保留在列�
 移除。
 
 SSH profile 要求远端 Herdr server 已经运行，并填写 OpenSSH Host alias 或
-`user@host`。远端 control/render socket 路径可留空：herdr-gui 会在连接时通过
+`user@host`。远端 control/render socket 路径可留空：Herdr Studio 会在连接时通过
 SSH 解析远端 home 目录下的默认 socket（`~/.config/herdr/herdr.sock` 与
 `~/.config/herdr/herdr-client.sock`）。SSH profile 与 `--ssh-host` 当前要求
-herdr-gui 运行在 Linux 或 macOS；当前 stream-local transport 无法把远端 Unix
+Herdr Studio 运行在 Linux 或 macOS；当前 stream-local transport 无法把远端 Unix
 socket 暴露为本地 Windows named pipe，因此 Windows 当前只支持本机 Herdr 连接。例如：
 
 ```text
@@ -168,7 +168,7 @@ Host devbox
   Port 2222
 ```
 
-herdr-gui 使用正常的 OpenSSH host-key 和 ssh-agent/系统 Keychain 策略，不保存
+Herdr Studio 使用正常的 OpenSSH host-key 和 ssh-agent/系统 Keychain 策略，不保存
 密码、私钥、passphrase 或任意 SSH options。每个 SSH profile 使用独立 tunnel；
 bridge 会监督 tunnel，并只对临时 transport failure 执行有界重试。
 
@@ -185,7 +185,7 @@ bridge 会监督 tunnel，并只对临时 transport failure 执行有界重试�
 ./herdr-gui --ssh-host devbox
 ```
 
-浏览器仍访问本机 herdr-gui，实际操作远端 Herdr。如果需要手动指定单连接 socket：
+浏览器仍访问本机 Herdr Studio，实际操作远端 Herdr。如果需要手动指定单连接 socket：
 
 ```bash
 ./herdr-gui \
@@ -241,7 +241,7 @@ herdr-gui service uninstall
 | 命令 | 作用 |
 | --- | --- |
 | `service install` | 创建或更新当前平台的用户服务定义，随后启动服务 |
-| `service install --force` | 强制替换不是由 herdr-gui 生成的同名服务定义 |
+| `service install --force` | 强制替换不是由 Herdr Studio 生成的同名服务定义 |
 | `service status` | 展示 systemd、launchd 或 Task Scheduler 返回的当前服务状态 |
 | `service restart` | 重启进程；修改 `herdr-gui.env` 后使用此命令 |
 | `service reload` | 让服务管理器重新读取平台定义，然后重启进程 |
@@ -263,14 +263,14 @@ Windows 自动注册当前用户的 Task Scheduler 登录任务。Windows 任务
 `?token=...` 的 localhost 和内网访问地址，然后启动服务。Unix 上首次创建的配置
 和 token 权限为 `0600`；Windows 使用当前用户的 `%APPDATA%`。重新安装和卸载均
 保留环境文件。修改配置后运行 `herdr-gui service restart`。命令不会覆盖非
-herdr-gui 生成的 service 定义，确实需要替换时使用
+Herdr Studio 生成的 service 定义，确实需要替换时使用
 `herdr-gui service install --force`。修改平台定义后运行
 `herdr-gui service reload`，该命令会重新读取 definition 并重启进程。Windows
 首次运行如出现防火墙提示，只建议允许 Private networks；仅本机使用可先把
 `HOST` 改为 `127.0.0.1`。
 
 仓库中的 [`deploy/systemd/herdr-gui.service`](deploy/systemd/herdr-gui.service)
-是一个 systemd user service 示例。它使用 `Restart=always` 管理进程。herdr-gui
+是一个 systemd user service 示例。它使用 `Restart=always` 管理进程。Herdr Studio
 会通过 systemd 注入的 `INVOCATION_ID` 自动识别 supervisor，因此应用内更新只
 负责替换 binary 和退出，随后由 systemd 启动新版本，不会额外创建脱离 systemd
 管理的进程。
@@ -319,9 +319,9 @@ stat -c '%a %n' ~/.config/herdr-gui/herdr-gui.env
 
 ### 通过自定义 wrapper 启动
 
-如果部署环境必须通过额外的进程包装器启动 herdr-gui，可以使用
+如果部署环境必须通过额外的进程包装器启动 Herdr Studio，可以使用
 `systemctl --user edit herdr-gui.service` 覆盖 `ExecStart`。包装器和
-herdr-gui 都应使用绝对路径，并且最终仍由 systemd 负责进程重启。只要自定义
+Herdr Studio 都应使用绝对路径，并且最终仍由 systemd 负责进程重启。只要自定义
 `ExecStart` 继续调用当前的 herdr-gui binary，后续执行
 `herdr-gui service install` 会保留该命令，同时更新 unit 的其他标准配置。
 
@@ -329,7 +329,7 @@ herdr-gui 都应使用绝对路径，并且最终仍由 systemd 负责进程重�
 
 macOS 可以使用仓库中的
 [`deploy/launchd/dev.herdr.herdr-gui.plist`](deploy/launchd/dev.herdr.herdr-gui.plist)
-创建用户级 LaunchAgent。它使用 `KeepAlive` 管理进程。herdr-gui 会通过
+创建用户级 LaunchAgent。它使用 `KeepAlive` 管理进程。Herdr Studio 会通过
 plist 中的 `HERDR_GUI_RESTART_SUPERVISOR=1` 明确识别 supervisor；应用内更新
 完成后，launchd 会重新启动新 binary。
 
@@ -395,7 +395,7 @@ launchctl bootout "gui/$(id -u)/dev.herdr.herdr-gui"
 
 - 明暗主题、强调色和任务完成通知。
 - 移动端 terminal 快捷键和自动 branch 更新。
-- Changelog、键盘快捷键和 herdr-gui 更新。
+- Changelog、键盘快捷键和 Herdr Studio 更新。
 - 当前连接状态、client 数量、访问 URL、Herdr socket、server 版本和协议。
 - 暂停或恢复当前 client，以及暂停其他已连接 client。
 
@@ -422,12 +422,12 @@ terminal 区域支持鼠标滚轮和触摸滑动。移动端默认显示两行�
   右侧位置；默认均为空，空槽位不会显示。
 - 两组配置都保存在当前浏览器中，不会修改 Herdr server 配置。
 
-如果移动端没有系统 Nerd Font，herdr-gui 会加载内置的 glyph-only Nerd Font
+如果移动端没有系统 Nerd Font，Herdr Studio 会加载内置的 glyph-only Nerd Font
 子集，用来显示常见图标字符。
 
 ## Worktree Hooks
 
-herdr-gui 直接读取仓库里的 Paseo `paseo.json`，不会生成 Herdr plugin，也不会在
+Herdr Studio 直接读取仓库里的 Paseo `paseo.json`，不会生成 Herdr plugin，也不会在
 界面中修改 hook 命令。Hook 对每个仓库默认启用；可以从 workspace 右键菜单选择
 `Worktree hooks...`，或在 `Worktree Lifecycle` 中打开 `Hook details`，查看当前
 仓库检测到的配置并按仓库禁用或重新启用。完整功能说明见

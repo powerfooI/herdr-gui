@@ -88,7 +88,7 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$tag" -m "herdr-gui $VERSION" "$release_sha"
+            git tag -a "$tag" -m "Herdr Studio $VERSION" "$release_sha"
             gh auth setup-git
             git push origin "$tag"
           fi

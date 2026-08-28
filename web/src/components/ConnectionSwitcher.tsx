@@ -339,7 +339,7 @@ function ProfileForm({
           checked={draft.autoConnect}
           onChange={(event) => update("autoConnect", event.target.checked)}
         />
-        Connect automatically when herdr-gui starts
+        Connect automatically when Herdr Studio starts
       </label>
       <p className="connection-profile-security-note">
         Local profiles store socket paths only. SSH commands, credentials, keys,
@@ -504,13 +504,13 @@ function SshProfileForm({
           checked={draft.autoConnect}
           onChange={(event) => update("autoConnect", event.target.checked)}
         />
-        Connect automatically when herdr-gui starts
+        Connect automatically when Herdr Studio starts
       </label>
       <p className="connection-profile-security-note">
-        Leave the socket paths empty and herdr-gui infers the default Herdr
+        Leave the socket paths empty and Herdr Studio infers the default Herdr
         sockets under the remote home directory at connect time. Authentication
         comes from the bridge service user&apos;s OpenSSH config, ssh-agent, or
-        system Keychain. Establish host trust outside herdr-gui. Passwords,
+        system Keychain. Establish host trust outside Herdr Studio. Passwords,
         keys, passphrases, commands, ports, and SSH options are never stored
         here.
       </p>
@@ -1003,7 +1003,7 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
           title="Remove Connection"
           message={
             removeTarget
-              ? `Remove connection "${removeTarget.label}"? This disconnects herdr-gui but does not stop the Herdr server.`
+              ? `Remove connection "${removeTarget.label}"? This disconnects Herdr Studio but does not stop the Herdr server.`
               : "Remove this connection?"
           }
           confirmLabel="Remove"
