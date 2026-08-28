@@ -56,6 +56,7 @@ import { requestCloseTab, TabBar } from "./components/TabBar";
 import { WorkspaceInspectorHost } from "./components/WorkspaceInspectorHost";
 import { WorkspaceTree } from "./components/WorkspaceTree";
 import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
+import { isIosDevice } from "./downloadFile";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -286,10 +287,77 @@ function useMobileLayout() {
   return mobile;
 }
 
+const viewportDebugEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("debugViewport");
+
+// iOS counts the floating keyboard accessory bar (form assistant) as covered
+// area, over-reporting the keyboard inset. Lift content past that overshoot
+// by default on iOS; Android reports exact insets, so trim stays 0 there.
+// ?kbdTrim=<px> overrides the default for experiments.
+const defaultKeyboardInsetTrim =
+  typeof navigator !== "undefined" && isIosDevice(navigator) ? 30 : 0;
+const keyboardInsetTrim =
+  typeof window !== "undefined"
+    ? Math.max(
+        0,
+        Number.parseInt(
+          new URLSearchParams(window.location.search).get("kbdTrim") ??
+            String(defaultKeyboardInsetTrim),
+          10,
+        ) || 0,
+      )
+    : 0;
+
+function ViewportDebugOverlay() {
+  const [lines, setLines] = useState<string[]>([]);
+  useEffect(() => {
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:fixed;left:0;top:0;width:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
+    const update = () => {
+      const vv = window.visualViewport;
+      const cs = getComputedStyle(document.documentElement);
+      setLines([
+        `mode ${
+          window.matchMedia("(display-mode: standalone)").matches
+            ? "standalone"
+            : "browser"
+        }`,
+        `inner ${window.innerHeight} outer ${window.outerHeight}`,
+        `vv ${vv ? `${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : "n/a"}`,
+        `appH ${cs.getPropertyValue("--app-height") || "-"}`,
+        `kbd ${cs.getPropertyValue("--keyboard-inset-bottom") || "-"}`,
+        `lift ${cs.getPropertyValue("--keyboard-inset-content") || "-"}`,
+        `safe-bottom ${probe.offsetHeight}`,
+      ]);
+    };
+    update();
+    const timer = window.setInterval(update, 400);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
+    return () => {
+      window.clearInterval(timer);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
+      probe.remove();
+    };
+  }, []);
+  return (
+    <pre className="viewport-debug-overlay" aria-hidden="true">
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
 function useVisualViewportCssVars() {
   useEffect(() => {
     const root = document.documentElement;
-    const update = () => {
+    let pollTimer: number | undefined;
+    let settleTimers: number[] = [];
+
+    const measure = () => {
       const viewport = window.visualViewport;
       const height = viewport?.height ?? window.innerHeight;
       const offsetTop = viewport?.offsetTop ?? 0;
@@ -298,15 +366,20 @@ function useVisualViewportCssVars() {
         window.innerHeight - height - offsetTop,
       );
       const keyboardOpen = keyboardInset > 24;
+      root.classList.toggle("keyboard-open", keyboardOpen);
       root.style.setProperty(
         "--app-viewport-height",
         `${Math.round(height)}px`,
       );
+      // Keep the app surface at the full layout height, even while the
+      // keyboard is open. iOS can over-report the keyboard occlusion (the
+      // floating keyboard accessory bar counts as covered area), so sizing
+      // the app to the visual viewport leaves an unpainted strip above the
+      // keyboard. Instead the app stays full-height and content is lifted
+      // with padding-bottom in the mobile styles.
       root.style.setProperty(
         "--app-height",
-        keyboardOpen
-          ? `${Math.round(height)}px`
-          : `calc(${Math.round(height)}px + env(safe-area-inset-bottom, 0px))`,
+        `calc(${Math.round(window.innerHeight)}px + env(safe-area-inset-bottom, 0px))`,
       );
       root.style.setProperty(
         "--app-viewport-offset-top",
@@ -316,22 +389,72 @@ function useVisualViewportCssVars() {
         "--keyboard-inset-bottom",
         `${Math.round(keyboardInset)}px`,
       );
+      // Content lift used for the app padding. kbdTrim lets us test how far
+      // the terminal surface can extend toward the keyboard accessory bar.
+      root.style.setProperty(
+        "--keyboard-inset-content",
+        `${Math.round(Math.max(0, keyboardInset - keyboardInsetTrim))}px`,
+      );
+      return keyboardOpen;
+    };
+
+    const stopPolling = () => {
+      if (pollTimer !== undefined) {
+        window.clearInterval(pollTimer);
+        pollTimer = undefined;
+      }
+    };
+
+    // Third-party iOS keyboards can change height (toolbars, candidate rows)
+    // without firing visualViewport events, leaving the app sized for a
+    // stale keyboard inset and exposing a blank strip above the keyboard.
+    // Poll the geometry while the keyboard is open so those changes apply.
+    const syncPolling = (keyboardOpen: boolean) => {
+      if (keyboardOpen && pollTimer === undefined) {
+        pollTimer = window.setInterval(() => {
+          if (!measure()) stopPolling();
+        }, 500);
+      } else if (!keyboardOpen) {
+        stopPolling();
+      }
+    };
+
+    const update = () => {
+      syncPolling(measure());
+    };
+
+    // iOS reports keyboard geometry in stages during the show/hide animation,
+    // so re-measure after it settles to catch the final values.
+    const updateWhenSettled = () => {
+      update();
+      for (const timer of settleTimers) window.clearTimeout(timer);
+      settleTimers = [250, 600].map((delay) =>
+        window.setTimeout(update, delay),
+      );
     };
 
     update();
-    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", updateWhenSettled);
     window.visualViewport?.addEventListener("scroll", update);
     window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
+    window.addEventListener("orientationchange", updateWhenSettled);
+    window.addEventListener("focusin", updateWhenSettled);
+    window.addEventListener("focusout", updateWhenSettled);
     return () => {
-      window.visualViewport?.removeEventListener("resize", update);
+      stopPolling();
+      for (const timer of settleTimers) window.clearTimeout(timer);
+      window.visualViewport?.removeEventListener("resize", updateWhenSettled);
       window.visualViewport?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
+      window.removeEventListener("orientationchange", updateWhenSettled);
+      window.removeEventListener("focusin", updateWhenSettled);
+      window.removeEventListener("focusout", updateWhenSettled);
+      root.classList.remove("keyboard-open");
       root.style.removeProperty("--app-viewport-height");
       root.style.removeProperty("--app-height");
       root.style.removeProperty("--app-viewport-offset-top");
       root.style.removeProperty("--keyboard-inset-bottom");
+      root.style.removeProperty("--keyboard-inset-content");
     };
   }, []);
 }
@@ -2532,6 +2655,7 @@ export default function App() {
         </main>
       </div>
       <GlobalTooltip />
+      {viewportDebugEnabled ? <ViewportDebugOverlay /> : null}
       {paneJumpOpen ? (
         <PaneJumpOverlay
           entries={paneJumpOptions}

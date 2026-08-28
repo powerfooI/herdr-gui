@@ -4,11 +4,21 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <link rel="icon" type="image/png" href="/herdr-icon.png" />
     <link rel="apple-touch-icon" href="/herdr-icon.png" />
     <title>herdr-gui</title>
+    <script>
+      // Disable pinch zoom for the terminal UI. The viewport directive above
+      // covers PWAs and Android, but iOS Safari ignores user-scalable, so
+      // suppress the WebKit gesture events that drive pinch zoom as well.
+      for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+        document.addEventListener(type, (event) => event.preventDefault(), {
+          passive: false,
+        });
+      }
+    </script>
     <script>
       // Apply the persisted theme before first paint to avoid a flash of the
       // default dark theme. "system" resolves via the OS color scheme.

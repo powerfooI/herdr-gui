@@ -2,9 +2,9 @@
  * Download strategy for file URLs. Plain anchor downloads navigate the
  * current browsing context, which iOS replaces with the system document
  * handler; in a PWA there is no way back without force-quitting the app.
- * Prefer the native share sheet when available, open a new browsing context
- * on iOS/standalone (the in-app browser offers a way back), and keep the
- * classic anchor download everywhere else.
+ * Prefer the native share sheet on iOS when available, open a new browsing
+ * context on iOS/standalone (the in-app browser offers a way back), and keep
+ * the classic anchor download everywhere else.
  */
 export type FileDownloadStrategy = "share" | "new-context" | "anchor";
 
@@ -36,7 +36,11 @@ export function isStandaloneDisplay(
 export function chooseFileDownloadStrategy(
   env: FileDownloadEnvironment,
 ): FileDownloadStrategy {
-  if (env.canShareFiles) return "share";
+  // Desktop browsers can share files too (macOS Safari pops the system
+  // share sheet), but there the classic anchor download is the expected
+  // behavior. Only iOS traps anchor downloads in the system document
+  // handler, so only iOS uses the share sheet.
+  if (env.canShareFiles && env.ios) return "share";
   if (env.standalone || env.ios) return "new-context";
   return "anchor";
 }

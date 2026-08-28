@@ -77,14 +77,13 @@ describe("filenameFromContentDisposition", () => {
 });
 
 describe("chooseFileDownloadStrategy", () => {
-  test("prefers the native share sheet when files can be shared", () => {
-    expect(
-      chooseFileDownloadStrategy({
-        canShareFiles: true,
-        standalone: true,
-        ios: true,
-      }),
-    ).toBe("share");
+  test("prefers the native share sheet on iOS when files can be shared", () => {
+    for (const env of [
+      { canShareFiles: true, standalone: true, ios: true },
+      { canShareFiles: true, standalone: false, ios: true },
+    ]) {
+      expect(chooseFileDownloadStrategy(env)).toBe("share");
+    }
   });
 
   test("opens a new browsing context on iOS or in a PWA without share", () => {
@@ -97,10 +96,34 @@ describe("chooseFileDownloadStrategy", () => {
     }
   });
 
+  test("opens a new context for desktop web apps instead of the share sheet", () => {
+    // macOS "Add to Dock" web apps are standalone and can share files, but
+    // the share sheet is not the expected desktop download path.
+    expect(
+      chooseFileDownloadStrategy({
+        canShareFiles: true,
+        standalone: true,
+        ios: false,
+      }),
+    ).toBe("new-context");
+  });
+
   test("keeps the anchor download for regular desktop browsers", () => {
     expect(
       chooseFileDownloadStrategy({
         canShareFiles: false,
+        standalone: false,
+        ios: false,
+      }),
+    ).toBe("anchor");
+  });
+
+  test("keeps the anchor download on desktop even when files can be shared", () => {
+    // macOS Safari reports navigator.canShare support for files; the share
+    // sheet is still not the expected desktop download path.
+    expect(
+      chooseFileDownloadStrategy({
+        canShareFiles: true,
         standalone: false,
         ios: false,
       }),

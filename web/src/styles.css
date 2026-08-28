@@ -360,6 +360,12 @@
   scrollbar-gutter: auto;
   scrollbar-width: none;
 }
+
+html {
+  /* Disable double-tap zoom and the touch click delay. Pinch zoom is handled
+     by the viewport meta and gesture event suppression. */
+  touch-action: manipulation;
+}
 *::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -7703,6 +7709,19 @@ textarea:focus {
     height: var(--app-height, var(--app-viewport-height, 100dvh));
     min-height: var(--app-height, var(--app-viewport-height, 100dvh));
     transform: translateY(var(--app-viewport-offset-top, 0px));
+    /* The app stays full-height behind the keyboard; lift the content above
+       the keyboard with padding instead. */
+    padding-bottom: var(
+      --keyboard-inset-content,
+      var(--keyboard-inset-bottom, 0px)
+    );
+  }
+  .keyboard-open .app {
+    /* iOS counts the floating keyboard accessory bar as occluded area, so
+       whatever the padding leaves exposed keeps the terminal background
+       instead of flashing the webview's black backdrop. Keyboard-closed
+       views keep the default shell background. */
+    background: var(--terminal-bg);
   }
 
   .topbar {
@@ -7960,6 +7979,7 @@ textarea:focus {
     transform: translate3d(0, 0, 0) scale(1);
     transition:
       bottom 180ms ease,
+      opacity 160ms ease,
       background 120ms ease,
       border-color 120ms ease,
       transform 180ms ease;
@@ -7977,6 +7997,15 @@ textarea:focus {
     border-color: var(--accent);
     background: var(--accent-soft);
     transform: scale(0.94);
+  }
+  /* While the on-screen keyboard is open the floating controls cover too
+     much of the terminal, so fade them out until the keyboard closes. */
+  .keyboard-open .mobile-nav,
+  .keyboard-open .mobile-workspace-shortcut,
+  .keyboard-open .mobile-controls-toggle {
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0, 12px, 0) scale(0.85);
   }
   .mobile-controls-collapsed .mobile-nav {
     opacity: 0;
@@ -8469,4 +8498,24 @@ textarea:focus {
   .brand-title {
     display: none;
   }
+}
+
+/* Viewport geometry probe for debugging mobile keyboard layout (opt-in via
+   ?debugViewport=1). */
+.viewport-debug-overlay {
+  position: fixed;
+  top: calc(4px + env(safe-area-inset-top, 0px));
+  left: calc(4px + env(safe-area-inset-left, 0px));
+  z-index: 9999;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #7dff8a;
+  font:
+    11px / 1.5 ui-monospace,
+    Menlo,
+    monospace;
+  pointer-events: none;
+  white-space: pre-wrap;
 }

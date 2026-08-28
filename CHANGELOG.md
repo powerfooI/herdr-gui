@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed
+
+- Disable pinch and double-tap zoom on phones so the terminal layout stays
+  fixed.
+- Hide floating action buttons while the on-screen keyboard is open.
+
+### Fixed
+
+- Keep desktop file downloads as direct downloads instead of opening the
+  system share sheet (e.g. macOS Safari).
+- Keep the mobile terminal flush with the on-screen keyboard so no black
+  strip appears above it, including with third-party iOS keyboards.
+
 ## 0.4.8 - 2026-08-27
 
 ### Added
