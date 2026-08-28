@@ -2,7 +2,7 @@
 
 ## Project overview
 
-herdr-gui is a web GUI client for Herdr. It has two parts:
+Herdr Studio is a web client for Herdr. It has two parts:
 
 - `server/src`: Bun-powered local bridge server (HTTP + WebSocket) that talks
   to the local Herdr socket.
