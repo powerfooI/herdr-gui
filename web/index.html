@@ -10,13 +10,17 @@
     <link rel="apple-touch-icon" href="/herdr-icon.png" />
     <title>herdr-gui</title>
     <script>
-      // Disable pinch zoom for the terminal UI. The viewport directive above
-      // covers PWAs and Android, but iOS Safari ignores user-scalable, so
-      // suppress the WebKit gesture events that drive pinch zoom as well.
-      for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
-        document.addEventListener(type, (event) => event.preventDefault(), {
-          passive: false,
-        });
+      // Disable pinch zoom for the terminal UI on touch-primary devices
+      // (phones and tablets). The viewport directive above covers PWAs and
+      // Android, but iOS Safari ignores user-scalable, so suppress the
+      // WebKit gesture events that drive pinch zoom as well. Fine-pointer
+      // desktops keep their trackpad pinch zoom.
+      if (window.matchMedia("(pointer: coarse)").matches) {
+        for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+          document.addEventListener(type, (event) => event.preventDefault(), {
+            passive: false,
+          });
+        }
       }
     </script>
     <script>
