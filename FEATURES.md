@@ -5,8 +5,8 @@ Herdr Studio is a browser and PWA client for a running
 agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.
 
-For installation and deployment, see [README.md](./README.md). For the detailed
-Chinese setup guide, see [USAGE.md](./USAGE.md).
+For installation and deployment, see
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
 ## Workspace, Tab, and Pane Navigation
 
