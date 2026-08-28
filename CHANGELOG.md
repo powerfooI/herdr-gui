@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.9 - 2026-08-28
+
 ### Changed
 
 - Rebrand the app as **Herdr Studio**: page title, brand header, in-app copy,
