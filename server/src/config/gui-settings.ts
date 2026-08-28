@@ -125,7 +125,8 @@ function normalizeGuiSettings(raw: unknown): GuiSettings {
 
 export async function readGuiSettings(): Promise<GuiSettings> {
   if (cachedGuiSettings) return cachedGuiSettings;
-  const file = Bun.file(guiSettingsPath());
+  const path = guiSettingsPath();
+  const file = Bun.file(path);
   if (!(await file.exists())) {
     cachedGuiSettings = defaultGuiSettings();
     return cachedGuiSettings;
@@ -134,7 +135,7 @@ export async function readGuiSettings(): Promise<GuiSettings> {
     cachedGuiSettings = normalizeGuiSettings(JSON.parse(await file.text()));
   } catch (e) {
     console.warn(
-      `[bridge] ignoring invalid Herdr Studio settings: ${(e as Error).message}`,
+      `[bridge] ignoring invalid Herdr Studio settings at ${path}: ${(e as Error).message}`,
     );
     cachedGuiSettings = defaultGuiSettings();
   }

@@ -2541,7 +2541,7 @@ export const store = {
             dismissedUpdateVersion: latestVersion,
             notice: {
               kind: "info",
-              message: "Restarting the herdr-gui service",
+              message: "Restarting the herdr-gui process",
               detail:
                 "The binary was updated. Waiting for the external process supervisor to start the new version.",
               loading: true,
