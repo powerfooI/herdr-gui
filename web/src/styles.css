@@ -2245,35 +2245,6 @@ textarea:focus {
 .tree-row.is-child strong {
   font-weight: 500;
 }
-.workspace-worktree-marker {
-  height: 16px;
-  max-width: 34px;
-  flex: 0 1 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 0 3px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent-soft) 48%, transparent);
-  color: color-mix(in srgb, var(--accent) 72%, var(--text));
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 14px;
-  letter-spacing: 0.02em;
-}
-.workspace-worktree-marker svg {
-  flex: 0 0 auto;
-}
-.workspace-worktree-marker.is-compact {
-  width: 14px;
-  max-width: 14px;
-  flex-basis: 14px;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-}
 .workspace-pin {
   flex: 0 0 auto;
   color: var(--muted);

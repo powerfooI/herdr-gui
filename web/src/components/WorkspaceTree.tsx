@@ -5,13 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { buildWorkspaceHierarchy, worktreeCreationSource } from "../worktree";
-import {
-  ChevronDown,
-  ChevronRight,
-  GitBranch,
-  GitFork,
-  Pin,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Pin } from "lucide-react";
 import { WorktreeLifecycleDialog } from "./WorktreeLifecycleDialog";
 import {
   WORKSPACE_PINS_STORAGE_KEY,
@@ -57,6 +51,7 @@ import {
   treeKeyboardAction,
   workspaceTreeItemIsTabStop,
 } from "./treeKeyboard";
+import { TREE_DEPTH_INDENT } from "./treeIndent";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -582,9 +577,6 @@ function WorkspaceRow({
   const collapsed =
     hasNestedItems && isWorktreeGroupCollapsed(collapsedWorktreeGroupKeys, w);
   const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
-  const worktreeMarkerRepoName =
-    w.worktree?.is_linked_worktree === true ? w.worktree.repo_name : null;
-  const compactWorktreeMarker = isChild && !pinned;
   const isPendingFocus =
     s.pendingFocusWorkspaceId === w.workspace_id && !w.focused;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -643,7 +635,7 @@ function WorkspaceRow({
         } ${isChild ? "is-child" : ""} ${pinned ? "is-pinned" : ""} ${
           isPendingFocus ? "is-loading" : ""
         }`}
-        style={{ paddingLeft: 6 + depth * 12 }}
+        style={{ paddingLeft: 6 + depth * TREE_DEPTH_INDENT }}
         role="treeitem"
         tabIndex={
           workspaceTreeItemIsTabStop({
@@ -754,21 +746,9 @@ function WorkspaceRow({
             {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           </button>
         ) : (
-          <span className="twisty">{isChild ? "⌞" : " "}</span>
+          <span className="twisty" aria-hidden="true" />
         )}
         <strong className="ws-label">{workspaceDisplayName(w)}</strong>
-        {worktreeMarkerRepoName ? (
-          <span
-            className={`workspace-worktree-marker ${
-              compactWorktreeMarker ? "is-compact" : ""
-            }`}
-            title={`Linked worktree · ${worktreeMarkerRepoName}`}
-            aria-label={`Linked worktree in ${worktreeMarkerRepoName}`}
-          >
-            <GitFork size={11} aria-hidden="true" />
-            {!compactWorktreeMarker ? <span aria-hidden="true">WT</span> : null}
-          </span>
-        ) : null}
         {pinned ? (
           <Pin
             className="workspace-pin"

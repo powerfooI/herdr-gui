@@ -12,6 +12,8 @@
   separate header toggle.
 - Move per-file actions in File Explorer into a single "..." menu anchored to
   the row.
+- Remove the worktree marker icon and corner glyph from workspace tree rows;
+  indentation alone conveys the hierarchy.
 
 ## 0.4.9 - 2026-08-28
 
