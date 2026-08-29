@@ -1,0 +1,77 @@
+name: Label Pull Requests
+
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  label:
+    name: Apply release-note category
+    runs-on: ubuntu-latest
+    steps:
+      # pull_request_target checks out the trusted base branch, never PR code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+          no-cache: true
+      - name: Classify pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          release_labels=(
+            breaking-change
+            bug
+            dependencies
+            documentation
+            enhancement
+            feature
+            fix
+            skip-changelog
+          )
+          existing_labels="$(
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER" \
+              --jq '.labels[].name'
+          )"
+          while IFS= read -r existing; do
+            for category in "${release_labels[@]}"; do
+              if [ "$existing" = "$category" ]; then
+                echo "Keeping existing release-note label: $existing"
+                exit 0
+              fi
+            done
+          done <<< "$existing_labels"
+
+          files_json="$(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+              --jq '.[].filename' \
+              | jq -R -s 'split("\n") | map(select(length > 0))'
+          )"
+          label="$(
+            jq -n \
+              --arg title "$PR_TITLE" \
+              --arg author "$PR_AUTHOR" \
+              --argjson changedFiles "$PR_CHANGED_FILES" \
+              --argjson files "$files_json" \
+              '{ title: $title, author: $author, changedFiles: $changedFiles, files: $files }' \
+              | bun run label:pr
+          )"
+          jq -n --arg label "$label" '{ labels: [$label] }' \
+            | gh api --method POST \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" \
+                --input - >/dev/null
+          echo "Applied release-note label: $label"

@@ -38,5 +38,12 @@ user-visible behavior, verification performed, and compatibility impact.
 Include screenshots for interface changes. Avoid committing generated
 artifacts from `dist/`, `server/public/`, or compiled binaries.
 
+Pull requests without a release-note category label are labeled automatically:
+documentation-only changes become `documentation`, dependency updates become
+`dependencies`, fix-oriented titles become `bug`, and other code changes become
+`enhancement`. Release preparation PRs receive `skip-changelog`. Add one of the
+categories from `.github/release.yml` before merging to override the automatic
+choice.
+
 By contributing, you agree that your contribution is licensed under the MIT
 License.
