@@ -7,7 +7,9 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # Labeling a pull request through the issues endpoint requires pull-requests
+  # write; issues write alone is rejected with HTTP 403.
+  pull-requests: write
 
 jobs:
   label:
