@@ -14,6 +14,7 @@
   the row.
 - Remove the worktree marker icon and corner glyph from workspace tree rows;
   indentation alone conveys the hierarchy.
+- Spell out the linked-worktree badge as "Worktree" in the inspector.
 
 ## 0.4.9 - 2026-08-28
 

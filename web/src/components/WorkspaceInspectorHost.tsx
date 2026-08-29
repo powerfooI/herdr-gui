@@ -377,7 +377,7 @@ export function WorkspaceInspectorHost({
             {checkoutLabel(workspace)}
             {workspace?.worktree?.is_linked_worktree ? (
               <span className="workspace-inspector-wt" title="Linked worktree">
-                <GitFork size={11} aria-hidden="true" /> WT
+                <GitFork size={11} aria-hidden="true" /> Worktree
               </span>
             ) : null}
           </span>
