@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.10 - 2026-08-29
+
 ### Added
 
 - Add a mobile tab switcher: a Tabs button with a count badge in the mobile
