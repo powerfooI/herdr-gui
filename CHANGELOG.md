@@ -4,8 +4,7 @@
 
 ### Added
 
-- Preview PDF files in File Explorer and load workspace-local images in rendered
-  Markdown previews, including paths relative to the Markdown document.
+- Preview PDFs and workspace-local Markdown images in File Explorer.
 
 ### Changed
 
@@ -51,228 +50,129 @@
 
 ### Changed
 
-- Align Files and Changes with shared Git status, keyboard file-tree navigation,
-  and inline per-file diff controls that preserve the selected view settings.
+- Unify Files and Changes around shared Git status, keyboard navigation, and
+  inline diff controls.
 
 ### Fixed
 
-- Restore terminal content after returning from the lock screen or switching
-  apps in the mobile PWA: probe the bridge socket as soon as the page
-  foregrounds, repaint and re-attach terminals stuck without frames, and fall
-  back to a single rate-limited reload when the session cannot recover in
-  place instead of requiring a manual refresh.
+- Restore mobile PWA terminals after switching apps or leaving the lock screen.
 
 ## 0.4.6 - 2026-08-25
 
 ### Added
 
-- Add a preference to disable automatic update checks while keeping manual
-  update checks available from the application menu.
+- Add a preference to disable automatic update checks.
 - Add a native Windows ARM64 release package.
 
 ### Changed
 
-- Group the application, workspace, and agent menus into clearer sections;
-  workspace and agent context menus now identify their target and isolate
-  destructive actions.
-- Consolidate browser pause and reconnect controls in the Connections menu,
-  surface paused/disconnected status on its trigger, and prevent compact and
-  mobile topbar overlap.
-- Place mobile notifications below the topbar instead of above the bottom
-  terminal controls.
+- Reorganize application, workspace, and agent menus.
+- Consolidate pause and reconnect controls in the Connections menu.
+- Move mobile notifications below the top bar.
 
 ### Fixed
 
-- Keep the Diff Viewer responsive for large change sets by rendering only the
-  selected patch with a virtualized Pierre surface, loading syntax and patch
-  data on demand, and bounding patch, worker, and image-preview caches.
-- Reattach terminal frames after resuming browser sync instead of requiring a
-  page reload to restore terminal content.
-- Use the compact drill-in Inspector layout below 640px so narrow panes do not
-  squeeze navigation and detail side by side; mobile view also hides dock and
-  expand actions while narrow desktop docks retain them.
-- Animate and disable the Diff Viewer refresh control while changes are being
-  reloaded so refresh progress is visible.
-- Keep worktree dirty/ahead/behind count badges fully visible in the
-  workspace tree; only the branch badge shrinks with an ellipsis, and the row
-  tooltip still shows the full status.
-- Restore Enter-to-confirm in confirmation dialogs such as Remove Worktree
-  and Close Workspace, and let Enter dismiss message dialogs; Enter confirms
-  unless a dialog button has focus, so a focused Cancel button still
-  activates natively.
-- Fix the Wrap/No wrap toggle doing nothing in narrow Inspector Changes
-  panes on desktop; compact diff styles now follow the pane layout instead of
-  a mobile-only viewport media query.
-- Upgrade release builds to Bun 1.4.0; the x64 binary built by Bun 1.3.14 can
-  crash during `service install` under Windows ARM64 emulation.
+- Keep the Diff Viewer responsive for large change sets.
+- Restore terminal frames after resuming browser sync.
+- Use a compact Inspector layout on narrow screens.
+- Show progress while refreshing the Diff Viewer.
+- Keep worktree status badges visible beside long branch names.
+- Restore consistent Enter behavior in dialogs.
+- Make the Wrap toggle work in narrow desktop Inspectors.
+- Prevent Windows ARM64 service crashes by building releases with Bun 1.4.
 
 ## 0.4.5 - 2026-08-23
 
 ### Added
 
-- Add Windows support: the bridge maps local Herdr `%APPDATA%\herdr` socket
-  names to native named pipes, gains Windows x64 build and release packages,
-  and manages an isolated per-user startup task through Windows Task
-  Scheduler.
+- Add Windows x64 support with native named pipes and per-user startup tasks.
 
 ### Performance
 
-- Stop the idle-state render churn that made the UI hitch every second:
-  removed a leftover background poll that read 200 lines of scrollback per
-  visible pane every 1.5s without any consumer, skip broadcasting store
-  updates when a refresh returns unchanged data, slow the metadata fallback
-  poll to 5s and suspend it while the page is hidden.
-- Subscribe components to just the state slices they read via a new
-  `useStoreSelector` hook, so a store update no longer re-renders the whole
-  app.
+- Eliminate idle render churn and suspend fallback polling while hidden.
+- Limit component updates to the state they use.
 
 ### Fixed
 
-- Make Windows service registration Unicode-safe and let uninstall recover
-  when either the Task Scheduler entry or generated helper is already missing.
-- Re-attach the terminal when Herdr closes its stream after another herdr-gui
-  client takes the terminal over (e.g. a second GUI instance viewing the same
-  pane): the bridge now tells viewers when the stream closes and the frontend
-  re-attaches with a bounded retry instead of leaving a blank terminal until
-  the page was refreshed; sustained takeover wars surface an explicit error.
-- Re-arm the metadata and update polls when the connection settles: they were
-  stopped by the initial switch from the legacy placeholder connection and
-  never restarted, leaving status updates and update checks without their
-  fallback poll until the next manual action.
+- Make Windows service installation and removal Unicode-safe and recoverable.
+- Recover terminal streams after another GUI client takes over a pane.
+- Restart metadata and update polling after connections settle.
 
 ## 0.4.4 - 2026-08-22
 
 ### Added
 
-- Allow resizing the Files/Changes navigation list in docked Inspectors too.
+- Allow resizing the Files/Changes navigation list in docked Inspectors.
 
 ### Fixed
 
-- Retry workspace, agent, and tab switches once the bridge connection is back
-  when they are fired while the client is still reconnecting, so clicks right
-  after returning to the app are no longer silently dropped.
-- Re-attach the terminal whenever the xterm instance is recreated, fixing
-  terminals that stayed blank after switching between desktop and mobile
-  layouts or resuming the mobile app from the lock screen until the app was
-  refreshed.
-- Keep file and session downloads inside the app on iOS/PWA instead of
-  navigating into the system document handler with no way back.
-- Stop terminal selections from growing on mouse moves after a lost mouseup.
-- Fix terminal attach against Herdr 0.8.2 (protocol 20), which renumbered the
-  `TerminalAttach` launch-mode wire value.
+- Retry workspace, agent, and tab switches issued while reconnecting.
+- Restore terminals after layout changes or mobile app resume.
+- Keep file and session downloads inside the iOS PWA.
+- Stop terminal selections from growing after a lost mouse release.
+- Restore terminal attachment with Herdr 0.8.2.
 
 ## 0.4.3 - 2026-08-22
 
 ### Added
 
-- Add a checkout-scoped Workspace Inspector for Files, Changes, and Agent
-  History, with right/bottom docks, expanded and responsive modes, resizable
-  navigation, shared checkout identity, and a `Cmd+Shift+B` toggle.
+- Add a dockable Workspace Inspector for Files, Changes, and Agent History.
 
 ### Changed
 
-- Keep the Workspace tree and terminal mounted while using or retargeting the
-  Inspector, restoring each checkout's isolated view and layout preferences.
-- Nest Agent sessions under their Workspace by default, with shared tab/tree
-  status icons, quieter status labels, context menus, and an optional persisted
-  separate Agents panel.
-- Streamline desktop and mobile navigation, pane controls, embedded resource
-  headers, responsive Diff controls, and the mobile Workspaces shortcut.
-- Improve keyboard and focus behavior for Workspace/Agent trees, dialogs,
-  resizers, mobile controls, and Inspector open/close flows.
+- Preserve each checkout's Inspector view and layout.
+- Nest Agent sessions under their Workspace by default.
+- Streamline desktop and mobile navigation and pane controls.
+- Improve keyboard and focus behavior across the Inspector.
 
 ### Fixed
 
-- Isolate Files/Changes caches and asynchronous requests by connection and
-  checkout, automatically load Diff content, and retire stale results after
-  refresh, cleanup, or worktree lifecycle changes.
-- Preserve completed Agent History when live status is unknown and prevent stale
-  Agent or lifecycle state from leaking across pane and dialog contexts.
+- Isolate Files and Changes data by connection and checkout.
+- Preserve completed Agent History when live status is unavailable.
 
 ## 0.4.2 - 2026-08-20
 
 ### Added
 
-- Paste text or images into the terminal on mobile from a configurable Paste
-  shortcut button, using the same upload-and-paste-path flow as desktop paste.
-- Render Mermaid diagrams in the file previewer: `.mmd`/`.mermaid` files get a
-  Raw/Rendered toggle, and Mermaid code fences inside Markdown previews render
-  inline as theme-aware SVG diagrams.
-- Appearance: new "System" theme option that follows the OS color scheme
-  (`prefers-color-scheme`) and switches live when the OS theme changes; the
-  persisted preference is applied before first paint to avoid a theme flash.
-- Releases no longer require a manual version-bump PR: the new **Cut Release**
-  workflow (or `bun run release:cut <version>` locally) bumps versions,
-  finalizes the changelog, lands the release commit on `main` through an
-  automated self-merging PR, tags it, and starts the release pipeline in one
-  step. GitHub release notes now come from the version's `CHANGELOG.md`
-  section instead of auto-generated PR lists.
+- Add configurable mobile paste for terminal text and images.
+- Render Mermaid files and Markdown Mermaid blocks.
+- Add a System theme that follows OS appearance changes.
 
 ### Changed
 
-- Creating the first connection profile no longer drops the default local
-  server from the list: it is persisted as a writable `Local` profile with the
-  same socket paths and auto-connect enabled, so the localhost Herdr remains
-  available alongside newly added profiles.
-- SSH connection profiles no longer require remote socket paths: leave them
-  empty and the bridge infers the default Herdr sockets under the remote home
-  directory (`~/.config/herdr/herdr.sock` and
-  `~/.config/herdr/herdr-client.sock`) at connect time.
+- Keep the default local server when creating connection profiles.
+- Infer default remote socket paths for SSH connections.
 
 ### Fixed
 
-- Use the theme-aware code surface for Markdown fenced code blocks in the file
-  previewer: light mode no longer renders them as a low-contrast dark box
-  (they previously always used the dark terminal background).
-- Replace the browser-native `window.confirm` when removing a connection with
-  the in-app confirmation dialog (Escape/Enter/focus handling included).
-- Keep popovers, dialogs, and menus open while terminal output streams in:
-  frame-driven terminal refocusing no longer steals focus from overlay UI,
-  which previously collapsed the connection menu (and other popovers) the
-  moment a working agent produced output.
+- Make Markdown code blocks readable in light mode.
+- Use the in-app confirmation dialog when removing connections.
+- Keep overlays open while terminal output streams.
 
 ## 0.4.1 - 2026-08-20
 
 ### Fixed
 
-- Remove the WebSocket browser-origin check from 0.4.0: it rejected legitimate
-  browsers behind reverse proxies that rewrite the `Host` header, leaving the
-  UI stuck at "Browser disconnected from bridge". Access control is once again
-  the deployment's responsibility (authentication, HTTPS at the proxy, VPN, or
-  firewall), as documented in SECURITY.md.
+- Restore WebSocket access behind reverse proxies that rewrite the Host header.
 
 ## 0.4.0 - 2026-08-20
 
 ### Added
 
-- Manage multiple local and SSH-backed Herdr servers from one bridge, with a
-  per-browser active connection, isolated runtime state, persisted profiles,
-  connection testing, automatic SSH supervision, and a connection manager UI.
-- Reload the current browser page or standalone PWA from the application menu.
+- Manage multiple local and SSH-backed Herdr servers from one bridge.
+- Reload the browser or standalone PWA from the application menu.
 
 ### Changed
 
-- Refine dialogs and notifications with consistent icon controls, clearer action
-  hierarchy, and English date and relative-time presentation.
+- Refine dialogs, notifications, and date presentation.
 
 ### Fixed
 
-- Push `pane.agent_status_changed` events from each connection so agent
-  working/idle/done transitions reach the browser immediately instead of
-  waiting for the next metadata poll, which could leave agents looking idle
-  while they work.
-- Refresh workspace metadata as soon as a hidden or unfocused page becomes
-  visible, focused, or back online, so browser timer throttling no longer
-  leaves statuses stale.
-- Recover Apple IME commits when WebKit emits input before or without keydown
-  or reports a different keyup code, without replaying text already sent from
-  keypress.
-- Keep connection-scoped RPC, HTTP, terminal, clipboard, file, Git, worktree,
-  agent, and settings activity bound to the selected server generation so stale
-  work cannot cross into a replacement connection.
-- Send full-page Page Up and Page Down as page-key input instead of wheel input,
-  restoring page-sized scrolling in fullscreen Pi while preserving Alt/Option
-  half-page scrolling.
+- Deliver Agent status changes immediately for every connection.
+- Refresh workspace status when the page becomes active again.
+- Recover Apple IME input emitted outside the usual key event sequence.
+- Prevent stale work from crossing between connection generations.
+- Restore full-page Page Up and Page Down in fullscreen Pi.
 
 ## 0.3.5 - 2026-08-18
 
@@ -292,9 +192,8 @@
 
 ### Fixed
 
-- Keep browser WebSocket connections open when Bun queues outbound data under
-  backpressure, while retaining the 8 MiB slow-client protection and accurate
-  disconnect cleanup.
+- Keep WebSocket connections open under backpressure while preserving
+  slow-client protection.
 - Restore text selection after releasing a pane divider outside the window.
 
 ## 0.3.4 - 2026-08-17
@@ -306,8 +205,7 @@
 
 ### Fixed
 
-- Recover iOS terminal input committed by third-party IMEs during keyup or input
-  events when xterm does not forward the helper-textarea mutation.
+- Recover iOS third-party IME input missed by xterm.
 - Route complete native iOS paste mutations through the terminal paste API when
   the ClipboardEvent text is missing or truncated.
 
@@ -315,72 +213,41 @@
 
 ### Added
 
-- Customize the mobile terminal shortcut panel through a direct 2-by-8 slot editor:
-  select any compact, bordered grid position to add or edit its label and key
-  action with a searchable, theme-aware picker. Empty positions are preserved
-  in the editor but compacted out of the runtime shortcut panel, and Page Up and
-  Page Down are included by default instead of separate fixed scroll buttons.
-  Up to four optional right-side buttons can also be configured for the original
-  Up/Down position.
-- Pin individual workspaces or linked worktrees to the top of the Workspace
-  tree with browser persistence. Pinned linked worktrees are lifted out of their
-  repository group into the top-level pinned section.
-- Collapse and expand linked worktrees beneath their repository workspace, with
-  the collapsed groups saved in the current browser.
-- Mark linked-worktree workspace items with a compact branch icon, expanded to
-  a `WT` badge when pinned or otherwise top-level, and hide a redundant branch
-  badge when its branch matches the workspace name.
+- Add a customizable 2-by-8 mobile terminal shortcut editor.
+- Pin workspaces and linked worktrees in the Workspace tree.
+- Collapse linked worktrees beneath their repository.
+- Add clearer linked-worktree badges.
 
 ### Changed
 
-- Route configurable Page Up/Down actions through terminal scrollback (one page,
-  or half a page with Alt) instead of sending escape sequences that shells can
-  interpret as input-history navigation.
-- Hide the application overlay scrollbar inside dialogs, popovers, menus, and
-  the mobile shortcut panel while retaining touch, wheel, and trackpad scrolling.
+- Route Page Up and Page Down shortcuts through terminal scrollback.
+- Hide overlay scrollbars inside dialogs, menus, and mobile controls.
 
 ## 0.3.2 - 2026-08-10
 
 ### Changed
 
-- Restore compatibility with reverse proxies that rewrite the upstream Host
-  header by relying on configured authentication instead of comparing Host and
-  Origin authorities.
+- Restore compatibility with reverse proxies that rewrite the Host header.
 
 ## 0.3.1 - 2026-08-10
 
 ### Changed
 
-- Check for releases through small, bounded platform manifests instead of
-  repeatedly downloading full application archives, while retaining a legacy
-  fallback for older releases and mirrors.
+- Check for updates through small platform manifests instead of full archives.
 
 ### Fixed
 
-- Harden automatic updates by binding version, platform, archive name, and
-  checksum metadata before narrowly extracting, backing up, and atomically
-  replacing the executable. Browser update checks and installs now require an explicit
-  same-origin request header, and custom update URLs cannot expose embedded
-  credentials or use unauthenticated remote transports.
-- Block cross-origin WebSocket control and DNS-rebinding access to the
-  privileged API by validating browser origins and accepting only loopback
-  request hosts when herdr-gui runs without authentication.
-- Stop terminals from repainting through stale intermediate widths on tab
-  switches, especially over slow remote connections. Resize updates are now
-  deduplicated and debounced, hidden views cannot collapse a terminal to 2x1,
-  and the adaptive attach watchdog handles frames arriving before or after the
-  attach response without starting a false retry loop.
-- Keep the clipboard relay stable across tab switches, project its viewport
-  from the complete active pane layout, and pre-size a previously visited
-  target tab before focusing it. Late attach responses can no longer restore
-  stale relay dimensions, including when switching between single and split
-  pane tabs.
+- Harden automatic updates, checksum verification, and executable replacement.
+- Block cross-origin and DNS-rebinding access to privileged APIs.
+- Stabilize terminal sizing during tab switches and slow connections.
+- Keep clipboard relay dimensions stable across tab switches.
 
 ## 0.3.0 - 2026-08-07
 
 ### Added
 
-- Publish the initial public release with browser terminals, workspace and worktree management, File Explorer, Diff Viewer, and Agent Session Inspect.
+- Publish the initial release with terminals, workspace tools, file browsing,
+  diffs, and Agent Session Inspect.
 - Ship checksum-verified standalone packages for Linux and macOS on x86-64 and arm64.
 
 ## 0.2.31 - 2026-08-07
