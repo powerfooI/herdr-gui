@@ -10,6 +10,8 @@
 
 - Present the selected file name as the preview heading and move Changes into a
   separate header toggle.
+- Move per-file actions in File Explorer into a single "..." menu anchored to
+  the row.
 
 ## 0.4.9 - 2026-08-28
 

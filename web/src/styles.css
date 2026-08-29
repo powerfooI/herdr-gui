@@ -6045,6 +6045,9 @@ textarea:focus {
   white-space: nowrap;
 }
 .file-actions {
+  /* Pin to the last grid track so conditional columns (git status, meta,
+     spinner) never shift the actions button horizontally. */
+  grid-column: -2 / -1;
   display: inline-flex;
   gap: 3px;
 }

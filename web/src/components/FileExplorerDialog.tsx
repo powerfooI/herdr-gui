@@ -10,8 +10,7 @@ import {
 import {
   ChevronDown,
   ChevronRight,
-  Copy,
-  Download,
+  Ellipsis,
   File,
   Folder,
   FolderOpen,
@@ -828,6 +827,12 @@ type FileExplorerEntryMenuState = {
   entry: FileExplorerEntry;
 };
 
+// Keep ENTRY_MENU_ITEM_COUNT in sync with the items rendered in
+// FileExplorerEntryMenu; the height estimate drives clamping and flip placement.
+const ENTRY_MENU_ITEM_COUNT = 3;
+const ENTRY_MENU_WIDTH = 220;
+const ENTRY_MENU_HEIGHT = ENTRY_MENU_ITEM_COUNT * 34 + 8;
+
 function FileExplorerEntryMenu({
   state,
   onClose,
@@ -898,6 +903,7 @@ function FileExplorerEntryMenu({
 
   const { entry } = state;
   const isDirectory = entry.type === "directory";
+  // Keep ENTRY_MENU_ITEM_COUNT in sync with this array.
   const items = [
     {
       label: isDirectory ? "Download directory" : "Download file",
@@ -914,16 +920,17 @@ function FileExplorerEntryMenu({
     },
   ];
   const menuMargin = 8;
-  const menuWidth = 220;
+  const menuWidth = ENTRY_MENU_WIDTH;
   const style: React.CSSProperties = {
     position: "fixed",
+    width: `min(${ENTRY_MENU_WIDTH}px, calc(100vw - 2 * ${menuMargin}px))`,
     left: Math.max(
       menuMargin,
       Math.min(state.x, window.innerWidth - menuWidth - menuMargin),
     ),
     top: Math.max(
       menuMargin,
-      Math.min(state.y, window.innerHeight - items.length * 34 - menuMargin),
+      Math.min(state.y, window.innerHeight - ENTRY_MENU_HEIGHT - menuMargin),
     ),
     zIndex: 1000,
   };
@@ -2081,33 +2088,24 @@ function FileExplorerContent({
               type="button"
               className="ghost file-action"
               tabIndex={-1}
-              title={
-                isDirectory ? "Download directory as tar.gz" : "Download file"
-              }
+              title="File actions"
+              aria-label="File actions"
+              aria-haspopup="menu"
               onClick={(e) => {
                 e.stopPropagation();
                 e.currentTarget
                   .closest<HTMLElement>(".file-row")
                   ?.focus({ preventScroll: true });
-                downloadEntry(entry);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const below = rect.bottom + 4;
+                const y =
+                  below + ENTRY_MENU_HEIGHT <= window.innerHeight - 8
+                    ? below
+                    : Math.max(8, rect.top - 4 - ENTRY_MENU_HEIGHT);
+                openEntryMenu(entry, rect.right - ENTRY_MENU_WIDTH, y);
               }}
             >
-              <Download size={14} />
-            </button>
-            <button
-              type="button"
-              className="ghost file-action"
-              tabIndex={-1}
-              title="Copy absolute path"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget
-                  .closest<HTMLElement>(".file-row")
-                  ?.focus({ preventScroll: true });
-                void copyEntryPath(entry);
-              }}
-            >
-              <Copy size={14} />
+              <Ellipsis size={14} />
             </button>
           </span>
         </div>
