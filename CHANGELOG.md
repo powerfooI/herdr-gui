@@ -5,6 +5,7 @@
 ### Added
 
 - Preview PDFs and workspace-local Markdown images in File Explorer.
+- Show the agent's current directory next to agents in the workspace tree.
 
 ### Changed
 
@@ -15,6 +16,7 @@
 - Remove the worktree marker icon and corner glyph from workspace tree rows;
   indentation alone conveys the hierarchy.
 - Spell out the linked-worktree badge as "Worktree" in the inspector.
+- Move the agent status icon in tabs before the tab name.
 
 ## 0.4.9 - 2026-08-28
 

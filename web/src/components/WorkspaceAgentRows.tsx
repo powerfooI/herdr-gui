@@ -10,6 +10,7 @@ import { agentClass, basename, shortId } from "../utils";
 import { shouldShowAgentStatusLabel } from "./agentSession";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { observeClampedContextMenu } from "./contextMenuPosition";
+import { TREE_DEPTH_INDENT } from "./treeIndent";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -31,6 +32,11 @@ type AgentContextMenuGroup = {
   items: AgentContextMenuItem[];
   danger?: boolean;
 };
+
+function agentLocationName(pane: Pane): string {
+  const location = pane.foreground_cwd ?? pane.cwd;
+  return location ? basename(location.replace(/\\/g, "/")) : "";
+}
 
 export function AgentRow({
   pane,
@@ -68,13 +74,18 @@ export function AgentRow({
   };
   const showStatus = shouldShowAgentStatusLabel(pane.agent_status);
   const nested = variant === "nested";
+  const locationName = agentLocationName(pane);
 
   return (
     <div
       className={`agent-row ${nested ? "is-nested" : "is-standalone"} ${
         selected ? "is-selected" : ""
       } ${pane.focused ? "is-focused" : ""}`}
-      style={nested ? { marginLeft: 12 + depth * 12 } : undefined}
+      style={
+        nested
+          ? { marginLeft: TREE_DEPTH_INDENT + depth * TREE_DEPTH_INDENT }
+          : undefined
+      }
       role={nested ? "treeitem" : "button"}
       tabIndex={nested ? (selected ? 0 : -1) : 0}
       aria-level={nested ? depth + 1 : undefined}
@@ -172,6 +183,9 @@ export function AgentRow({
               : (workspaceLabel ?? pane.workspace_id)}
             {showPaneId ? (
               <span className="muted"> · {shortId(pane.pane_id)}</span>
+            ) : null}
+            {nested && locationName ? (
+              <span className="muted"> · {locationName}</span>
             ) : null}
           </span>
           {showStatus ? (
@@ -298,10 +312,7 @@ export function AgentContextMenu({
     zIndex: 1000,
   };
   const agentName = state.pane.agent ?? "Agent";
-  const agentLocation = state.pane.foreground_cwd ?? state.pane.cwd;
-  const agentLocationName = agentLocation
-    ? basename(agentLocation.replace(/\\/g, "/"))
-    : "";
+  const locationName = agentLocationName(state.pane);
 
   return (
     <div ref={ref} className="context-menu context-menu--grouped" style={style}>
@@ -310,7 +321,7 @@ export function AgentContextMenu({
         <strong title={agentName}>{agentName}</strong>
         <small>
           {state.pane.agent_status}
-          {agentLocationName ? ` · ${agentLocationName}` : ""}
+          {locationName ? ` · ${locationName}` : ""}
         </small>
       </div>
       {groups.map((group) => (

@@ -158,12 +158,6 @@ export function TabBar({
                 }}
                 title={t.tab_id}
               >
-                <TabLongPressTarget
-                  tab={t}
-                  onOpenMenu={(x, y) => setMenu({ tab: t, x, y })}
-                >
-                  <span className="tabbar-name">{name}</span>
-                </TabLongPressTarget>
                 {agentSummary ? (
                   <span
                     className="tabbar-agent-marker"
@@ -187,6 +181,12 @@ export function TabBar({
                     ) : null}
                   </span>
                 ) : null}
+                <TabLongPressTarget
+                  tab={t}
+                  onOpenMenu={(x, y) => setMenu({ tab: t, x, y })}
+                >
+                  <span className="tabbar-name">{name}</span>
+                </TabLongPressTarget>
                 <button
                   className="tabbar-close"
                   onClick={(e) => {
