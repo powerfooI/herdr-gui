@@ -1,10 +1,8 @@
 import {
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type ReactNode,
 } from "react";
@@ -138,9 +136,6 @@ export function FilePreviewContent({
   const connectionClient = useConnectionClient();
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
-  const fileTabRef = useRef<HTMLButtonElement | null>(null);
-  const changesTabRef = useRef<HTMLButtonElement | null>(null);
-  const tabId = useId();
   const onOpenChangesRef = useRef(onOpenChanges);
   onOpenChangesRef.current = onOpenChanges;
   const [previewMode, setPreviewMode] = useState<"rendered" | "raw">(
@@ -191,29 +186,6 @@ export function FilePreviewContent({
   const changesAvailable =
     changesContent !== undefined && !!changesKey && !!onOpenChanges;
   const showingChanges = detailTab === "changes" && changesAvailable;
-  const fileTabId = `${tabId}-file-tab`;
-  const changesTabId = `${tabId}-changes-tab`;
-  const filePanelId = `${tabId}-file-panel`;
-  const changesPanelId = `${tabId}-changes-panel`;
-
-  const handleDetailTabKeyDown = (
-    event: ReactKeyboardEvent<HTMLButtonElement>,
-  ) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-      return;
-    }
-    event.preventDefault();
-    const nextTab =
-      !changesAvailable || event.key === "Home"
-        ? "file"
-        : event.key === "End"
-          ? "changes"
-          : showingChanges
-            ? "file"
-            : "changes";
-    setDetailTab(nextTab);
-    (nextTab === "file" ? fileTabRef : changesTabRef).current?.focus();
-  };
 
   useEffect(() => {
     setPreviewMode("rendered");
@@ -259,70 +231,54 @@ export function FilePreviewContent({
     >
       <div className="file-preview-head">
         <div className="file-preview-title-row">
-          <div className="file-preview-tabs" role="tablist">
-            <button
-              ref={fileTabRef}
-              id={fileTabId}
-              type="button"
-              role="tab"
-              className={showingChanges ? "" : "is-active"}
-              aria-selected={!showingChanges}
-              aria-controls={filePanelId}
-              tabIndex={showingChanges ? -1 : 0}
-              onClick={() => setDetailTab("file")}
-              onKeyDown={handleDetailTabKeyDown}
-            >
-              {entry?.name ?? "Preview"}
-            </button>
+          <div className="file-preview-title" title={entry?.name}>
+            {entry?.name ?? "Preview"}
+          </div>
+          <div className="file-preview-head-actions">
+            {!showingChanges && hasRichPreview ? (
+              <button
+                type="button"
+                className="file-preview-mode-toggle"
+                onClick={() =>
+                  setPreviewMode((mode) =>
+                    mode === "rendered" ? "raw" : "rendered",
+                  )
+                }
+              >
+                {previewMode === "rendered" ? "Raw" : "Rendered"}
+              </button>
+            ) : null}
             {changesAvailable ? (
               <button
-                ref={changesTabRef}
-                id={changesTabId}
                 type="button"
-                role="tab"
-                className={showingChanges ? "is-active" : ""}
-                aria-selected={showingChanges}
-                aria-controls={changesPanelId}
-                tabIndex={showingChanges ? 0 : -1}
-                onClick={() => setDetailTab("changes")}
-                onKeyDown={handleDetailTabKeyDown}
+                className="file-preview-changes-toggle"
+                aria-pressed={showingChanges}
+                title={showingChanges ? "Show file preview" : "Show changes"}
+                onClick={() =>
+                  setDetailTab(showingChanges ? "file" : "changes")
+                }
               >
                 Changes
               </button>
             ) : null}
           </div>
-          {!showingChanges && hasRichPreview ? (
-            <button
-              type="button"
-              className="file-preview-mode-toggle"
-              onClick={() =>
-                setPreviewMode((mode) =>
-                  mode === "rendered" ? "raw" : "rendered",
-                )
-              }
-            >
-              {previewMode === "rendered" ? "Raw" : "Rendered"}
-            </button>
-          ) : null}
         </div>
         {entry ? <span>{entry.path}</span> : null}
       </div>
 
       {showingChanges ? (
         <div
-          id={changesPanelId}
           className="file-preview-changes"
-          role="tabpanel"
-          aria-labelledby={changesTabId}
+          role="region"
+          aria-label={`Changes for ${entry?.name ?? "selected file"}`}
         >
           {changesContent}
         </div>
       ) : (
         <div
-          id={filePanelId}
           className="file-preview-file-content"
-          role="tabpanel"
-          aria-labelledby={fileTabId}
+          role="region"
+          aria-label={`Preview of ${entry?.name ?? "selected file"}`}
         >
           {!entry ? (
             <div className="file-preview-state">

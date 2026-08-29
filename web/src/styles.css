@@ -4670,43 +4670,23 @@ textarea:focus {
   justify-content: space-between;
   gap: 10px;
 }
-.file-preview-tabs {
+.file-preview-title {
   min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--viewer-border);
-  border-radius: 7px;
-  background: var(--viewer-content-bg);
-}
-.file-preview-tabs button {
-  min-width: 0;
-  height: 24px;
   overflow: hidden;
-  padding: 0 8px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text-strong);
+  font-size: 13px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.file-preview-tabs button:first-child {
-  max-width: min(34vw, 260px);
-}
-.file-preview-tabs button:hover,
-.file-preview-tabs button.is-active {
-  background: var(--accent-soft);
-  color: var(--text-strong);
-}
-.file-preview-tabs button.is-active {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.file-preview-mode-toggle {
+.file-preview-head-actions {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-preview-mode-toggle,
+.file-preview-changes-toggle {
   height: 24px;
   padding: 0 8px;
   border-radius: 7px;
@@ -4714,6 +4694,14 @@ textarea:focus {
   color: var(--text);
   font-size: 11px;
   font-weight: 700;
+}
+.file-preview-changes-toggle:hover,
+.file-preview-changes-toggle[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.file-preview-changes-toggle[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .file-preview-head span {
   min-width: 0;
