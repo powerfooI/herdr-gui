@@ -6,7 +6,13 @@ import {
   Keyboard,
   X,
 } from "lucide-react";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   type MobileTerminalShortcut,
@@ -33,6 +39,8 @@ import { MessageDialog } from "./ModalDialogs";
 
 const TERMINAL_COMPOSER_HELP =
   "Input Composer uses your phone’s native editor for reliable IME, dictation, multiline text, and cursor editing before anything is sent to the terminal. Adding an image opens the system file picker, which takes focus from the composer and may dismiss the keyboard. After you choose an image, its uploaded path is inserted into the draft; tap the text area to reopen the keyboard if needed.";
+const TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY =
+  "terminalComposerShortcutsOpen";
 
 /**
  * Bottom-docked mobile terminal composer. A plain textarea owns all editing
@@ -43,10 +51,9 @@ const TERMINAL_COMPOSER_HELP =
  * virtual-keyboard resizes never lose text.
  *
  * The configurable mobile shortcut keys live at the top of the dock so the
- * composer is the single mobile control surface. Opening the composer focuses
- * the textarea (caret at the end of any restored draft) so the virtual
- * keyboard is ready immediately; the standalone shortcut panel remains for
- * keys-only interactions.
+ * composer is the single mobile control surface. The textarea only receives
+ * focus when the user taps it, so opening the composer does not unexpectedly
+ * summon the virtual keyboard or hide other mobile controls.
  *
  * Images arrive through clipboard paste or the file picker, upload once, and
  * land in the draft as plain paths at the caret; they reach the terminal only
@@ -78,12 +85,62 @@ export function TerminalComposer({
   );
   const [composing, setComposing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(
+    () =>
+      localStorage.getItem(TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY) !==
+      "false",
+  );
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
+  const focusSelectionAfterInsertRef = useRef(false);
   const activeDraftKeyRef = useRef(draftKey);
   activeDraftKeyRef.current = draftKey;
+
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const viewport = window.visualViewport;
+    const floatingControls = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".mobile-nav:not(.mobile-terminal-tools), .mobile-workspace-shortcut, .mobile-terminal-controls",
+      ),
+    );
+    const updateControlOverlap = () => {
+      const interactiveRegions = Array.from(
+        composer.querySelectorAll<HTMLElement>(
+          ".terminal-composer-shortcuts, .terminal-composer-input, .terminal-composer-actions",
+        ),
+      );
+      for (const control of floatingControls) {
+        const controlRect = control.getBoundingClientRect();
+        const overlaps = interactiveRegions.some((region) => {
+          const regionRect = region.getBoundingClientRect();
+          return (
+            controlRect.left < regionRect.right + 8 &&
+            controlRect.right > regionRect.left - 8 &&
+            controlRect.top < regionRect.bottom + 8 &&
+            controlRect.bottom > regionRect.top - 8
+          );
+        });
+        control.classList.toggle("is-composer-overlapped", overlaps);
+      }
+    };
+    updateControlOverlap();
+    const observer = new ResizeObserver(updateControlOverlap);
+    observer.observe(composer);
+    window.addEventListener("resize", updateControlOverlap);
+    viewport?.addEventListener("resize", updateControlOverlap);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateControlOverlap);
+      viewport?.removeEventListener("resize", updateControlOverlap);
+      for (const control of floatingControls) {
+        control.classList.remove("is-composer-overlapped");
+      }
+    };
+  }, []);
 
   // Load the incoming pane's draft and subscribe to updates from async work
   // that may outlive an earlier composer mount for this pane.
@@ -103,18 +160,6 @@ export function TerminalComposer({
     return subscribeTerminalComposerUpload(draftKey, setUploadCount);
   }, [draftKey]);
 
-  // Focus on open so the virtual keyboard appears, with the caret parked at
-  // the end of any restored draft. Mount-only: pane switches must not yank
-  // the caret out of an in-progress edit.
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.focus({ preventScroll: true });
-    const end = textarea.value.length;
-    textarea.setSelectionRange(end, end);
-    writeTerminalComposerSelection(draftKey, end, end);
-  }, []);
-
   // Autosize within the CSS max-height.
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -129,16 +174,15 @@ export function TerminalComposer({
   useEffect(() => {
     const textarea = textareaRef.current;
     const selection = readTerminalComposerSelection(draftKey);
+    const shouldFocus = focusSelectionAfterInsertRef.current;
+    focusSelectionAfterInsertRef.current = false;
     if (!textarea || !selection) return;
-    if (!helpOpen) textarea.focus({ preventScroll: true });
+    if (shouldFocus && !helpOpen) textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(selection.start, selection.end);
   }, [draftKey, helpOpen, text]);
 
-  // No visualViewport lift here: the app shell already lifts its content
-  // above the keyboard with --keyboard-inset-content padding (App.tsx
-  // useVisualViewportCssVars), and the CSS bottom calc adds the small iOS
-  // trim back so the floating form accessory bar clears the action row. A
-  // full second lift would push the composer a keyboard height too high.
+  // No visualViewport lift here: App.tsx owns keyboard geometry and exposes
+  // the measured inset through shared CSS variables.
   const updateText = (textarea: HTMLTextAreaElement) => {
     setText(textarea.value);
     writeTerminalComposerDraft(draftKey, textarea.value);
@@ -152,6 +196,7 @@ export function TerminalComposer({
   const insertAtCaret = (targetDraftKey: string, insertion: string) => {
     const textarea =
       activeDraftKeyRef.current === targetDraftKey ? textareaRef.current : null;
+    focusSelectionAfterInsertRef.current = textarea !== null;
     insertIntoTerminalComposerDraft(
       targetDraftKey,
       insertion,
@@ -230,6 +275,7 @@ export function TerminalComposer({
   return (
     <>
       <div
+        ref={composerRef}
         className="terminal-composer"
         role="dialog"
         aria-label="Terminal composer"
@@ -355,7 +401,14 @@ export function TerminalComposer({
               }
               aria-expanded={shortcutsOpen}
               onPointerDown={keepTextareaFocus}
-              onClick={() => setShortcutsOpen((open) => !open)}
+              onClick={() => {
+                const open = !shortcutsOpen;
+                localStorage.setItem(
+                  TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY,
+                  String(open),
+                );
+                setShortcutsOpen(open);
+              }}
             >
               <Keyboard size={15} />
             </button>

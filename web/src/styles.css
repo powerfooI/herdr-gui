@@ -7834,13 +7834,18 @@ textarea:focus {
     max-height: 126px;
   }
 
+  /* Keep the floating control stack at one stable screen position across
+     Composer, tab, and workspace transitions. */
+  .app {
+    --mobile-floating-controls-lift: 60px;
+  }
   .mobile-nav {
     position: fixed;
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       58px +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      var(--mobile-floating-controls-lift, 0px) +
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 72;
     display: inline-flex;
@@ -7864,8 +7869,8 @@ textarea:focus {
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       106px +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      var(--mobile-floating-controls-lift, 0px) +
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 74;
     display: inline-flex;
@@ -8064,8 +8069,8 @@ textarea:focus {
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       156px +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      var(--mobile-floating-controls-lift, 0px) +
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 73;
     width: 42px;
@@ -8109,6 +8114,16 @@ textarea:focus {
   }
   .mobile-controls-toggle {
     color: var(--text-strong);
+  }
+  /* Keep each capsule fixed and visible unless that specific capsule overlaps
+     a real Composer control. Composer background alone does not hide it. */
+  .mobile-nav.is-composer-overlapped,
+  .mobile-workspace-shortcut.is-composer-overlapped,
+  .mobile-terminal-controls.is-composer-overlapped {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0, 12px, 0) scale(0.85);
   }
   /* While the on-screen keyboard is open the floating controls cover too
      much of the terminal, so fade them out until the keyboard closes. */
@@ -8443,20 +8458,14 @@ textarea:focus {
     flex-direction: column;
   }
   .terminal-composer {
-    /* In-flow at the bottom of the column shell. The margin lifts the action
-       row past the iOS form accessory bar: the app-level
-       --keyboard-inset-content lift under-reports the keyboard occlusion by
-       that trim by design, and the difference is 0 on Android and whenever
-       the keyboard is closed. */
-    margin-bottom: calc(
-      var(--keyboard-inset-bottom, 0px) -
-      var(--keyboard-inset-content, 0px)
-    );
+    /* In-flow at the bottom of the column shell. The app shell owns the main
+       keyboard lift; only iOS gets a small additional form-accessory-bar gap. */
+    margin-bottom: var(--keyboard-inset-composer-gap, 0px);
     display: flex;
     flex-direction: column;
     gap: 6px;
     padding: 8px calc(8px + env(safe-area-inset-right, 0px))
-      calc(8px + env(safe-area-inset-bottom, 0px))
+      calc(12px + env(safe-area-inset-bottom, 0px))
       calc(8px + env(safe-area-inset-left, 0px));
     border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: color-mix(in srgb, var(--panel) 86%, transparent);
@@ -8577,6 +8586,11 @@ textarea:focus {
     gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  /* When the Composer is not actively receiving input, leave a right-side
+     lane for the fixed bottom navigation capsule. */
+  .app:not(:has(.terminal-composer-input:focus)) .terminal-composer-shortcuts {
+    max-width: calc(100% - 164px);
   }
   .terminal-composer-shortcuts::-webkit-scrollbar {
     display: none;
@@ -8700,8 +8714,10 @@ textarea:focus {
     background: var(--accent-soft);
   }
   .terminal-mobile-side-shortcuts {
-    position: absolute;
-    top: 50%;
+    /* Anchor to the mobile viewport rather than the shrinking terminal, so
+       Composer and shortcut-row changes cannot move this control stack. */
+    position: fixed;
+    top: 45%;
     right: calc(8px + env(safe-area-inset-right, 0px));
     z-index: 5;
     display: grid;
