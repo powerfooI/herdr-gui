@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.11 - 2026-08-31
+
 ### Added
 
 - Add a mobile terminal composer: a pen toggle opens a bottom-docked panel
