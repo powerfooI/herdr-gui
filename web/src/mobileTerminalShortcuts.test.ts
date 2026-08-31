@@ -22,9 +22,33 @@ describe("mobile terminal shortcuts", () => {
     expect(
       rows.map((row) => row.map((shortcut) => shortcut?.action ?? null)),
     ).toEqual([
-      ["ctrl-c", "ctrl-d", "ctrl-r", "escape", "page-up", null, null, null],
-      ["tab", "enter", "alt-up", "page-down", "paste", null, null, null],
+      [
+        "ctrl-c",
+        "ctrl-d",
+        "ctrl-r",
+        "alt-up",
+        null,
+        "arrow-up",
+        null,
+        "page-up",
+      ],
+      [
+        "escape",
+        "tab",
+        "enter",
+        null,
+        "arrow-left",
+        "arrow-down",
+        "arrow-right",
+        "page-down",
+      ],
     ]);
+    expect([
+      rows[0][5]?.label,
+      rows[1][4]?.label,
+      rows[1][5]?.label,
+      rows[1][6]?.label,
+    ]).toEqual(["▲", "◀", "▼", "▶"]);
     expect(
       rows.every((row) => row.length <= MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW),
     ).toBe(true);
@@ -56,7 +80,7 @@ describe("mobile terminal shortcuts", () => {
     expect(rows[0][1]?.id).toBe("same-2");
     expect(Array.from(rows[0][1]?.label ?? "")).toHaveLength(10);
     expect(rows[1]).toEqual([
-      { id: "up", label: "Up", action: "arrow-up" },
+      { id: "up", label: "▲", action: "arrow-up" },
       null,
       null,
       null,
@@ -65,6 +89,21 @@ describe("mobile terminal shortcuts", () => {
       null,
       null,
     ]);
+  });
+
+  test("drops removed paste actions from stored shortcuts", () => {
+    const rows = normalizeMobileTerminalShortcutRows([
+      [{ id: "old-paste", label: "Paste", action: "paste" }],
+      [],
+    ]);
+    const sideShortcuts = parseMobileTerminalSideShortcuts(
+      JSON.stringify([
+        { id: "old-side-paste", label: "Paste", action: "paste" },
+      ]),
+    );
+
+    expect(rows[0][0]).toBeNull();
+    expect(sideShortcuts[0]).toBeNull();
   });
 
   test("migrates legacy compact rows past invalid entries", () => {
@@ -160,7 +199,7 @@ describe("mobile terminal shortcuts", () => {
     const encoded = serializeMobileTerminalShortcutRows(first);
     const parsed = parseMobileTerminalShortcutRows(encoded);
     expect(parsed[0][0]?.label).toBe("Changed");
-    expect(mobileTerminalShortcutCount(parsed)).toBe(10);
+    expect(mobileTerminalShortcutCount(parsed)).toBe(13);
   });
 
   test("encodes control, navigation, and modified keys", () => {

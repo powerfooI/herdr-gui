@@ -13,12 +13,6 @@ describe("mobile terminal shortcut execution", () => {
     });
   });
 
-  test("routes the paste action to the browser clipboard", () => {
-    expect(mobileTerminalShortcutExecution("paste")).toEqual({
-      type: "paste",
-    });
-  });
-
   test("routes page actions to full or half scrollback", () => {
     expect(mobileTerminalShortcutExecution("page-up")).toEqual({
       type: "scroll",

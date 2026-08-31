@@ -19,7 +19,6 @@ type MobileTerminalShortcutOptionDefinition = {
     direction: "up" | "down";
     amount: "full" | "half";
   };
-  clipboard?: "paste";
 };
 
 export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
@@ -150,13 +149,6 @@ export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
     bytes: [0x7f],
   },
   {
-    id: "paste",
-    label: "Paste (text or image)",
-    defaultButtonLabel: "Paste",
-    group: "Basic",
-    clipboard: "paste",
-  },
-  {
     id: "delete",
     label: "Delete",
     defaultButtonLabel: "Del",
@@ -166,28 +158,28 @@ export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
   {
     id: "arrow-up",
     label: "Arrow Up",
-    defaultButtonLabel: "Up",
+    defaultButtonLabel: "▲",
     group: "Navigation",
     bytes: [0x1b, 0x5b, 0x41],
   },
   {
     id: "arrow-down",
     label: "Arrow Down",
-    defaultButtonLabel: "Down",
+    defaultButtonLabel: "▼",
     group: "Navigation",
     bytes: [0x1b, 0x5b, 0x42],
   },
   {
     id: "arrow-right",
     label: "Arrow Right",
-    defaultButtonLabel: "Right",
+    defaultButtonLabel: "▶",
     group: "Navigation",
     bytes: [0x1b, 0x5b, 0x43],
   },
   {
     id: "arrow-left",
     label: "Arrow Left",
-    defaultButtonLabel: "Left",
+    defaultButtonLabel: "◀",
     group: "Navigation",
     bytes: [0x1b, 0x5b, 0x44],
   },
@@ -305,21 +297,21 @@ const defaultRows: MobileTerminalShortcutRows = [
     { id: "default-ctrl-c", label: "C-c", action: "ctrl-c" },
     { id: "default-ctrl-d", label: "C-d", action: "ctrl-d" },
     { id: "default-ctrl-r", label: "C-R", action: "ctrl-r" },
-    { id: "default-escape", label: "Esc", action: "escape" },
+    { id: "default-alt-up", label: "A-Up", action: "alt-up" },
+    null,
+    { id: "default-arrow-up", label: "▲", action: "arrow-up" },
+    null,
     { id: "default-page-up", label: "PgUp", action: "page-up" },
-    null,
-    null,
-    null,
   ],
   [
+    { id: "default-escape", label: "Esc", action: "escape" },
     { id: "default-tab", label: "Tab", action: "tab" },
     { id: "default-enter", label: "Enter", action: "enter" },
-    { id: "default-alt-up", label: "A-Up", action: "alt-up" },
+    null,
+    { id: "default-arrow-left", label: "◀", action: "arrow-left" },
+    { id: "default-arrow-down", label: "▼", action: "arrow-down" },
+    { id: "default-arrow-right", label: "▶", action: "arrow-right" },
     { id: "default-page-down", label: "PgDn", action: "page-down" },
-    { id: "default-paste", label: "Paste", action: "paste" },
-    null,
-    null,
-    null,
   ],
 ];
 
@@ -339,12 +331,6 @@ export function mobileTerminalShortcutOption(
   action: MobileTerminalShortcutAction,
 ) {
   return optionById.get(action) ?? null;
-}
-
-export function mobileTerminalShortcutClipboard(
-  action: MobileTerminalShortcutAction,
-): "paste" | null {
-  return optionById.get(action)?.clipboard ?? null;
 }
 
 export function mobileTerminalShortcutBytes(
@@ -420,14 +406,10 @@ export function normalizeMobileTerminalShortcutRows(
       const candidate = sourceRow[sourceIndex];
       if (!candidate || typeof candidate !== "object") continue;
       const raw = candidate as Record<string, unknown>;
-      if (
-        typeof raw.action !== "string" ||
-        !optionById.has(raw.action as MobileTerminalShortcutAction)
-      ) {
-        continue;
-      }
+      if (typeof raw.action !== "string") continue;
       const action = raw.action as MobileTerminalShortcutAction;
-      const option = optionById.get(action)!;
+      const option = optionById.get(action);
+      if (!option) continue;
       const label =
         typeof raw.label === "string" && clipLabel(raw.label)
           ? clipLabel(raw.label)
@@ -459,14 +441,10 @@ export function normalizeMobileTerminalSideShortcuts(
     const candidate = value[slotIndex];
     if (!candidate || typeof candidate !== "object") continue;
     const raw = candidate as Record<string, unknown>;
-    if (
-      typeof raw.action !== "string" ||
-      !optionById.has(raw.action as MobileTerminalShortcutAction)
-    ) {
-      continue;
-    }
+    if (typeof raw.action !== "string") continue;
     const action = raw.action as MobileTerminalShortcutAction;
-    const option = optionById.get(action)!;
+    const option = optionById.get(action);
+    if (!option) continue;
     shortcuts[slotIndex] = {
       id: normalizedId(raw.id, 2, slotIndex, usedIds),
       label:

@@ -77,23 +77,34 @@ function newShortcut(): MobileTerminalShortcut {
 function ShortcutKeySelect({
   value,
   ariaLabel,
+  openRequest,
   onChange,
 }: {
   value: MobileTerminalShortcutAction;
   ariaLabel: string;
+  openRequest: number;
   onChange: (action: MobileTerminalShortcutAction) => void;
 }) {
   const currentItemRef = useRef<HTMLDivElement>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [activeValue, setActiveValue] = useState<string>(value);
+  const [activeValue, setActiveValue] = useState(() => String(value));
   const currentOption = mobileTerminalShortcutOption(value);
 
   const setSelectorOpen = (next: boolean) => {
     setOpen(next);
     setSearch("");
-    if (next) setActiveValue(value);
+    if (next) setActiveValue(valueRef.current);
   };
+
+  useEffect(() => {
+    if (openRequest === 0) return;
+    setOpen(true);
+    setSearch("");
+    setActiveValue(valueRef.current);
+  }, [openRequest]);
 
   return (
     <Popover open={open} onOpenChange={setSelectorOpen}>
@@ -190,7 +201,6 @@ export function MobileTerminalShortcutsDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const labelInputRef = useRef<HTMLInputElement>(null);
   const rowsRef = useRef(rows);
   const sideShortcutsRef = useRef(sideShortcuts);
   const onCloseRef = useRef(onClose);
@@ -204,12 +214,14 @@ export function MobileTerminalShortcutsDialog({
     cloneSideShortcuts(sideShortcuts),
   );
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
+  const [keySelectorOpenRequest, setKeySelectorOpenRequest] = useState(0);
 
   useEffect(() => {
     if (!open) return;
     setDraft(cloneRows(rowsRef.current));
     setSideDraft(cloneSideShortcuts(sideShortcutsRef.current));
     setSelectedSlot(null);
+    setKeySelectorOpenRequest(0);
     const cancelFocus = focusDialogElement(dialogRef.current);
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -241,7 +253,7 @@ export function MobileTerminalShortcutsDialog({
       return next;
     });
     setSelectedSlot({ area: "panel", rowIndex, slotIndex });
-    requestAnimationFrame(() => labelInputRef.current?.focus());
+    setKeySelectorOpenRequest((request) => request + 1);
   };
 
   const selectSideSlot = (slotIndex: number) => {
@@ -252,7 +264,7 @@ export function MobileTerminalShortcutsDialog({
       return next;
     });
     setSelectedSlot({ area: "side", slotIndex });
-    requestAnimationFrame(() => labelInputRef.current?.focus());
+    setKeySelectorOpenRequest((request) => request + 1);
   };
 
   const updateSelectedShortcut = (
@@ -474,7 +486,6 @@ export function MobileTerminalShortcutsDialog({
                 <label>
                   <span>Label</span>
                   <input
-                    ref={labelInputRef}
                     value={selectedShortcut.label}
                     maxLength={10}
                     aria-label={
@@ -494,6 +505,7 @@ export function MobileTerminalShortcutsDialog({
                   <span>Key</span>
                   <ShortcutKeySelect
                     value={selectedShortcut.action}
+                    openRequest={keySelectorOpenRequest}
                     ariaLabel={
                       selectedSlot.area === "side"
                         ? `Side slot ${selectedSlot.slotIndex + 1} key`
@@ -526,7 +538,7 @@ export function MobileTerminalShortcutsDialog({
         <div className="modal-actions mobile-shortcuts-actions">
           <button
             type="button"
-            className="ghost"
+            className="ghost mobile-shortcuts-restore"
             onClick={() => {
               setDraft(defaultMobileTerminalShortcutRows());
               setSideDraft(defaultMobileTerminalSideShortcuts());
