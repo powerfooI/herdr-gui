@@ -6,13 +6,7 @@ import {
   Keyboard,
   X,
 } from "lucide-react";
-import {
-  type CSSProperties,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type MobileTerminalShortcut,
@@ -69,7 +63,7 @@ export function TerminalComposer({
   onError,
 }: {
   draftKey: string;
-  shortcutRows: MobileTerminalShortcut[][];
+  shortcutRows: (MobileTerminalShortcut | null)[][];
   onRunShortcut: (shortcut: MobileTerminalShortcut) => void;
   onClose: () => void;
   onSubmit: (text: string, submit: boolean) => Promise<void>;
@@ -90,57 +84,12 @@ export function TerminalComposer({
       localStorage.getItem(TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY) !==
       "false",
   );
-  const composerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
   const focusSelectionAfterInsertRef = useRef(false);
   const activeDraftKeyRef = useRef(draftKey);
   activeDraftKeyRef.current = draftKey;
-
-  useLayoutEffect(() => {
-    const composer = composerRef.current;
-    if (!composer) return;
-    const viewport = window.visualViewport;
-    const floatingControls = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        ".mobile-nav:not(.mobile-terminal-tools), .mobile-workspace-shortcut, .mobile-terminal-controls",
-      ),
-    );
-    const updateControlOverlap = () => {
-      const interactiveRegions = Array.from(
-        composer.querySelectorAll<HTMLElement>(
-          ".terminal-composer-shortcuts, .terminal-composer-input, .terminal-composer-actions",
-        ),
-      );
-      for (const control of floatingControls) {
-        const controlRect = control.getBoundingClientRect();
-        const overlaps = interactiveRegions.some((region) => {
-          const regionRect = region.getBoundingClientRect();
-          return (
-            controlRect.left < regionRect.right + 8 &&
-            controlRect.right > regionRect.left - 8 &&
-            controlRect.top < regionRect.bottom + 8 &&
-            controlRect.bottom > regionRect.top - 8
-          );
-        });
-        control.classList.toggle("is-composer-overlapped", overlaps);
-      }
-    };
-    updateControlOverlap();
-    const observer = new ResizeObserver(updateControlOverlap);
-    observer.observe(composer);
-    window.addEventListener("resize", updateControlOverlap);
-    viewport?.addEventListener("resize", updateControlOverlap);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updateControlOverlap);
-      viewport?.removeEventListener("resize", updateControlOverlap);
-      for (const control of floatingControls) {
-        control.classList.remove("is-composer-overlapped");
-      }
-    };
-  }, []);
 
   // Load the incoming pane's draft and subscribe to updates from async work
   // that may outlive an earlier composer mount for this pane.
@@ -269,13 +218,14 @@ export function TerminalComposer({
 
   const busy = submissionPending || uploadCount > 0;
   const submitDisabled = !text || busy || composing;
-  const hasShortcuts = shortcutRows.some((row) => row.length > 0);
+  const hasShortcuts = shortcutRows.some((row) =>
+    row.some((shortcut) => shortcut !== null),
+  );
   const shortcutColumns = Math.max(1, ...shortcutRows.map((row) => row.length));
 
   return (
     <>
       <div
-        ref={composerRef}
         className="terminal-composer"
         role="dialog"
         aria-label="Terminal composer"
@@ -295,7 +245,16 @@ export function TerminalComposer({
                 className="terminal-composer-shortcut-row"
                 key={`composer-shortcut-row-${rowIndex}`}
               >
-                {row.map((shortcut) => {
+                {row.map((shortcut, slotIndex) => {
+                  if (!shortcut) {
+                    return (
+                      <span
+                        className="terminal-composer-shortcut-spacer"
+                        aria-hidden="true"
+                        key={`composer-shortcut-${rowIndex}-${slotIndex}`}
+                      />
+                    );
+                  }
                   const option = mobileTerminalShortcutOption(shortcut.action);
                   return (
                     <button

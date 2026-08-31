@@ -487,7 +487,6 @@ export function TerminalView({
     (el: HTMLDivElement | null) => setContainer(el),
     [],
   );
-  const pasteFromClipboardRef = useRef<(() => void) | null>(null);
   const termRef = useRef<Terminal | null>(null);
   // Mirrors termRef as state so the attach effect re-runs when the xterm
   // instance is recreated: the init effect's cleanup resets the attach refs,
@@ -1129,11 +1128,6 @@ export function TerminalView({
         clipboardPasteInFlight = false;
       }
     };
-    pasteFromClipboardRef.current = () => {
-      void pasteFromBrowserClipboard().catch((error) => {
-        setUploadError(`Paste failed: ${(error as Error).message}`);
-      });
-    };
     const applePlatform = isApplePlatform();
     const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
     const shouldHandleCtrlVPaste = !applePlatform;
@@ -1708,7 +1702,6 @@ export function TerminalView({
       document.removeEventListener("pointerdown", onDocumentPointerDown, {
         capture: true,
       });
-      pasteFromClipboardRef.current = null;
       imeFallback.dispose();
       linkProvider.dispose();
       const terminalId = attachedRef.current ?? desiredTerminalRef.current;
@@ -1975,22 +1968,19 @@ export function TerminalView({
     if (!execution) return;
     if (execution.type === "scroll") {
       scrollPage(execution.direction, execution.amount);
-    } else if (execution.type === "paste") {
-      if (shouldAvoidVirtualKeyboard()) blurTerminalInput();
-      pasteFromClipboardRef.current?.();
     } else {
       sendControl(execution.bytes);
     }
   };
-  const visibleMobileShortcutRows = mobileShortcuts.map((row) =>
-    row.filter((shortcut) => shortcut !== null),
+  const hasMobileShortcuts = mobileShortcuts.some((row) =>
+    row.some((shortcut) => shortcut !== null),
   );
-  const visibleMobileSideShortcuts = mobileSideShortcuts.filter(
+  const hasMobileSideShortcuts = mobileSideShortcuts.some(
     (shortcut) => shortcut !== null,
   );
-  const visibleMobileShortcutColumns = Math.max(
+  const mobileShortcutColumns = Math.max(
     1,
-    ...visibleMobileShortcutRows.map((row) => row.length),
+    ...mobileShortcuts.map((row) => row.length),
   );
 
   if (!pane) {
@@ -2025,12 +2015,21 @@ export function TerminalView({
       <div className="terminal-shell">
         <div className="terminal-main">
           <div ref={containerRef} className="terminal-view" />
-          {showMobileKeys && visibleMobileSideShortcuts.length > 0 ? (
+          {showMobileKeys && hasMobileSideShortcuts ? (
             <div
               className="terminal-mobile-side-shortcuts"
               aria-label="Terminal side shortcuts"
             >
-              {visibleMobileSideShortcuts.map((shortcut) => {
+              {mobileSideShortcuts.map((shortcut, slotIndex) => {
+                if (!shortcut) {
+                  return (
+                    <span
+                      className="terminal-mobile-side-shortcut-spacer"
+                      aria-hidden="true"
+                      key={`mobile-side-shortcut-${slotIndex}`}
+                    />
+                  );
+                }
                 const option = mobileTerminalShortcutOption(shortcut.action);
                 return (
                   <button
@@ -2048,8 +2047,7 @@ export function TerminalView({
             </div>
           ) : null}
         </div>
-        {showMobileKeys &&
-        visibleMobileShortcutRows.some((row) => row.length > 0) ? (
+        {showMobileKeys && hasMobileShortcuts ? (
           <div
             className={`terminal-mobile-keys ${
               mobileKeysOpen ? "is-open" : ""
@@ -2075,16 +2073,25 @@ export function TerminalView({
                 className="terminal-mobile-keys-grid"
                 style={
                   {
-                    "--mobile-shortcut-columns": visibleMobileShortcutColumns,
+                    "--mobile-shortcut-columns": mobileShortcutColumns,
                   } as CSSProperties
                 }
               >
-                {visibleMobileShortcutRows.map((row, rowIndex) => (
+                {mobileShortcuts.map((row, rowIndex) => (
                   <div
                     className="terminal-mobile-keys-row"
                     key={`mobile-shortcut-row-${rowIndex}`}
                   >
-                    {row.map((shortcut) => {
+                    {row.map((shortcut, slotIndex) => {
+                      if (!shortcut) {
+                        return (
+                          <span
+                            className="terminal-mobile-key-spacer"
+                            aria-hidden="true"
+                            key={`mobile-shortcut-${rowIndex}-${slotIndex}`}
+                          />
+                        );
+                      }
                       const option = mobileTerminalShortcutOption(
                         shortcut.action,
                       );
@@ -2110,7 +2117,7 @@ export function TerminalView({
         {composerOpen ? (
           <TerminalComposer
             draftKey={composerDraftKey}
-            shortcutRows={visibleMobileShortcutRows}
+            shortcutRows={mobileShortcuts}
             onRunShortcut={runMobileShortcut}
             onClose={() => setComposerOpen(false)}
             onSubmit={submitTerminalComposer}

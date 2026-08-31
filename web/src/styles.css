@@ -3269,6 +3269,16 @@ textarea:focus {
   gap: 8px;
   margin: 0;
 }
+.mobile-shortcuts-restore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.mobile-shortcuts-restore > svg {
+  display: block;
+  flex: 0 0 auto;
+}
 .file-explorer-modal {
   width: min(900px, 100%);
 }
@@ -7839,7 +7849,7 @@ textarea:focus {
   /* Keep the floating control stack at one stable screen position across
      Composer, tab, and workspace transitions. */
   .app {
-    --mobile-floating-controls-lift: 60px;
+    --mobile-floating-controls-lift: 112px;
   }
   .mobile-nav {
     position: fixed;
@@ -8117,27 +8127,25 @@ textarea:focus {
   .mobile-controls-toggle {
     color: var(--text-strong);
   }
-  /* Keep each capsule fixed and visible unless that specific capsule overlaps
-     a real Composer control. Composer background alone does not hide it. */
-  .mobile-nav.is-composer-overlapped,
-  .mobile-workspace-shortcut.is-composer-overlapped,
-  .mobile-terminal-controls.is-composer-overlapped {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-    transform: translate3d(0, 12px, 0) scale(0.85);
-  }
   /* While the on-screen keyboard is open the floating controls cover too
-     much of the terminal, so fade them out until the keyboard closes. */
+     much of the terminal, so fade them out until the keyboard closes. Some
+     mobile browsers do not expose Composer keyboard geometry, so its focused
+     textarea is the direct fallback signal. */
   .keyboard-open .mobile-nav:not(.mobile-terminal-tools),
   .keyboard-open .mobile-workspace-shortcut,
-  .keyboard-open .mobile-terminal-controls {
+  .keyboard-open .mobile-terminal-controls,
+  .app:has(.terminal-composer-input:focus)
+    .mobile-nav:not(.mobile-terminal-tools),
+  .app:has(.terminal-composer-input:focus) .mobile-workspace-shortcut,
+  .app:has(.terminal-composer-input:focus) .mobile-terminal-controls {
     opacity: 0;
     pointer-events: none;
     transform: translate3d(0, 12px, 0) scale(0.85);
   }
   .keyboard-open .terminal-mobile-keys,
-  .keyboard-open .terminal-mobile-side-shortcuts {
+  .keyboard-open .terminal-mobile-side-shortcuts,
+  .app:has(.terminal-composer-input:focus) .terminal-mobile-keys,
+  .app:has(.terminal-composer-input:focus) .terminal-mobile-side-shortcuts {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
@@ -8492,21 +8500,6 @@ textarea:focus {
     outline: none;
     border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
   }
-  .terminal-shell:has(.terminal-composer-input:focus) .terminal-mobile-keys,
-  .terminal-shell:has(.terminal-composer-input:focus)
-    .terminal-mobile-side-shortcuts,
-  .app:has(.terminal-composer-input:focus) > .mobile-nav,
-  .app:has(.terminal-composer-input:focus) .mobile-workspace-shortcut,
-  .app:has(.terminal-composer-input:focus) .mobile-terminal-controls {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-  }
-  .app:has(.terminal-composer-input:focus) > .mobile-nav,
-  .app:has(.terminal-composer-input:focus) .mobile-workspace-shortcut,
-  .app:has(.terminal-composer-input:focus) .mobile-terminal-controls {
-    transform: translate3d(0, 12px, 0) scale(0.85);
-  }
   .terminal-composer-actions {
     display: flex;
     align-items: center;
@@ -8581,26 +8574,28 @@ textarea:focus {
     -webkit-tap-highlight-color: transparent;
   }
   .terminal-composer-shortcuts {
-    width: max-content;
-    max-width: 100%;
+    width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns: repeat(var(--mobile-shortcut-columns), 48px);
     gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
   }
-  /* When the Composer is not actively receiving input, leave a right-side
-     lane for the fixed bottom navigation capsule. */
-  .app:not(:has(.terminal-composer-input:focus)) .terminal-composer-shortcuts {
-    max-width: calc(100% - 164px);
-  }
   .terminal-composer-shortcuts::-webkit-scrollbar {
     display: none;
   }
   .terminal-composer-shortcut-row {
     grid-column: 1 / -1;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(var(--mobile-shortcut-columns), 48px);
     gap: 2px;
+  }
+  .terminal-composer-shortcut-spacer,
+  .terminal-mobile-key-spacer {
+    width: 48px;
+    height: 28px;
+    pointer-events: none;
   }
   .terminal-composer-shortcuts button {
     width: 48px;
@@ -8644,8 +8639,9 @@ textarea:focus {
     max-width: calc(100vw - 62px - env(safe-area-inset-right, 0px));
     padding: 3px;
     overflow-x: auto;
+    /* Anchor overflow at the right edge so the directional and page keys stay
+       visible on narrow screens. The nested grid resets item order to LTR. */
     direction: rtl;
-    text-align: right;
     border-radius: 12px;
     opacity: 0;
     pointer-events: none;
@@ -8669,8 +8665,8 @@ textarea:focus {
   .terminal-mobile-keys-row {
     width: 100%;
     grid-column: 1 / -1;
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(var(--mobile-shortcut-columns), 48px);
     gap: 2px;
   }
   .terminal-mobile-keys.is-open .terminal-mobile-keys-panel {
@@ -8726,6 +8722,11 @@ textarea:focus {
     gap: 3px;
     transform: translateY(-50%);
     pointer-events: auto;
+  }
+  .terminal-mobile-side-shortcut-spacer {
+    width: 42px;
+    height: 32px;
+    pointer-events: none;
   }
   .terminal-mobile-side-shortcuts button {
     width: 42px;
