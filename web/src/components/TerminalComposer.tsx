@@ -101,17 +101,31 @@ export function TerminalComposer({
   useLayoutEffect(() => {
     const composer = composerRef.current;
     if (!composer) return;
-    const root = document.documentElement;
     const viewport = window.visualViewport;
+    const floatingControls = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".mobile-nav:not(.mobile-terminal-tools), .mobile-workspace-shortcut, .mobile-terminal-controls",
+      ),
+    );
     const updateControlOverlap = () => {
-      const lowestControl = document.querySelector<HTMLElement>(
-        ".mobile-nav:not(.mobile-terminal-tools)",
+      const interactiveRegions = Array.from(
+        composer.querySelectorAll<HTMLElement>(
+          ".terminal-composer-shortcuts, .terminal-composer-input, .terminal-composer-actions",
+        ),
       );
-      const overlaps =
-        lowestControl !== null &&
-        composer.getBoundingClientRect().top <
-          lowestControl.getBoundingClientRect().bottom + 8;
-      root.classList.toggle("terminal-composer-overlaps-controls", overlaps);
+      for (const control of floatingControls) {
+        const controlRect = control.getBoundingClientRect();
+        const overlaps = interactiveRegions.some((region) => {
+          const regionRect = region.getBoundingClientRect();
+          return (
+            controlRect.left < regionRect.right + 8 &&
+            controlRect.right > regionRect.left - 8 &&
+            controlRect.top < regionRect.bottom + 8 &&
+            controlRect.bottom > regionRect.top - 8
+          );
+        });
+        control.classList.toggle("is-composer-overlapped", overlaps);
+      }
     };
     updateControlOverlap();
     const observer = new ResizeObserver(updateControlOverlap);
@@ -122,7 +136,9 @@ export function TerminalComposer({
       observer.disconnect();
       window.removeEventListener("resize", updateControlOverlap);
       viewport?.removeEventListener("resize", updateControlOverlap);
-      root.classList.remove("terminal-composer-overlaps-controls");
+      for (const control of floatingControls) {
+        control.classList.remove("is-composer-overlapped");
+      }
     };
   }, []);
 

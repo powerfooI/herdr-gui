@@ -8115,11 +8115,11 @@ textarea:focus {
   .mobile-controls-toggle {
     color: var(--text-strong);
   }
-  /* A tall Composer hides the fixed controls instead of moving them into a
-     different screen position or allowing them to intercept Composer taps. */
-  .terminal-composer-overlaps-controls .mobile-nav:not(.mobile-terminal-tools),
-  .terminal-composer-overlaps-controls .mobile-workspace-shortcut,
-  .terminal-composer-overlaps-controls .mobile-terminal-controls {
+  /* Keep each capsule fixed and visible unless that specific capsule overlaps
+     a real Composer control. Composer background alone does not hide it. */
+  .mobile-nav.is-composer-overlapped,
+  .mobile-workspace-shortcut.is-composer-overlapped,
+  .mobile-terminal-controls.is-composer-overlapped {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
@@ -8586,6 +8586,11 @@ textarea:focus {
     gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  /* When the Composer is not actively receiving input, leave a right-side
+     lane for the fixed bottom navigation capsule. */
+  .app:not(:has(.terminal-composer-input:focus)) .terminal-composer-shortcuts {
+    max-width: calc(100% - 164px);
   }
   .terminal-composer-shortcuts::-webkit-scrollbar {
     display: none;
