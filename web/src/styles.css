@@ -8714,8 +8714,10 @@ textarea:focus {
     background: var(--accent-soft);
   }
   .terminal-mobile-side-shortcuts {
-    position: absolute;
-    top: 50%;
+    /* Anchor to the mobile viewport rather than the shrinking terminal, so
+       Composer and shortcut-row changes cannot move this control stack. */
+    position: fixed;
+    top: 45%;
     right: calc(8px + env(safe-area-inset-right, 0px));
     z-index: 5;
     display: grid;
