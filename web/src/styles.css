@@ -7837,7 +7837,7 @@ textarea:focus {
   /* Keep the floating control stack at one stable screen position across
      Composer, tab, and workspace transitions. */
   .app {
-    --mobile-floating-controls-lift: 48px;
+    --mobile-floating-controls-lift: 60px;
   }
   .mobile-nav {
     position: fixed;
