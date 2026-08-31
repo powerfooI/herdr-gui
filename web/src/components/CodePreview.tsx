@@ -1,4 +1,10 @@
 import { useEffect, useRef } from "react";
+import {
+  handlePreviewEditorCopy,
+  isEditablePreviewTarget,
+  isPreviewKeyboardTarget,
+  selectAllInPreviewEditor,
+} from "./previewSelection";
 
 type CodePreviewDeps = Awaited<ReturnType<typeof importCodePreviewDeps>>;
 
@@ -87,6 +93,7 @@ export function CodePreview({
               : []),
             deps.EditorState.readOnly.of(true),
             deps.EditorView.editable.of(false),
+            deps.EditorView.contentAttributes.of({ tabindex: "0" }),
             deps.json(),
             deps.syntaxHighlighting(deps.highlightStyle),
             deps.EditorView.theme({
@@ -223,23 +230,44 @@ export function CodePreview({
   }, [searchable, text]);
 
   useEffect(() => {
-    if (!searchable) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "f" || (!e.metaKey && !e.ctrlKey)) return;
+      if ((!e.metaKey && !e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== "f" && key !== "a") return;
       const parent = containerRef.current;
+      if (!parent) return;
       const target = e.target as Node | null;
-      if (!parent || !target || !parent.contains(target)) return;
+      if (isEditablePreviewTarget(e.target)) return;
       const editor = editorRef.current;
       if (!editor) return;
+      if (key === "f") {
+        if (!searchable || !target || !parent.contains(target)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void loadCodePreviewDeps().then((deps) => {
+          deps.openSearchPanel(editor);
+        });
+        return;
+      }
+      if (parent.offsetParent === null) return;
+      if (!isPreviewKeyboardTarget(parent, target)) return;
       e.preventDefault();
-      e.stopPropagation();
-      void loadCodePreviewDeps().then((deps) => {
-        deps.openSearchPanel(editor);
-      });
+      e.stopImmediatePropagation();
+      selectAllInPreviewEditor(editor);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [searchable]);
+
+  useEffect(() => {
+    const parent = containerRef.current;
+    if (!parent) return;
+    const onCopy = (event: ClipboardEvent) => {
+      handlePreviewEditorCopy(editorRef.current, event);
+    };
+    parent.addEventListener("copy", onCopy);
+    return () => parent.removeEventListener("copy", onCopy);
+  }, []);
 
   return <div ref={containerRef} className="code-preview" tabIndex={0} />;
 }
