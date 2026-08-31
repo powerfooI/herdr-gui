@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fix text selection in file and session previews: Cmd/Ctrl+A now selects only
+  the preview content instead of the whole page (line numbers included), and
+  copying a selection always yields the exact document text, including lines
+  outside the rendered viewport. A Copy button in the file preview header
+  copies the entire file content.
+
 ## 0.4.11 - 2026-08-31
 
 ### Added

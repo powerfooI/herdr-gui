@@ -15,7 +15,15 @@ import {
 } from "../workspaceFileUrl";
 import { MarkdownPreview } from "./markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
+import {
+  handlePreviewEditorCopy,
+  isEditablePreviewTarget,
+  isPreviewKeyboardTarget,
+  selectAllInPreviewEditor,
+  selectAllInPreviewElement,
+} from "./previewSelection";
 import { highlightCodeTokens } from "./syntaxHighlighting";
+import { store } from "../store";
 
 export type ActiveFilePreviewSelection = {
   entry: FileExplorerEntry | null;
@@ -109,13 +117,6 @@ function useDocumentTheme() {
   return theme;
 }
 
-function isEditablePreviewTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.closest(".cm-editor")) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
-
 export function FilePreviewContent({
   entry,
   preview,
@@ -135,6 +136,7 @@ export function FilePreviewContent({
 }) {
   const connectionClient = useConnectionClient();
   const previewSectionRef = useRef<HTMLElement | null>(null);
+  const previewContentRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
   const onOpenChangesRef = useRef(onOpenChanges);
   onOpenChangesRef.current = onOpenChanges;
@@ -198,21 +200,63 @@ export function FilePreviewContent({
   }, [changesAvailable, changesKey, detailTab]);
 
   useEffect(() => {
-    if (showingChanges || !hasPreviewText || renderRichPreview) return;
+    if (showingChanges || !hasPreviewText) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== "f") return;
+      const key = e.key.toLowerCase();
+      if (key !== "f" && key !== "a") return;
       const section = previewSectionRef.current;
       if (!section || section.offsetParent === null) return;
       if (isEditablePreviewTarget(e.target)) return;
+      if (key === "f") {
+        if (renderRichPreview) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        openPreviewSearch(editorViewRef.current);
+        return;
+      }
+      if (!isPreviewKeyboardTarget(section, e.target)) return;
       e.preventDefault();
-      e.stopPropagation();
-      openPreviewSearch(editorViewRef.current);
+      e.stopImmediatePropagation();
+      if (renderRichPreview) {
+        selectAllInPreviewElement(previewContentRef.current);
+      } else {
+        selectAllInPreviewEditor(editorViewRef.current);
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
   }, [hasPreviewText, renderRichPreview, showingChanges]);
+
+  useEffect(() => {
+    const section = previewSectionRef.current;
+    if (!section) return;
+    const onCopy = (event: ClipboardEvent) => {
+      handlePreviewEditorCopy(editorViewRef.current, event);
+    };
+    section.addEventListener("copy", onCopy);
+    return () => section.removeEventListener("copy", onCopy);
+  }, []);
+
+  const copyPreviewText = async () => {
+    if (previewText === null) return;
+    try {
+      await navigator.clipboard.writeText(previewText);
+      store.notify({
+        kind: "success",
+        message: "File content copied",
+        detail: previewPath,
+        autoDismissMs: 3000,
+      });
+    } catch (copyError) {
+      store.notify({
+        kind: "error",
+        message: "Failed to copy file content",
+        detail: (copyError as Error).message,
+      });
+    }
+  };
 
   return (
     <section
@@ -235,6 +279,16 @@ export function FilePreviewContent({
             {entry?.name ?? "Preview"}
           </div>
           <div className="file-preview-head-actions">
+            {!showingChanges && hasPreviewText && !preview?.truncated ? (
+              <button
+                type="button"
+                className="file-preview-copy"
+                title="Copy entire file content"
+                onClick={() => void copyPreviewText()}
+              >
+                Copy
+              </button>
+            ) : null}
             {!showingChanges && hasRichPreview ? (
               <button
                 type="button"
@@ -276,6 +330,7 @@ export function FilePreviewContent({
         </div>
       ) : (
         <div
+          ref={previewContentRef}
           className="file-preview-file-content"
           role="region"
           aria-label={`Preview of ${entry?.name ?? "selected file"}`}
@@ -397,6 +452,7 @@ function CodeMirrorPreview({
             deps.keymap.of(deps.searchKeymap),
             deps.EditorState.readOnly.of(true),
             deps.EditorView.editable.of(false),
+            deps.EditorView.contentAttributes.of({ tabindex: "0" }),
             syntaxCompartment.of([]),
             deps.EditorView.theme(
               {
