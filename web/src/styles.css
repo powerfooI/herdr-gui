@@ -7834,17 +7834,10 @@ textarea:focus {
     max-height: 126px;
   }
 
-  .app:has(.terminal-composer) {
-    --mobile-floating-controls-lift: max(
-      48px,
-      calc(var(--terminal-composer-height, 80px) - 32px)
-    );
-  }
-  .app:has(.terminal-composer-shortcuts) {
-    --mobile-floating-controls-lift: max(
-      110px,
-      calc(var(--terminal-composer-height, 142px) - 32px)
-    );
+  /* Keep the floating control stack at one stable screen position across
+     Composer, tab, and workspace transitions. */
+  .app {
+    --mobile-floating-controls-lift: 48px;
   }
   .mobile-nav {
     position: fixed;
@@ -7852,8 +7845,7 @@ textarea:focus {
     bottom: calc(
       58px +
       var(--mobile-floating-controls-lift, 0px) +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 72;
     display: inline-flex;
@@ -7867,7 +7859,6 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
-      bottom 180ms ease,
       opacity 160ms ease,
       transform 180ms ease;
     -webkit-backdrop-filter: blur(14px);
@@ -7879,8 +7870,7 @@ textarea:focus {
     bottom: calc(
       106px +
       var(--mobile-floating-controls-lift, 0px) +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 74;
     display: inline-flex;
@@ -7895,7 +7885,6 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
-      bottom 180ms ease,
       opacity 160ms ease,
       transform 180ms ease;
     -webkit-backdrop-filter: blur(14px);
@@ -8081,8 +8070,7 @@ textarea:focus {
     bottom: calc(
       156px +
       var(--mobile-floating-controls-lift, 0px) +
-      env(safe-area-inset-bottom, 0px) +
-      var(--keyboard-inset-bottom, 0px)
+      env(safe-area-inset-bottom, 0px)
     );
     z-index: 73;
     width: 42px;
@@ -8100,7 +8088,6 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
-      bottom 180ms ease,
       opacity 160ms ease,
       background 120ms ease,
       border-color 120ms ease,
@@ -8127,6 +8114,16 @@ textarea:focus {
   }
   .mobile-controls-toggle {
     color: var(--text-strong);
+  }
+  /* A tall Composer hides the fixed controls instead of moving them into a
+     different screen position or allowing them to intercept Composer taps. */
+  .terminal-composer-overlaps-controls .mobile-nav:not(.mobile-terminal-tools),
+  .terminal-composer-overlaps-controls .mobile-workspace-shortcut,
+  .terminal-composer-overlaps-controls .mobile-terminal-controls {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0, 12px, 0) scale(0.85);
   }
   /* While the on-screen keyboard is open the floating controls cover too
      much of the terminal, so fade them out until the keyboard closes. */

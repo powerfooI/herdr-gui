@@ -102,22 +102,27 @@ export function TerminalComposer({
     const composer = composerRef.current;
     if (!composer) return;
     const root = document.documentElement;
-    let measuredValue = "";
-    const updateHeight = () => {
-      measuredValue = `${Math.ceil(composer.getBoundingClientRect().height)}px`;
-      root.style.setProperty("--terminal-composer-height", measuredValue);
+    const viewport = window.visualViewport;
+    const updateControlOverlap = () => {
+      const lowestControl = document.querySelector<HTMLElement>(
+        ".mobile-nav:not(.mobile-terminal-tools)",
+      );
+      const overlaps =
+        lowestControl !== null &&
+        composer.getBoundingClientRect().top <
+          lowestControl.getBoundingClientRect().bottom + 8;
+      root.classList.toggle("terminal-composer-overlaps-controls", overlaps);
     };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
+    updateControlOverlap();
+    const observer = new ResizeObserver(updateControlOverlap);
     observer.observe(composer);
+    window.addEventListener("resize", updateControlOverlap);
+    viewport?.addEventListener("resize", updateControlOverlap);
     return () => {
       observer.disconnect();
-      if (
-        root.style.getPropertyValue("--terminal-composer-height") ===
-        measuredValue
-      ) {
-        root.style.removeProperty("--terminal-composer-height");
-      }
+      window.removeEventListener("resize", updateControlOverlap);
+      viewport?.removeEventListener("resize", updateControlOverlap);
+      root.classList.remove("terminal-composer-overlaps-controls");
     };
   }, []);
 
