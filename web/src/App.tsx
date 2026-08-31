@@ -302,12 +302,13 @@ const viewportDebugEnabled =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("debugViewport");
 
-// iOS counts the floating keyboard accessory bar (form assistant) as covered
-// area, over-reporting the keyboard inset. Lift content past that overshoot
-// by default on iOS; Android reports exact insets, so trim stays 0 there.
-// ?kbdTrim=<px> overrides the default for experiments.
-const defaultKeyboardInsetTrim =
-  typeof navigator !== "undefined" && isIosDevice(navigator) ? 30 : 0;
+// Mobile browsers can over-report keyboard occlusion by including an input
+// accessory or browser-control strip. Keep enough visual viewport lift to
+// expose the composer, but trim the platform-specific overshoot.
+const usesIosKeyboardViewportLift =
+  typeof navigator !== "undefined" && isIosDevice(navigator);
+// ?kbdTrim=<px> overrides the default for device-specific experiments.
+const defaultKeyboardInsetTrim = usesIosKeyboardViewportLift ? 30 : 0;
 const keyboardInsetTrim =
   typeof window !== "undefined"
     ? Math.max(
@@ -400,11 +401,20 @@ function useVisualViewportCssVars() {
         "--keyboard-inset-bottom",
         `${Math.round(keyboardInset)}px`,
       );
-      // Content lift used for the app padding. kbdTrim lets us test how far
-      // the terminal surface can extend toward the keyboard accessory bar.
+      // Both platforms need the visual viewport lift here; without it some
+      // Android browsers place the composer behind the software keyboard.
+      const contentInset = Math.max(0, keyboardInset - keyboardInsetTrim);
       root.style.setProperty(
         "--keyboard-inset-content",
-        `${Math.round(Math.max(0, keyboardInset - keyboardInsetTrim))}px`,
+        `${Math.round(contentInset)}px`,
+      );
+      root.style.setProperty(
+        "--keyboard-inset-composer-gap",
+        `${Math.round(
+          usesIosKeyboardViewportLift
+            ? Math.max(0, keyboardInset - contentInset)
+            : 0,
+        )}px`,
       );
       return keyboardOpen;
     };
@@ -466,6 +476,7 @@ function useVisualViewportCssVars() {
       root.style.removeProperty("--app-viewport-offset-top");
       root.style.removeProperty("--keyboard-inset-bottom");
       root.style.removeProperty("--keyboard-inset-content");
+      root.style.removeProperty("--keyboard-inset-composer-gap");
     };
   }, []);
 }
@@ -1038,7 +1049,11 @@ export default function App() {
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
   const [mobileTabSheetOpen, setMobileTabSheetOpen] = useState(false);
-  const [openTerminalComposerDraftKey, setOpenTerminalComposerDraftKey] =
+  const terminalComposerScopeKey = JSON.stringify([
+    s.activeConnectionId,
+    s.connectionGeneration,
+  ]);
+  const [openTerminalComposerScopeKey, setOpenTerminalComposerScopeKey] =
     useState<string | null>(null);
   const [terminalComposerHasDraft, setTerminalComposerHasDraft] =
     useState(false);
@@ -1075,8 +1090,11 @@ export default function App() {
     // Drop mobile-only controls when their context disappears so they cannot
     // stay active invisibly or resurface when the mobile layout returns.
     if (!mobile || !focusedWorkspace) setMobileTabSheetOpen(false);
-    if (!mobile) setOpenTerminalComposerDraftKey(null);
+    if (!mobile) setOpenTerminalComposerScopeKey(null);
   }, [mobile, focusedWorkspace]);
+  useEffect(() => {
+    setOpenTerminalComposerScopeKey(null);
+  }, [terminalComposerScopeKey]);
   const activePaneId = activePaneIdForSnapshot(s);
   const activePane = activePaneId
     ? s.panes.find((pane) => pane.pane_id === activePaneId)
@@ -1091,15 +1109,14 @@ export default function App() {
       : null;
   const terminalComposerOpen =
     mobile &&
-    activeTerminalComposerDraftKey !== null &&
-    openTerminalComposerDraftKey === activeTerminalComposerDraftKey;
+    !mobileTabSheetOpen &&
+    openTerminalComposerScopeKey === terminalComposerScopeKey &&
+    activeTerminalComposerDraftKey !== null;
   const setTerminalComposerOpen = useCallback(
     (open: boolean) => {
-      setOpenTerminalComposerDraftKey(
-        open ? activeTerminalComposerDraftKey : null,
-      );
+      setOpenTerminalComposerScopeKey(open ? terminalComposerScopeKey : null);
     },
-    [activeTerminalComposerDraftKey],
+    [terminalComposerScopeKey],
   );
   useEffect(() => {
     if (!activeTerminalComposerDraftKey) {
@@ -2532,11 +2549,7 @@ export default function App() {
             tabIndex={mobileControlsCollapsed ? -1 : 0}
             disabled={!focusedWorkspace}
             onPointerDown={blurActiveInput}
-            onClick={() => {
-              const open = !mobileTabSheetOpen;
-              setMobileTabSheetOpen(open);
-              if (open) setTerminalComposerOpen(false);
-            }}
+            onClick={() => setMobileTabSheetOpen((open) => !open)}
           >
             <SquareStack size={16} />
             {focusedWorkspaceTabCount > 0 ? (

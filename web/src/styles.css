@@ -7834,11 +7834,24 @@ textarea:focus {
     max-height: 126px;
   }
 
+  .app:has(.terminal-composer) {
+    --mobile-floating-controls-lift: max(
+      48px,
+      calc(var(--terminal-composer-height, 80px) - 32px)
+    );
+  }
+  .app:has(.terminal-composer-shortcuts) {
+    --mobile-floating-controls-lift: max(
+      110px,
+      calc(var(--terminal-composer-height, 142px) - 32px)
+    );
+  }
   .mobile-nav {
     position: fixed;
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       58px +
+      var(--mobile-floating-controls-lift, 0px) +
       env(safe-area-inset-bottom, 0px) +
       var(--keyboard-inset-bottom, 0px)
     );
@@ -7854,6 +7867,7 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
+      bottom 180ms ease,
       opacity 160ms ease,
       transform 180ms ease;
     -webkit-backdrop-filter: blur(14px);
@@ -7864,6 +7878,7 @@ textarea:focus {
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       106px +
+      var(--mobile-floating-controls-lift, 0px) +
       env(safe-area-inset-bottom, 0px) +
       var(--keyboard-inset-bottom, 0px)
     );
@@ -7880,6 +7895,7 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
+      bottom 180ms ease,
       opacity 160ms ease,
       transform 180ms ease;
     -webkit-backdrop-filter: blur(14px);
@@ -8064,6 +8080,7 @@ textarea:focus {
     right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(
       156px +
+      var(--mobile-floating-controls-lift, 0px) +
       env(safe-area-inset-bottom, 0px) +
       var(--keyboard-inset-bottom, 0px)
     );
@@ -8083,6 +8100,7 @@ textarea:focus {
     transform-origin: right bottom;
     opacity: 1;
     transition:
+      bottom 180ms ease,
       opacity 160ms ease,
       background 120ms ease,
       border-color 120ms ease,
@@ -8443,20 +8461,14 @@ textarea:focus {
     flex-direction: column;
   }
   .terminal-composer {
-    /* In-flow at the bottom of the column shell. The margin lifts the action
-       row past the iOS form accessory bar: the app-level
-       --keyboard-inset-content lift under-reports the keyboard occlusion by
-       that trim by design, and the difference is 0 on Android and whenever
-       the keyboard is closed. */
-    margin-bottom: calc(
-      var(--keyboard-inset-bottom, 0px) -
-      var(--keyboard-inset-content, 0px)
-    );
+    /* In-flow at the bottom of the column shell. The app shell owns the main
+       keyboard lift; only iOS gets a small additional form-accessory-bar gap. */
+    margin-bottom: var(--keyboard-inset-composer-gap, 0px);
     display: flex;
     flex-direction: column;
     gap: 6px;
     padding: 8px calc(8px + env(safe-area-inset-right, 0px))
-      calc(8px + env(safe-area-inset-bottom, 0px))
+      calc(12px + env(safe-area-inset-bottom, 0px))
       calc(8px + env(safe-area-inset-left, 0px));
     border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     background: color-mix(in srgb, var(--panel) 86%, transparent);
