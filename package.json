@@ -1,7 +1,7 @@
 {
   "name": "herdr-studio",
   "private": true,
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "Herdr Studio: a web client for Herdr (local socket bridge + React dashboard).",
   "license": "MIT",
   "author": "Arthur",
