@@ -171,7 +171,8 @@ Lifecycle to manage saved per-checkout settings.
 - Browse a cached, expandable workspace file tree and optionally include hidden
   files.
 - Search files that have been loaded into the tree.
-- See Git status badges on changed files and directories.
+- See Git status badges on changed files and directories; Git-ignored files
+  are dimmed.
 - Preview text with line numbers, syntax highlighting, and `Cmd/Ctrl+F` search.
 - Render Markdown with a Raw/Rendered toggle, including Mermaid code fences
   rendered as diagrams.
@@ -200,6 +201,14 @@ File operations and previews work for both local and SSH-backed workspaces.
   the previous/next controls.
 - Syntax-highlight textual diffs and preview changed image files.
 - Jump from a diff section to the corresponding File Explorer preview.
+- Act on working-tree files from a context menu (right-click, long-press, or
+  the keyboard context-menu key): open the file, copy its relative or absolute
+  path, and run status-matched Git actions — stage, unstage, mark resolved,
+  discard unstaged changes, or delete untracked files, with confirmation for
+  destructive actions.
+- Run repository-wide actions from the **More Git actions** (`…`) menu beside
+  Refresh: Stage All, Unstage All, Discard All Unstaged, and Delete All
+  Untracked, each showing the affected-file count.
 
 The selected scope, view mode, wrapping preference, and recent selection are
 preserved in the browser.

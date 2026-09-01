@@ -100,8 +100,32 @@ describe("git diff summary parsing", () => {
     ]);
   });
 
+  test("unquotes C-style quoted paths in porcelain status", () => {
+    const entries = parseStatusSummary(
+      [
+        ' M "new file.txt"',
+        '?? "quote\\"x.txt"',
+        'R  "old name.txt" -> new.txt',
+      ].join("\n"),
+    );
+    expect(entries).toEqual([
+      { path: "new file.txt", kind: "unstaged", status: "modified" },
+      {
+        path: "new.txt",
+        old_path: "old name.txt",
+        kind: "staged",
+        status: "renamed",
+      },
+      { path: 'quote"x.txt', kind: "untracked", status: "untracked" },
+    ]);
+  });
+
   test("parses branch name-status output", () => {
-    expect(parseBranchSummary("M\tapp.ts\nR100\told.ts\tnew.ts\n")).toEqual([
+    expect(
+      parseBranchSummary(
+        'M\tapp.ts\nR100\told.ts\tnew.ts\nM\t"quote\\"x.txt"\n',
+      ),
+    ).toEqual([
       {
         path: "app.ts",
         old_path: undefined,
@@ -113,6 +137,12 @@ describe("git diff summary parsing", () => {
         old_path: "old.ts",
         kind: "branch",
         status: "renamed",
+      },
+      {
+        path: 'quote"x.txt',
+        old_path: undefined,
+        kind: "branch",
+        status: "modified",
       },
     ]);
   });

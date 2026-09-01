@@ -31,6 +31,8 @@ import {
   readDiffSummary,
   type LastStepBaselineStore,
 } from "./git-diff";
+import { runGitFileAction, runGitRepoAction } from "./git-actions";
+import { collectIgnoredNames } from "./git-ignore";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
 import { inlinePreviewMimeForPath } from "./preview";
 
@@ -140,6 +142,19 @@ export function createFileHandlers({
           shQuote,
         })
       : await listLocalFiles(checkoutPath, relativePath, showHidden);
+    if (list.entries.length) {
+      const ignored = await collectIgnoredNames({
+        host,
+        directory: relativePath ? `${list.root}/${relativePath}` : list.root,
+        names: list.entries.map((entry) => entry.name),
+        shQuote,
+      });
+      if (ignored.size) {
+        list.entries = list.entries.map((entry) =>
+          ignored.has(entry.name) ? { ...entry, ignored: true } : entry,
+        );
+      }
+    }
     return {
       ...list,
       workspace_id: workspaceId,
@@ -348,9 +363,12 @@ export function createFileHandlers({
     throw new Error(lastError);
   }
 
-  async function workspaceAndGitRoot(params: Record<string, unknown>) {
+  async function workspaceAndGitRoot(
+    params: Record<string, unknown>,
+    method = "git diff",
+  ) {
     const workspaceId = String(params.workspace_id ?? "");
-    if (!workspaceId) throw new Error("git diff requires workspace_id");
+    if (!workspaceId) throw new Error(`${method} requires workspace_id`);
     const workspace = await getWorkspace(workspaceId);
     const root = await gitRoot(workspaceId, workspace);
     return { workspaceId, workspace, root };
@@ -394,6 +412,30 @@ export function createFileHandlers({
     });
   }
 
+  async function runWorkspaceGitFileAction(params: Record<string, unknown>) {
+    const { workspaceId, root } = await workspaceAndGitRoot(
+      params,
+      "git.file_action",
+    );
+    const result = await runGitFileAction({
+      context: { root, host: sshHost(), shQuote, runProcessWithCodeTimeout },
+      params,
+    });
+    return { workspace_id: workspaceId, root, ...result };
+  }
+
+  async function runWorkspaceGitRepoAction(params: Record<string, unknown>) {
+    const { workspaceId, root } = await workspaceAndGitRoot(
+      params,
+      "git.repo_action",
+    );
+    const result = await runGitRepoAction({
+      context: { root, host: sshHost(), shQuote, runProcessWithCodeTimeout },
+      params,
+    });
+    return { workspace_id: workspaceId, root, ...result };
+  }
+
   return {
     listWorkspaceFiles: listFiles,
     resolveWorkspaceFiles: resolveFiles,
@@ -404,6 +446,8 @@ export function createFileHandlers({
     readGitDiffSummary,
     readGitDiffFile,
     runGitPull,
+    runWorkspaceGitFileAction,
+    runWorkspaceGitRepoAction,
     resolveWorkspaceGitRoot: workspaceAndGitRoot,
   };
 }

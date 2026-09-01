@@ -626,6 +626,7 @@ export function WorkspaceInspectorHost({
                 ref={diffViewerRef}
                 workspaceId={workspace.workspace_id}
                 resourceKey={resourceKey}
+                onOpenFile={onOpenDiffFile}
                 onSelectionChange={(selection, meta) => {
                   if (selection.entry && meta?.userInitiated) {
                     setDrillInByView((current) => ({

@@ -2718,7 +2718,10 @@ textarea:focus {
   opacity: 0.72;
 }
 .context-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -2731,6 +2734,24 @@ textarea:focus {
 }
 .context-menu-item:hover {
   background: var(--panel-2);
+}
+.context-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.context-menu-item:disabled:hover {
+  background: transparent;
+}
+.context-menu-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-menu-item-detail {
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .context-menu-item.is-danger {
   color: var(--danger-text);
@@ -4493,6 +4514,16 @@ textarea:focus {
 .file-row.is-uploading {
   color: var(--text-strong);
 }
+.file-row.is-ignored .file-icon,
+.file-row.is-ignored .file-main,
+.file-row.is-ignored .file-meta {
+  opacity: 0.48;
+}
+.file-row.is-ignored:hover .file-icon,
+.file-row.is-ignored:hover .file-main,
+.file-row.is-ignored:hover .file-meta {
+  opacity: 0.7;
+}
 .file-git-status {
   min-width: 0;
   display: inline-flex;
@@ -4976,7 +5007,7 @@ textarea:focus {
 }
 .diff-scope-toggle {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) 28px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto;
   gap: 4px;
   margin-bottom: 10px;
   padding: 3px;

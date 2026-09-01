@@ -125,7 +125,9 @@ const IMPORTANT_RPC_METHODS = new Set([
   "agent_session.get",
   "file.read",
   "git.diff_file",
+  "git.file_action",
   "git.pull",
+  "git.repo_action",
   "settings.update_repo",
   "settings.workspace_auto_sync.get",
   "settings.workspace_auto_sync.list",
@@ -692,6 +694,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     readGitDiffSummary,
     readGitDiffFile,
     runGitPull,
+    runWorkspaceGitFileAction,
+    runWorkspaceGitRepoAction,
     resolveWorkspaceGitRoot,
   } = connection.files;
   const { enrichWorkspacesWithGitStatus, invalidateGitStatus } =
@@ -779,6 +783,26 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       sendReply({ id, result }, "git-pull");
     } catch (e) {
       sendError("git-pull-error", e);
+    }
+    return;
+  }
+  if (method === "git.file_action") {
+    try {
+      const result = await runWorkspaceGitFileAction(params ?? {});
+      invalidateGitStatus(result.root);
+      sendReply({ id, result }, "git-file-action");
+    } catch (e) {
+      sendError("git-file-action-error", e);
+    }
+    return;
+  }
+  if (method === "git.repo_action") {
+    try {
+      const result = await runWorkspaceGitRepoAction(params ?? {});
+      invalidateGitStatus(result.root);
+      sendReply({ id, result }, "git-repo-action");
+    } catch (e) {
+      sendError("git-repo-action-error", e);
     }
     return;
   }

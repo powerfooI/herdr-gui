@@ -18,7 +18,15 @@ import {
   forgetTerminalRelayViewportsExcept,
   terminalRelayViewportForTab,
 } from "./terminalResize";
-import type { Pane, PaneLayout, Tab, Workspace } from "./types";
+import type { GitDiffEntry, Pane, PaneLayout, Tab, Workspace } from "./types";
+import {
+  gitFileActionLabel,
+  gitFileActionSuccessMessage,
+  gitRepoActionSuccessMessage,
+  type GitFileAction,
+  type GitRepoAction,
+  type GitWorkingCounts,
+} from "./gitActions";
 
 export interface ServerSessionState {
   /** ConnectionManager generation that owns every server resource below. */
@@ -2118,6 +2126,77 @@ export const store = {
           detail: error.message,
           detailMode: "output",
           detailTitle: "git pull --ff-only",
+        }),
+      },
+    );
+  },
+
+  runGitFileAction(
+    workspaceId: string,
+    gitAction: GitFileAction,
+    entry: Pick<GitDiffEntry, "path" | "old_path" | "mtime_ms" | "size">,
+  ) {
+    const label = gitFileActionLabel(gitAction);
+    return action(
+      async (lease) => {
+        const result = await lease.client.call("git.file_action", {
+          workspace_id: workspaceId,
+          action: gitAction,
+          path: entry.path,
+          old_path: entry.old_path,
+          mtime_ms: entry.mtime_ms,
+          size: entry.size,
+        });
+        setForConnection(lease, {
+          notice: {
+            kind: "success",
+            message: gitFileActionSuccessMessage(gitAction),
+            detail: entry.path,
+            autoDismissMs: 5000,
+          },
+        });
+        return result;
+      },
+      {
+        refresh: "immediate",
+        failureNotice: (error) => ({
+          kind: "error",
+          message: `${label} failed`,
+          detail: error.message,
+          detailMode: "text",
+        }),
+      },
+    );
+  },
+
+  runGitRepoAction(
+    workspaceId: string,
+    gitAction: GitRepoAction,
+    expectedCounts?: Partial<GitWorkingCounts>,
+  ) {
+    return action(
+      async (lease) => {
+        const result = await lease.client.call("git.repo_action", {
+          workspace_id: workspaceId,
+          action: gitAction,
+          expected_counts: expectedCounts,
+        });
+        setForConnection(lease, {
+          notice: {
+            kind: "success",
+            message: gitRepoActionSuccessMessage(gitAction),
+            autoDismissMs: 5000,
+          },
+        });
+        return result;
+      },
+      {
+        refresh: "immediate",
+        failureNotice: (error) => ({
+          kind: "error",
+          message: "Git action failed",
+          detail: error.message,
+          detailMode: "text",
         }),
       },
     );
