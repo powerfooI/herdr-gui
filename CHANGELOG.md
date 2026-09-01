@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- Add Git file actions to the Changes panel: right-click, long-press, or the
+  keyboard context-menu key on a working-tree file opens a menu with Open
+  file, Copy relative/absolute path, and status-matched Git actions (stage,
+  unstage, mark resolved, discard unstaged changes, delete untracked file).
+  A new "More Git actions" menu beside Refresh offers repository-wide Stage
+  All, Unstage All, Discard All Unstaged, and Delete All Untracked with
+  affected-file counts. Destructive actions ask for confirmation, and the
+  server re-verifies each file's status and content fingerprint before
+  mutating so stale menus can't destroy newer work.
+- Dim Git-ignored files in the Files explorer.
+
+### Fixed
+
+- Parse C-style quoted Git paths (spaces, quotes, backslashes) in Changes
+  summaries so files with such names show and diff correctly.
+
 ## 0.4.12 - 2026-09-01
 
 ### Fixed

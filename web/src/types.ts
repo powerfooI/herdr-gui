@@ -134,6 +134,7 @@ export interface FileExplorerEntry {
   size: number;
   mtime_ms: number;
   hidden: boolean;
+  ignored?: boolean;
 }
 
 export interface FileExplorerList {
@@ -178,6 +179,8 @@ export interface GitDiffEntry {
   additions?: number;
   deletions?: number;
   generated?: boolean;
+  mtime_ms?: number;
+  size?: number;
 }
 
 export interface GitDiffSummary {

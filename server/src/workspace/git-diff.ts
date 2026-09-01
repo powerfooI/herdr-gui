@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { sshCommandArgv } from "../bridge/ssh-command";
+import { collectWorktreeFingerprints } from "./git-actions";
 import {
   GIT_DIFF_MAX_BYTES,
   GIT_DIFF_TIMEOUT_MS,
@@ -63,6 +64,68 @@ type GitCommandContext = {
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
 };
 
+// Git quotes paths containing spaces, quotes, backslashes, or control
+// characters C-style ("a\nb"). core.quotepath=false only keeps non-ASCII
+// raw, so undo the quoting before using paths as file identities.
+export function unquoteGitPath(path: string): string {
+  if (path.length < 2 || !path.startsWith('"') || !path.endsWith('"')) {
+    return path;
+  }
+  const body = path.slice(1, -1);
+  let result = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index] ?? "";
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+    const next = body[(index += 1)];
+    if (next === undefined) {
+      result += "\\";
+      break;
+    }
+    if (next >= "0" && next <= "7") {
+      const octal = body.slice(index, index + 3);
+      if (/^[0-7]{3}$/.test(octal)) {
+        result += String.fromCharCode(Number.parseInt(octal, 8));
+        index += 2;
+        continue;
+      }
+      result += next;
+      continue;
+    }
+    switch (next) {
+      case "a":
+        result += "\x07";
+        break;
+      case "b":
+        result += "\b";
+        break;
+      case "f":
+        result += "\f";
+        break;
+      case "n":
+        result += "\n";
+        break;
+      case "r":
+        result += "\r";
+        break;
+      case "t":
+        result += "\t";
+        break;
+      case "v":
+        result += "\v";
+        break;
+      case "\\":
+        result += "\\";
+        break;
+      default:
+        result += next;
+    }
+  }
+  return result;
+}
+
 export function statusLabel(code: string, kind: GitDiffKind) {
   if (kind === "untracked") return "untracked";
   if (kind === "conflicted") return "conflicted";
@@ -100,9 +163,11 @@ export function parseStatusSummary(output: string): GitDiffEntry[] {
     const y = line[1] ?? " ";
     const rawPath = line.slice(3);
     const renameParts = rawPath.split(" -> ");
-    const oldPath = renameParts.length > 1 ? renameParts[0] : undefined;
-    const path =
-      renameParts.length > 1 ? renameParts.slice(1).join(" -> ") : rawPath;
+    const oldPath =
+      renameParts.length > 1 ? unquoteGitPath(renameParts[0] ?? "") : undefined;
+    const path = unquoteGitPath(
+      renameParts.length > 1 ? renameParts.slice(1).join(" -> ") : rawPath,
+    );
     if (!path) continue;
 
     if (x === "?" && y === "?") {
@@ -157,8 +222,11 @@ export function parseBranchSummary(
       const parts = line.split("\t");
       const rawStatus = parts[0] ?? "";
       const renamed = rawStatus.startsWith("R") || rawStatus.startsWith("C");
-      const path = renamed ? (parts[2] ?? parts[1] ?? "") : (parts[1] ?? "");
-      const oldPath = renamed ? parts[1] : undefined;
+      const path = unquoteGitPath(
+        renamed ? (parts[2] ?? parts[1] ?? "") : (parts[1] ?? ""),
+      );
+      const oldPath =
+        renamed && parts[1] ? unquoteGitPath(parts[1]) : undefined;
       return {
         path,
         old_path: oldPath,
@@ -197,7 +265,9 @@ function parseNumstat(output: string) {
     if (parts.length < 3) continue;
     const additions = parseNumstatValue(parts[0] ?? "0");
     const deletions = parseNumstatValue(parts[1] ?? "0");
-    const path = normalizeNumstatPath(parts.slice(2).join("\t"));
+    const path = unquoteGitPath(
+      normalizeNumstatPath(parts.slice(2).join("\t")),
+    );
     if (!path) continue;
     const current = stats.get(path) ?? { additions: 0, deletions: 0 };
     stats.set(path, {
@@ -933,7 +1003,14 @@ export async function readDiffSummary({
       runProcessWithCodeTimeout,
     });
   }
-  const [stats, generatedPaths] = await Promise.all([
+  const fingerprintTask =
+    mode === "working"
+      ? collectWorktreeFingerprints(
+          { root, host, shQuote, runProcessWithCodeTimeout },
+          entries.map((entry) => entry.path),
+        )
+      : Promise.resolve(new Map<string, { size: number; mtime_ms: number }>());
+  const [stats, generatedPaths, fingerprints] = await Promise.all([
     statsTask,
     collectGeneratedPaths({
       root,
@@ -942,11 +1019,16 @@ export async function readDiffSummary({
       shQuote,
       runProcessWithCodeTimeout,
     }),
+    fingerprintTask,
   ]);
   const entriesWithStats = entries.map((entry) => {
+    const fingerprint = fingerprints.get(entry.path);
     const entryWithStats = {
       ...entry,
       ...(stats.get(entryKeyForStats(entry)) ?? {}),
+      ...(fingerprint
+        ? { mtime_ms: fingerprint.mtime_ms, size: fingerprint.size }
+        : {}),
     };
     return generatedPaths.has(entry.path)
       ? { ...entryWithStats, generated: true }

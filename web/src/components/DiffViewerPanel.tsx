@@ -9,10 +9,12 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  Ellipsis,
   File,
   FileDiff,
   Folder,
@@ -39,6 +41,21 @@ import {
   useGitDiffSummaryState,
 } from "../gitDiffSummaryStore";
 import { diffAutoCollapseInfo } from "./diffAutoCollapse";
+import { store } from "../store";
+import { copyTextFromUserGesture } from "../terminalClipboard";
+import { bumpFileExplorerRefresh } from "../fileExplorerRefresh";
+import {
+  buildGitFileMenuItems,
+  buildGitRepoMenuItems,
+  countWorkingEntries,
+  gitFileConfirmCopy,
+  gitRepoConfirmCopy,
+  type GitFileMenuItem,
+  type GitRepoMenuItem,
+} from "../gitActions";
+import { keyboardContextMenuPoint, treeKeyboardAction } from "./treeKeyboard";
+import { ActionsMenu } from "./ActionsMenu";
+import { ConfirmDialog } from "./ModalDialogs";
 
 export type ActiveDiffSelection = {
   entry: GitDiffEntry | null;
@@ -68,6 +85,7 @@ export type DiffViewerPanelProps = {
     selection: ActiveDiffSelection,
     meta?: DiffSelectionMeta,
   ) => void;
+  onOpenFile?: (entry: GitDiffEntry) => void;
 };
 
 type DiffCache = {
@@ -87,6 +105,8 @@ const diffFileRequests = new Map<string, Promise<GitDiffFile>>();
 const DIFF_TREE_INDENT = 9;
 const DIFF_TREE_BASE_INDENT = 6;
 const DIFF_PREFETCH_CONCURRENCY = 3;
+const LONG_PRESS_MS = 550;
+const LONG_PRESS_MOVE_PX = 10;
 const MAX_CACHED_DIFF_FILES = 24;
 const MAX_CACHED_DIFF_BYTES = 8 * 1024 * 1024;
 const MAX_DIFF_CACHE_CONTEXTS = 8;
@@ -788,11 +808,24 @@ export function prefetchDiffViewerWorkspace(
   return task;
 }
 
+type DiffFileMenuState = {
+  x: number;
+  y: number;
+  entries: GitDiffEntry[];
+};
+
+type DiffConfirmState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  run: () => void;
+};
+
 export const DiffViewerPanel = forwardRef<
   DiffViewerPanelHandle,
   DiffViewerPanelProps
 >(function DiffViewerPanel(
-  { workspaceId, resourceKey, onSelectionChange },
+  { workspaceId, resourceKey, onSelectionChange, onOpenFile },
   ref,
 ) {
   const workspaces = useStoreSelector((state) => state.workspaces);
@@ -863,6 +896,16 @@ export const DiffViewerPanel = forwardRef<
   const diffScopeRef = useRef(diffScope);
   diffScopeRef.current = diffScope;
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const [fileMenu, setFileMenu] = useState<DiffFileMenuState | null>(null);
+  const [repoMenu, setRepoMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [confirmState, setConfirmState] = useState<DiffConfirmState | null>(
+    null,
+  );
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
   useLayoutEffect(() => {
     onSelectionChangeRef.current = onSelectionChange;
@@ -1322,6 +1365,143 @@ export const DiffViewerPanel = forwardRef<
     () => buildDiffTree(cache.summary?.entries ?? []),
     [cache.summary?.entries],
   );
+  const workingCounts = useMemo(
+    () => countWorkingEntries(cache.summary?.entries ?? []),
+    [cache.summary?.entries],
+  );
+
+  const clearLongPressTimer = () => {
+    if (!longPressTimerRef.current) return;
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const openFileMenu = (entries: GitDiffEntry[], x: number, y: number) => {
+    if (diffScopeRef.current !== "working" || !entries.length) return;
+    clearLongPressTimer();
+    setRepoMenu(null);
+    setFileMenu({ x, y, entries });
+  };
+
+  const handleEntryPointerDown = (
+    event: ReactPointerEvent<HTMLElement>,
+    entries: GitDiffEntry[],
+  ) => {
+    if (event.pointerType === "mouse") return;
+    longPressTriggeredRef.current = false;
+    longPressStartRef.current = { x: event.clientX, y: event.clientY };
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      openFileMenu(entries, event.clientX, event.clientY);
+    }, LONG_PRESS_MS);
+  };
+
+  const handleEntryPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const start = longPressStartRef.current;
+    if (!start) return;
+    const dx = Math.abs(event.clientX - start.x);
+    const dy = Math.abs(event.clientY - start.y);
+    if (dx > LONG_PRESS_MOVE_PX || dy > LONG_PRESS_MOVE_PX) {
+      clearLongPressTimer();
+      longPressStartRef.current = null;
+    }
+  };
+
+  const handleEntryPointerEnd = () => {
+    clearLongPressTimer();
+    longPressStartRef.current = null;
+  };
+
+  const copyPath = (path: string, label: string) => {
+    void copyTextFromUserGesture(path).then(
+      () =>
+        store.notify({
+          kind: "success",
+          message: `${label} copied`,
+          detail: path,
+          autoDismissMs: 5000,
+        }),
+      (error) =>
+        store.notify({
+          kind: "error",
+          message: `Failed to copy ${label.toLowerCase()}`,
+          detail: error instanceof Error ? error.message : String(error),
+        }),
+    );
+  };
+
+  const afterGitMutation = async (workspaceId: string) => {
+    bumpFileExplorerRefresh(connectionClient, workspaceId);
+    await loadSummary(cache.selected, true);
+  };
+
+  const runGitFileMenuAction = (
+    item: GitFileMenuItem,
+    entries: GitDiffEntry[],
+  ) => {
+    const actionWorkspaceId = workspace?.workspace_id;
+    if (!actionWorkspaceId) return;
+    const target =
+      entries.find((entry) =>
+        item.action === "discard_unstaged"
+          ? entry.kind === "unstaged"
+          : item.action === "delete_untracked"
+            ? entry.kind === "untracked"
+            : item.action === "unstage"
+              ? entry.kind === "staged"
+              : entry.kind !== "staged",
+      ) ?? entries[0];
+    if (!target) return;
+    const execute = async () => {
+      const result = await store.runGitFileAction(
+        actionWorkspaceId,
+        item.action,
+        target,
+      );
+      if (!result) return;
+      await afterGitMutation(actionWorkspaceId);
+    };
+    if (item.destructive) {
+      const copy = gitFileConfirmCopy(item.action, target.path);
+      if (copy) {
+        setConfirmState({ ...copy, run: () => void execute() });
+        return;
+      }
+    }
+    void execute();
+  };
+
+  const runGitRepoMenuAction = (item: GitRepoMenuItem) => {
+    const actionWorkspaceId = workspace?.workspace_id;
+    if (!actionWorkspaceId) return;
+    const execute = async () => {
+      const result = await store.runGitRepoAction(
+        actionWorkspaceId,
+        item.action,
+        workingCounts,
+      );
+      if (!result) return;
+      await afterGitMutation(actionWorkspaceId);
+    };
+    if (item.destructive) {
+      const copy = gitRepoConfirmCopy(item.action, item.count);
+      if (copy) {
+        setConfirmState({ ...copy, run: () => void execute() });
+        return;
+      }
+    }
+    void execute();
+  };
 
   const toggleDir = (path: string) => {
     setExpandedDirs((current) => {
@@ -1377,7 +1557,38 @@ export const DiffViewerPanel = forwardRef<
           style={{
             paddingLeft: DIFF_TREE_BASE_INDENT + depth * DIFF_TREE_INDENT,
           }}
-          onClick={() => void loadFile(primary, { userInitiated: true })}
+          onClick={() => {
+            if (longPressTriggeredRef.current) {
+              longPressTriggeredRef.current = false;
+              return;
+            }
+            void loadFile(primary, { userInitiated: true });
+          }}
+          onContextMenu={(event) => {
+            if (diffScope !== "working") return;
+            event.preventDefault();
+            event.stopPropagation();
+            openFileMenu(child.entries, event.clientX, event.clientY);
+          }}
+          onKeyDown={(event) => {
+            if (diffScope !== "working") return;
+            if (
+              treeKeyboardAction(event.key, event.shiftKey) !== "context-menu"
+            ) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const point = keyboardContextMenuPoint(event.currentTarget);
+            openFileMenu(child.entries, point.x, point.y);
+          }}
+          onPointerDown={(event) =>
+            handleEntryPointerDown(event, child.entries)
+          }
+          onPointerMove={handleEntryPointerMove}
+          onPointerUp={handleEntryPointerEnd}
+          onPointerCancel={handleEntryPointerEnd}
+          onPointerLeave={handleEntryPointerEnd}
         >
           <span className="diff-tree-twisty" />
           <File size={15} />
@@ -1448,6 +1659,22 @@ export const DiffViewerPanel = forwardRef<
             size={15}
           />
         </button>
+        {diffScope === "working" ? (
+          <button
+            type="button"
+            className="diff-refresh diff-more-actions"
+            title="More Git actions"
+            aria-label="More Git actions"
+            aria-haspopup="menu"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setFileMenu(null);
+              setRepoMenu({ x: rect.right, y: rect.bottom + 4 });
+            }}
+          >
+            <Ellipsis size={15} />
+          </button>
+        ) : null}
       </div>
 
       {!workspace ? (
@@ -1476,6 +1703,87 @@ export const DiffViewerPanel = forwardRef<
       {fileLoadingKey ? (
         <div className="diff-loading-inline">Loading diff...</div>
       ) : null}
+      {fileMenu ? (
+        <ActionsMenu
+          x={fileMenu.x}
+          y={fileMenu.y}
+          header={{ title: fileMenu.entries[0]?.path ?? "", subtitle: "Git" }}
+          groups={[
+            {
+              label: "File",
+              items: [
+                ...(onOpenFile && fileMenu.entries[0]
+                  ? [
+                      {
+                        key: "open",
+                        label: "Open file",
+                        action: () => onOpenFile(fileMenu.entries[0]!),
+                      },
+                    ]
+                  : []),
+                {
+                  key: "copy-relative",
+                  label: "Copy relative path",
+                  action: () =>
+                    copyPath(fileMenu.entries[0]?.path ?? "", "Relative path"),
+                },
+                ...(cache.summary?.root
+                  ? [
+                      {
+                        key: "copy-absolute",
+                        label: "Copy absolute path",
+                        action: () =>
+                          copyPath(
+                            `${cache.summary?.root}/${fileMenu.entries[0]?.path ?? ""}`,
+                            "Absolute path",
+                          ),
+                      },
+                    ]
+                  : []),
+              ],
+            },
+            {
+              label: "Git",
+              items: buildGitFileMenuItems(fileMenu.entries).map((item) => ({
+                key: item.action,
+                label: item.label,
+                danger: item.danger,
+                action: () => runGitFileMenuAction(item, fileMenu.entries),
+              })),
+            },
+          ].filter((group) => group.items.length > 0)}
+          onClose={() => setFileMenu(null)}
+        />
+      ) : null}
+      {repoMenu ? (
+        <ActionsMenu
+          x={repoMenu.x}
+          y={repoMenu.y}
+          groups={[
+            {
+              label: "Git",
+              items: buildGitRepoMenuItems(workingCounts).map((item) => ({
+                key: item.action,
+                label: item.label,
+                danger: item.danger,
+                disabled: item.count === 0,
+                detail: String(item.count),
+                action: () => runGitRepoMenuAction(item),
+              })),
+            },
+          ]}
+          onClose={() => setRepoMenu(null)}
+        />
+      ) : null}
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title ?? ""}
+        message={confirmState?.message ?? ""}
+        confirmLabel={confirmState?.confirmLabel ?? "Confirm"}
+        danger
+        onClose={() => setConfirmState(null)}
+        onConfirm={() => confirmState?.run()}
+      />
     </aside>
   );
 });
