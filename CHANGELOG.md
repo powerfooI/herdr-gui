@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.12 - 2026-09-01
+
 ### Fixed
 
 - Fix text selection in file and session previews: Cmd/Ctrl+A now selects only
