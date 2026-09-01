@@ -207,6 +207,34 @@ async function assertPorcelainAllows(
   }
 }
 
+// `git clean -f` silently skips untracked directories and still exits 0,
+// which would report a misleading success; refuse them explicitly instead.
+// Recursive directory deletion is intentionally out of scope. Symlinks are
+// fine: clean removes the link itself, even when it points at a directory.
+async function runDeleteUntracked(context: GitActionContext, path: string) {
+  const script = `
+set -eu
+cd -- ${context.shQuote(context.root)}
+f=${context.shQuote(`./${path}`)}
+if [ -d "$f" ] && [ ! -L "$f" ]; then
+  echo "delete_untracked supports files only; recursive directory deletion is not supported" >&2
+  exit 15
+fi
+git -c core.quotepath=false clean -f -- ${context.shQuote(path)}
+`;
+  const result = await context.runProcessWithCodeTimeout(
+    context.host ? sshCommandArgv(context.host, script) : ["sh", "-lc", script],
+    GIT_DIFF_TIMEOUT_MS,
+  );
+  if (result.code !== 0) {
+    throw new Error(
+      (result.stderr || result.stdout || `git clean exited ${result.code}`)
+        .trim()
+        .slice(0, MAX_ACTION_OUTPUT),
+    );
+  }
+}
+
 function pathspecsFor(
   path: string,
   oldPath: string,
@@ -252,6 +280,11 @@ export async function runGitFileAction({
     }
   }
 
+  if (action === "delete_untracked") {
+    await runDeleteUntracked(context, path);
+    return { action, path, old_path: oldPath || undefined };
+  }
+
   let command: string;
   switch (action) {
     case "stage":
@@ -265,9 +298,6 @@ export async function runGitFileAction({
     case "discard_unstaged":
       // Restores the worktree from the index, so a staged version survives.
       command = `checkout -- ${context.shQuote(path)}`;
-      break;
-    case "delete_untracked":
-      command = `clean -f -- ${context.shQuote(path)}`;
       break;
     default:
       throw new Error(`unsupported git file action: ${action}`);

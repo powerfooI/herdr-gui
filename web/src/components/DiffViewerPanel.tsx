@@ -1376,6 +1376,15 @@ export const DiffViewerPanel = forwardRef<
     longPressTimerRef.current = null;
   };
 
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const openFileMenu = (entries: GitDiffEntry[], x: number, y: number) => {
     if (diffScopeRef.current !== "working" || !entries.length) return;
     clearLongPressTimer();

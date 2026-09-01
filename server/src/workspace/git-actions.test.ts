@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
   realpath,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -302,6 +304,32 @@ describe("runGitFileAction", () => {
         size: fingerprint?.size,
       });
       expect(await status(root)).not.toContain("-odd name ü.txt");
+    });
+  });
+
+  test("refuses to delete untracked directories", async () => {
+    await withRepo(true, async (root, context) => {
+      await mkdir(join(root, "scratch"));
+      await writeFile(join(root, "scratch", "notes.txt"), "temp\n");
+      await expect(
+        fileAction(context, { action: "delete_untracked", path: "scratch" }),
+      ).rejects.toThrow(/not supported/);
+      expect(await readFile(join(root, "scratch", "notes.txt"), "utf8")).toBe(
+        "temp\n",
+      );
+    });
+  });
+
+  test("deletes untracked symlinks that point at directories", async () => {
+    await withRepo(true, async (root, context) => {
+      await mkdir(join(root, "real-dir"));
+      await symlink("real-dir", join(root, "dir-link"));
+      await fileAction(context, {
+        action: "delete_untracked",
+        path: "dir-link",
+      });
+      await expect(lstat(join(root, "dir-link"))).rejects.toThrow();
+      expect((await lstat(join(root, "real-dir"))).isDirectory()).toBe(true);
     });
   });
 
