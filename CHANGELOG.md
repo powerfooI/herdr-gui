@@ -4,6 +4,11 @@
 
 ### Added
 
+- Add inline review annotations for diff lines, source lines, and rendered
+  Markdown selections. A shared review panel edits and orders comments,
+  preserves drafts per checkout, copies compiled feedback, or pre-fills an
+  agent pane without submitting it. Content anchors follow moved lines when
+  possible and remain available with a stale marker when source text changes.
 - Add Git file actions to the Changes panel: right-click, long-press, or the
   keyboard context-menu key on a working-tree file opens a menu with Open
   file, Copy relative/absolute path, and status-matched Git actions (stage,

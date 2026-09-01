@@ -1901,6 +1901,314 @@ textarea:focus {
 .workspace-inspector-unavailable strong {
   color: var(--text-strong);
 }
+.workspace-inspector-annotation-action {
+  position: relative;
+}
+.workspace-inspector-actions
+  button.workspace-inspector-annotation-action.is-active {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.workspace-inspector-annotation-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border: 1px solid var(--viewer-header-bg);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+}
+.annotation-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 20;
+  width: min(380px, calc(100% - 16px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--viewer-border);
+  border-radius: 10px;
+  background: var(--viewer-panel-bg);
+  box-shadow: var(--shadow-lg);
+}
+.annotation-panel-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 10px 8px 12px;
+  border-bottom: 1px solid var(--viewer-border);
+  background: var(--viewer-header-bg);
+}
+.annotation-panel-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.annotation-panel-head strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+.annotation-panel-head span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.annotation-icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.annotation-icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.annotation-icon-button.is-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+.annotation-icon-button:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
+.annotation-panel-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px;
+}
+.annotation-panel-empty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.annotation-panel-empty strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+.annotation-panel-empty span {
+  max-width: 280px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.annotation-card {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 8px;
+  background: var(--viewer-content-bg);
+}
+.annotation-card.is-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.annotation-card-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.annotation-card-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.annotation-card-head span {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: 8px;
+  font-weight: 800;
+}
+.annotation-card blockquote,
+.annotation-composer-popover blockquote {
+  max-height: 82px;
+  margin: 0;
+  overflow: auto;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--viewer-code-bg);
+  color: var(--text-code);
+  font: 10px / 1.45 var(--mono-font);
+  white-space: pre-wrap;
+}
+.annotation-card textarea,
+.annotation-composer-popover textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 7px 8px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 7px;
+  outline: none;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.annotation-card textarea:focus,
+.annotation-composer-popover textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.annotation-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.annotation-panel-footer {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--viewer-border);
+  background: var(--viewer-header-bg);
+}
+.annotation-target-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.annotation-target-picker select {
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 11px;
+}
+.annotation-target-summary {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.annotation-delivery-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 7px;
+}
+.annotation-delivery-actions button {
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.annotation-clear-button {
+  justify-self: center;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+.annotation-clear-button:hover:not(:disabled) {
+  color: var(--danger-text);
+}
+.annotation-composer-popover {
+  position: fixed;
+  z-index: 1200;
+  width: min(340px, calc(100vw - 16px));
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 9px;
+  background: var(--viewer-panel-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+.annotation-composer-popover > strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.annotation-composer-popover small {
+  color: var(--muted);
+  font-size: 9px;
+  text-align: right;
+}
+.annotation-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.annotation-composer-actions button {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+.markdown-annotate-button {
+  position: fixed;
+  z-index: 1190;
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: var(--shadow-md);
+}
+.workspace-inspector.is-compact .annotation-panel {
+  inset: 0;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+}
+.workspace-inspector.is-compact .annotation-icon-button {
+  width: 36px;
+  height: 36px;
+}
+.workspace-inspector.is-compact .annotation-delivery-actions button {
+  min-height: 42px;
+}
 .workspace-inspector.is-compact .workspace-inspector-head {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -4796,6 +5104,51 @@ textarea:focus {
 .file-preview-code .cm-focused {
   outline: none;
 }
+.file-preview-code .cm-review-annotation-gutter {
+  min-width: 28px;
+  border-right: 1px solid var(--border-soft);
+  background: var(--viewer-code-bg);
+}
+.file-preview-code .cm-review-annotation-gutter .cm-gutterElement {
+  min-width: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.file-preview-code
+  .cm-review-annotation-gutter
+  .cm-gutterElement:not(:has(.cm-review-annotation-marker))::before {
+  opacity: 0;
+  color: var(--accent);
+  content: "+";
+  font-size: 15px;
+  font-weight: 800;
+}
+.file-preview-code
+  .cm-review-annotation-gutter:hover
+  .cm-gutterElement::before {
+  opacity: 0.72;
+}
+.cm-review-annotation-marker {
+  min-width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 9px;
+  font-weight: 800;
+}
+.cm-review-annotation-marker.is-stale {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  box-shadow: inset 0 0 0 1px var(--warning-border, var(--border));
+}
+.file-preview-code .cm-line[data-review-annotated="true"] {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
 .file-preview-markdown {
   flex: 1 1 auto;
   min-height: 0;
@@ -5516,6 +5869,30 @@ textarea:focus {
 }
 .pierre-diff-surface > diffs-container {
   display: block;
+}
+.diff-review-annotation {
+  max-width: min(440px, 100%);
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  font: 11px / 1.2 var(--sans-font);
+}
+.diff-review-annotation span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff-review-annotation.is-stale {
+  border-color: var(--warning-text);
+  background: var(--warning-soft);
+  color: var(--warning-text);
 }
 .diff-raw-patch {
   max-width: 100%;

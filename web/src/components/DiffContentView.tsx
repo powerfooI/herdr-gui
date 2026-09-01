@@ -1,4 +1,4 @@
-import { DEFAULT_THEMES } from "@pierre/diffs";
+import { DEFAULT_THEMES, type SelectedLineRange } from "@pierre/diffs";
 import {
   PatchDiff,
   Virtualizer,
@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   FolderOpen,
+  MessageSquareText,
   Search,
   X,
 } from "lucide-react";
@@ -27,9 +28,25 @@ import {
   type ReactNode,
 } from "react";
 import type { ConnectionClient } from "../api";
-import type { FilePreview, GitDiffEntry, GitDiffFile } from "../types";
+import {
+  diffReviewLineLabel,
+  findDiffReviewSelection,
+  type DiffReviewAnnotation,
+  type NewReviewAnnotation,
+  type ReviewAnnotation,
+} from "../annotations";
+import type {
+  FilePreview,
+  GitDiffEntry,
+  GitDiffFile,
+  GitDiffKind,
+} from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
 import { requestFilePreview } from "./FileExplorerDialog";
+import {
+  AnnotationComposerPopover,
+  type AnnotationComposerDraft,
+} from "./AnnotationComposerPopover";
 import {
   diffAutoCollapseInfo,
   type DiffAutoCollapseInfo,
@@ -42,12 +59,13 @@ import {
 type DiffViewMode = "split" | "unified";
 type AppTheme = "dark" | "light";
 type PierreDiffOptions = NonNullable<
-  ComponentProps<typeof PatchDiff>["options"]
+  ComponentProps<typeof PatchDiff<DiffReviewAnnotation>>["options"]
 >;
 
 const DIFF_VIEW_MODE_KEY = "diffViewMode";
 const DESKTOP_DIFF_WRAP_KEY = "desktopDiffWrap";
 const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
+const EMPTY_DIFF_REVIEW_ANNOTATIONS: readonly DiffReviewAnnotation[] = [];
 const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
   poolSize: Math.min(
     Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1),
@@ -63,6 +81,34 @@ const DIFF_HIGHLIGHTER_OPTIONS: WorkerInitializationRenderOptions = {
   theme: DEFAULT_THEMES,
   preferredHighlighter: "shiki-wasm",
 };
+const DIFF_SELECTION_CSS = `
+  [data-line][data-selected-line] {
+    background-color: color-mix(
+      in srgb,
+      var(--diffs-selection-base) 32%,
+      var(--diffs-computed-diff-line-bg)
+    ) !important;
+    box-shadow: inset 3px 0 0 var(--diffs-selection-base);
+  }
+  [data-column-number][data-selected-line] {
+    background-color: color-mix(
+      in srgb,
+      var(--diffs-selection-base) 46%,
+      var(--diffs-bg)
+    ) !important;
+    color: var(--diffs-fg) !important;
+    font-weight: 800;
+  }
+  [data-line][data-selected-line="first"] {
+    border-top: 1px solid var(--diffs-selection-base);
+  }
+  [data-line][data-selected-line="last"] {
+    border-bottom: 1px solid var(--diffs-selection-base);
+  }
+  [data-line][data-selected-line="single"] {
+    border-block: 1px solid var(--diffs-selection-base);
+  }
+`;
 
 const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
   "png",
@@ -112,6 +158,19 @@ function startImagePreviewRequest(
 
 type DiffSearchGroup = {
   key: string;
+};
+
+type DiffAnnotationRequest = {
+  x: number;
+  y: number;
+  path: string;
+  kind: GitDiffKind;
+  side: "old" | "new";
+  line: number;
+  endSide?: "old" | "new";
+  endLine?: number;
+  quote: string;
+  hunk: string;
 };
 
 type DiffSection = {
@@ -362,9 +421,13 @@ type DiffFileSectionProps = {
   options: PierreDiffOptions;
   currentSearchMatch: boolean;
   embedded: boolean;
+  annotations: readonly DiffReviewAnnotation[];
+  annotationSelectionActive: boolean;
   onToggle: (key: string, collapsed: boolean) => void;
   onSelectFile?: (entry: GitDiffEntry) => void;
   onOpenFile?: (entry: GitDiffEntry) => void;
+  onRequestAnnotation?: (request: DiffAnnotationRequest) => void;
+  onEditAnnotation?: (id: string) => void;
 };
 
 const DiffFileSection = memo(function DiffFileSection({
@@ -374,10 +437,75 @@ const DiffFileSection = memo(function DiffFileSection({
   options,
   currentSearchMatch,
   embedded,
+  annotations,
+  annotationSelectionActive,
   onToggle,
   onSelectFile,
   onOpenFile,
+  onRequestAnnotation,
+  onEditAnnotation,
 }: DiffFileSectionProps) {
+  const pointerPositionRef = useRef({ x: 0, y: 0 });
+  const [selectedLines, setSelectedLines] = useState<SelectedLineRange | null>(
+    null,
+  );
+  const sectionOptions = useMemo<PierreDiffOptions>(
+    () => ({
+      ...options,
+      lineHoverHighlight: onRequestAnnotation ? "number" : "disabled",
+      enableLineSelection: Boolean(onRequestAnnotation),
+      controlledSelection: Boolean(onRequestAnnotation),
+      onLineSelectionStart: onRequestAnnotation ? setSelectedLines : undefined,
+      onLineSelectionChange: onRequestAnnotation ? setSelectedLines : undefined,
+      onLineSelectionEnd: onRequestAnnotation
+        ? (range) => {
+            if (!section.file || !range) {
+              setSelectedLines(null);
+              return;
+            }
+            const target = findDiffReviewSelection(
+              section.file.diff,
+              range,
+              options.diffStyle === "unified" ? "unified" : "split",
+            );
+            if (!target) {
+              setSelectedLines(null);
+              return;
+            }
+            onRequestAnnotation({
+              x: pointerPositionRef.current.x + 6,
+              y: pointerPositionRef.current.y + 8,
+              path: section.entry.path,
+              kind: section.entry.kind,
+              ...target,
+            });
+          }
+        : undefined,
+    }),
+    [
+      onRequestAnnotation,
+      options,
+      section.entry.kind,
+      section.entry.path,
+      section.file,
+    ],
+  );
+  useEffect(() => {
+    if (!annotationSelectionActive) setSelectedLines(null);
+  }, [annotationSelectionActive]);
+
+  const pierreAnnotations = useMemo(
+    () =>
+      annotations.map((annotation) => ({
+        side:
+          annotation.side === "old"
+            ? ("deletions" as const)
+            : ("additions" as const),
+        lineNumber: annotation.line,
+        metadata: annotation,
+      })),
+    [annotations],
+  );
   const toggle = () => {
     if (section.active) {
       onToggle(section.key, section.collapsed);
@@ -392,6 +520,12 @@ const DiffFileSection = memo(function DiffFileSection({
       className={`diff-file-section ${embedded ? "is-embedded" : ""} ${currentSearchMatch ? "is-search-current" : ""}`}
       data-diff-entry-key={section.key}
       aria-current={currentSearchMatch ? "true" : undefined}
+      onPointerDownCapture={(event) => {
+        pointerPositionRef.current = { x: event.clientX, y: event.clientY };
+      }}
+      onPointerMoveCapture={(event) => {
+        pointerPositionRef.current = { x: event.clientX, y: event.clientY };
+      }}
     >
       {embedded ? null : (
         <header className="diff-file-section-head">
@@ -482,7 +616,28 @@ const DiffFileSection = memo(function DiffFileSection({
                 fallback={<RawPatch patch={section.file.diff} />}
                 resetKey={section.file.diff}
               >
-                <PatchDiff patch={section.file.diff} options={options} />
+                <PatchDiff<DiffReviewAnnotation>
+                  patch={section.file.diff}
+                  options={sectionOptions}
+                  lineAnnotations={pierreAnnotations}
+                  selectedLines={
+                    onRequestAnnotation ? selectedLines : undefined
+                  }
+                  renderAnnotation={({ metadata }) => (
+                    <button
+                      type="button"
+                      className={`diff-review-annotation ${metadata.stale ? "is-stale" : ""}`}
+                      title="Open review comment"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditAnnotation?.(metadata.id);
+                      }}
+                    >
+                      <MessageSquareText size={13} />
+                      <span>{metadata.comment || "Review comment"}</span>
+                    </button>
+                  )}
+                />
               </DiffRenderBoundary>
             </div>
           ) : null}
@@ -512,9 +667,13 @@ function areDiffFileSectionPropsEqual(
     previous.options === next.options &&
     previous.currentSearchMatch === next.currentSearchMatch &&
     previous.embedded === next.embedded &&
+    previous.annotations === next.annotations &&
+    previous.annotationSelectionActive === next.annotationSelectionActive &&
     previous.onToggle === next.onToggle &&
     previous.onSelectFile === next.onSelectFile &&
-    previous.onOpenFile === next.onOpenFile
+    previous.onOpenFile === next.onOpenFile &&
+    previous.onRequestAnnotation === next.onRequestAnnotation &&
+    previous.onEditAnnotation === next.onEditAnnotation
   );
 }
 
@@ -530,8 +689,12 @@ export function DiffContentView({
   mobile = false,
   resourceKey = "default",
   connectionClient,
+  annotations = [],
   onSelectFile,
   onOpenFile,
+  onCreateAnnotation,
+  onReanchorAnnotations,
+  onEditAnnotation,
   embedded = false,
 }: {
   entry: GitDiffEntry | null;
@@ -545,8 +708,16 @@ export function DiffContentView({
   mobile?: boolean;
   resourceKey?: string;
   connectionClient: ConnectionClient;
+  annotations?: readonly ReviewAnnotation[];
   onSelectFile?: (entry: GitDiffEntry) => void;
   onOpenFile?: (entry: GitDiffEntry) => void;
+  onCreateAnnotation?: (annotation: NewReviewAnnotation) => void;
+  onReanchorAnnotations?: (
+    path: string,
+    kind: GitDiffKind,
+    patch: string,
+  ) => void;
+  onEditAnnotation?: (id: string) => void;
   embedded?: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -559,6 +730,8 @@ export function DiffContentView({
   const [desktopWrap, setDesktopWrap] = useState(() => loadDesktopDiffWrap());
   const [mobileWrap, setMobileWrap] = useState(() => loadMobileDiffWrap());
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingAnnotation, setPendingAnnotation] =
+    useState<DiffAnnotationRequest | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchIndex, setSearchIndex] = useState(-1);
   const [hunkIndex, setHunkIndex] = useState(-1);
@@ -586,6 +759,17 @@ export function DiffContentView({
     () => diffContentEntries(entries, entry),
     [entries, entry],
   );
+  const annotationsByPath = useMemo(() => {
+    const grouped = new Map<string, DiffReviewAnnotation[]>();
+    for (const annotation of annotations) {
+      if (annotation.source !== "diff") continue;
+      const key = `${annotation.kind}:${annotation.path}`;
+      const pathAnnotations = grouped.get(key);
+      if (pathAnnotations) pathAnnotations.push(annotation);
+      else grouped.set(key, [annotation]);
+    }
+    return grouped;
+  }, [annotations]);
   const changedFileCount = entries.length || visibleEntries.length;
   const renderedSections = useMemo<DiffSection[]>(
     () =>
@@ -664,6 +848,46 @@ export function DiffContentView({
   const handleOpenFile = useCallback((target: GitDiffEntry) => {
     openFileRef.current?.(target);
   }, []);
+  const handleRequestAnnotation = useCallback(
+    (target: DiffAnnotationRequest) => setPendingAnnotation(target),
+    [],
+  );
+  const closeAnnotationComposer = useCallback(
+    () => setPendingAnnotation(null),
+    [],
+  );
+  const saveAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation || !onCreateAnnotation) return;
+      onCreateAnnotation({
+        source: "diff",
+        path: pendingAnnotation.path,
+        kind: pendingAnnotation.kind,
+        side: pendingAnnotation.side,
+        line: pendingAnnotation.line,
+        ...(pendingAnnotation.endSide === undefined
+          ? {}
+          : { endSide: pendingAnnotation.endSide }),
+        ...(pendingAnnotation.endLine === undefined
+          ? {}
+          : { endLine: pendingAnnotation.endLine }),
+        quote: pendingAnnotation.quote,
+        hunk: pendingAnnotation.hunk,
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [onCreateAnnotation, pendingAnnotation],
+  );
+  const annotationComposerDraft: AnnotationComposerDraft | null =
+    pendingAnnotation
+      ? {
+          x: pendingAnnotation.x,
+          y: pendingAnnotation.y,
+          title: `${pendingAnnotation.path} · ${diffReviewLineLabel(pendingAnnotation)}`,
+          quote: pendingAnnotation.quote,
+        }
+      : null;
   const goToHunk = useCallback(
     (delta: -1 | 1) => {
       if (!hunkTargets.length) return;
@@ -758,6 +982,7 @@ export function DiffContentView({
       tokenizeMaxLineLength: 4_000,
       tokenizeMaxLength: 250_000,
       preferredHighlighter: "shiki-wasm",
+      unsafeCSS: DIFF_SELECTION_CSS,
     }),
     [effectiveViewMode, theme, wrapEnabled],
   );
@@ -766,7 +991,21 @@ export function DiffContentView({
     hunkIndexRef.current = -1;
     hunkNavigationRevisionRef.current += 1;
     setHunkIndex(-1);
+    setPendingAnnotation(null);
   }, [activeEntryKey, file?.diff]);
+
+  useEffect(() => {
+    if (!onReanchorAnnotations) return;
+    for (const section of renderedSections) {
+      if (section.file?.diff && !section.file.truncated) {
+        onReanchorAnnotations(
+          section.entry.path,
+          section.entry.kind,
+          section.file.diff,
+        );
+      }
+    }
+  }, [onReanchorAnnotations, renderedSections]);
 
   useEffect(() => {
     selectFileRef.current = onSelectFile;
@@ -941,9 +1180,20 @@ export function DiffContentView({
           options={pierreOptions}
           currentSearchMatch={currentSearchEntryKey === section.key}
           embedded={embedded}
+          annotations={
+            annotationsByPath.get(section.key) ?? EMPTY_DIFF_REVIEW_ANNOTATIONS
+          }
+          annotationSelectionActive={
+            pendingAnnotation?.path === section.entry.path &&
+            pendingAnnotation.kind === section.entry.kind
+          }
           onToggle={toggleSectionCollapsed}
           onSelectFile={onSelectFile ? handleSelectFile : undefined}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
+          onRequestAnnotation={
+            onCreateAnnotation ? handleRequestAnnotation : undefined
+          }
+          onEditAnnotation={onEditAnnotation}
         />
       ))}
     </Virtualizer>
@@ -1141,6 +1391,11 @@ export function DiffContentView({
       ) : (
         diffList
       )}
+      <AnnotationComposerPopover
+        draft={annotationComposerDraft}
+        onSave={saveAnnotation}
+        onClose={closeAnnotationComposer}
+      />
     </section>
   );
 }
