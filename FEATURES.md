@@ -188,6 +188,22 @@ Lifecycle to manage saved per-checkout settings.
 
 File operations and previews work for both local and SSH-backed workspaces.
 
+## Review Annotations
+
+- Click or drag across diff line numbers, or click a source-file annotation
+  gutter, to attach a short comment with the file, side, line range, content
+  snapshot, and hunk context. Dragged diff ranges remain strongly highlighted
+  while the comment editor is open.
+- Select text in rendered Markdown to annotate the exact passage with its
+  nearest heading path.
+- Edit, delete, and reorder comments in one checkout-scoped review panel.
+- Copy the compiled feedback or pre-fill it in a selected Agent pane. Terminal
+  delivery never submits the message; review it in the Agent input and press
+  Enter manually.
+- Drafts persist in the current browser until delivered or cleared. Refreshed
+  files and diffs re-anchor matching content automatically and mark unresolved
+  anchors as stale without dropping their captured quote.
+
 ## Diff Viewer
 
 - Browse changed files as a directory tree with staged, unstaged, untracked,

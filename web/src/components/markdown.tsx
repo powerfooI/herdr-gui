@@ -63,6 +63,70 @@ type MarkdownRenderOptions = {
   imageUrlResolver?: (source: string) => string | null;
 };
 
+export type MarkdownSelectionTarget = {
+  quote: string;
+  section: string[];
+  x: number;
+  y: number;
+};
+
+function selectionElement(node: Node): Element | null {
+  return node instanceof Element ? node : node.parentElement;
+}
+
+export function markdownHeadingPath(root: Element, node: Node): string[] {
+  const target = selectionElement(node);
+  if (!target || !root.contains(target)) return [];
+  const path: string[] = [];
+  for (const heading of root.querySelectorAll<HTMLElement>(
+    "h1, h2, h3, h4, h5, h6",
+  )) {
+    const beforeTarget =
+      heading === target ||
+      heading.contains(target) ||
+      Boolean(
+        heading.compareDocumentPosition(target) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    if (!beforeTarget) break;
+    const level = Number(heading.tagName.slice(1));
+    path.length = Math.min(path.length, level - 1);
+    path[level - 1] = heading.textContent?.trim() ?? "";
+  }
+  return path.filter(Boolean);
+}
+
+export function markdownSelectionTarget(
+  root: HTMLElement,
+  selection: Selection | null = window.getSelection(),
+): MarkdownSelectionTarget | null {
+  if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const start = selectionElement(range.startContainer);
+  const end = selectionElement(range.endContainer);
+  if (!start || !end || !root.contains(start) || !root.contains(end)) {
+    return null;
+  }
+  if (start.closest(".mermaid-diagram") || end.closest(".mermaid-diagram")) {
+    return null;
+  }
+  const quote = selection
+    .toString()
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  if (!quote || quote.length > 20_000) return null;
+  const rect = range.getBoundingClientRect();
+  if (!rect.width && !rect.height) return null;
+  return {
+    quote,
+    section: markdownHeadingPath(root, range.startContainer),
+    x: rect.left,
+    y: rect.bottom + 6,
+  };
+}
+
 export function sanitizeMarkdownHtml(
   html: string,
   options: Pick<MarkdownRenderOptions, "imageUrlResolver"> = {},
@@ -156,11 +220,13 @@ export function MarkdownPreview({
   className = "",
   breaks = false,
   imageUrlResolver,
+  onSelectionChange,
 }: {
   text: string;
   className?: string;
   breaks?: boolean;
   imageUrlResolver?: (source: string) => string | null;
+  onSelectionChange?: (target: MarkdownSelectionTarget | null) => void;
 }) {
   const html = useMemo(
     () => renderMarkdown(text, { breaks, imageUrlResolver }),
@@ -212,10 +278,38 @@ export function MarkdownPreview({
     };
   }, [html]);
 
+  useEffect(() => {
+    if (!onSelectionChange) return;
+    let frame = 0;
+    const updateSelection = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const root = articleRef.current;
+        onSelectionChange(root ? markdownSelectionTarget(root) : null);
+      });
+    };
+    document.addEventListener("selectionchange", updateSelection);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", updateSelection);
+    };
+  }, [onSelectionChange]);
+
   return (
     <article
       ref={articleRef}
       className={`file-preview-markdown ${className}`.trim()}
+      onPointerDown={() => onSelectionChange?.(null)}
+      onPointerUp={() => {
+        requestAnimationFrame(() => {
+          const root = articleRef.current;
+          onSelectionChange?.(root ? markdownSelectionTarget(root) : null);
+        });
+      }}
+      onKeyUp={() => {
+        const root = articleRef.current;
+        onSelectionChange?.(root ? markdownSelectionTarget(root) : null);
+      }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
