@@ -65,6 +65,7 @@ type PierreDiffOptions = NonNullable<
 const DIFF_VIEW_MODE_KEY = "diffViewMode";
 const DESKTOP_DIFF_WRAP_KEY = "desktopDiffWrap";
 const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
+const EMPTY_DIFF_REVIEW_ANNOTATIONS: readonly DiffReviewAnnotation[] = [];
 const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
   poolSize: Math.min(
     Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1),
@@ -626,24 +627,6 @@ const DiffFileSection = memo(function DiffFileSection({
                     <button
                       type="button"
                       className={`diff-review-annotation ${metadata.stale ? "is-stale" : ""}`}
-                      style={{
-                        maxWidth: "min(440px, 100%)",
-                        minHeight: 24,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        overflow: "hidden",
-                        padding: "3px 8px",
-                        border: `1px solid ${metadata.stale ? "var(--warning-text)" : "color-mix(in srgb, var(--accent) 48%, transparent)"}`,
-                        borderRadius: 999,
-                        background: metadata.stale
-                          ? "var(--warning-soft)"
-                          : "var(--accent-soft)",
-                        color: metadata.stale
-                          ? "var(--warning-text)"
-                          : "var(--text-strong)",
-                        font: "11px/1.2 var(--sans-font)",
-                      }}
                       title="Open review comment"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -651,15 +634,7 @@ const DiffFileSection = memo(function DiffFileSection({
                       }}
                     >
                       <MessageSquareText size={13} />
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {metadata.comment || "Review comment"}
-                      </span>
+                      <span>{metadata.comment || "Review comment"}</span>
                     </button>
                   )}
                 />
@@ -1205,7 +1180,9 @@ export function DiffContentView({
           options={pierreOptions}
           currentSearchMatch={currentSearchEntryKey === section.key}
           embedded={embedded}
-          annotations={annotationsByPath.get(section.key) ?? []}
+          annotations={
+            annotationsByPath.get(section.key) ?? EMPTY_DIFF_REVIEW_ANNOTATIONS
+          }
           annotationSelectionActive={
             pendingAnnotation?.path === section.entry.path &&
             pendingAnnotation.kind === section.entry.kind
