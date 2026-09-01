@@ -18,15 +18,11 @@ dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
 
 ## Screenshots
 
-> These screenshots predate the product rebrand, so their header still shows
-> `herdr-gui`. The current application header reads **Herdr Studio**; the
-> illustrated layout and behavior are unchanged.
-
 ### Desktop
 
-[![Desktop workspace with a live terminal and session inspector][desktop-session]][desktop-session]
+[![Desktop workspace with a live terminal and session history][desktop-session]][desktop-session]
 
-Workspace terminal with live agent and session inspection.
+Workspace terminal with live agent session history.
 
 <!-- markdownlint-disable MD033 -->
 
@@ -35,19 +31,19 @@ Workspace terminal with live agent and session inspection.
     <tr>
       <th width="33.33%" align="center">File explorer</th>
       <th width="33.33%" align="center">Diff viewer</th>
-      <th width="33.33%" align="center">Command palette</th>
+      <th width="33.33%" align="center">Full terminal</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-desktop-finder.png"><img src="./docs/images/herdr-gui-desktop-finder.png" alt="Desktop file explorer" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-desktop-file-explorer.png"><img src="./docs/images/herdr-studio-desktop-file-explorer.png" alt="Desktop file explorer" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-desktop-diff-viewer.png"><img src="./docs/images/herdr-gui-desktop-diff-viewer.png" alt="Desktop diff viewer" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-desktop-diff-viewer.png"><img src="./docs/images/herdr-studio-desktop-diff-viewer.png" alt="Desktop diff viewer" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-desktop-terminal.png"><img src="./docs/images/herdr-gui-desktop-terminal.png" alt="Desktop terminal with the command palette open" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-desktop-terminal.png"><img src="./docs/images/herdr-studio-desktop-terminal.png" alt="Desktop terminal" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -58,21 +54,21 @@ Workspace terminal with live agent and session inspection.
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">Workspaces and agents</th>
+      <th width="33.33%" align="center">Changed files</th>
       <th width="33.33%" align="center">Full terminal control</th>
-      <th width="33.33%" align="center">File explorer</th>
+      <th width="33.33%" align="center">File viewer</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-mobile-workspaces.png"><img src="./docs/images/herdr-gui-mobile-workspaces.png" alt="Mobile workspace and agent list" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-mobile-changed-files.png"><img src="./docs/images/herdr-studio-mobile-changed-files.png" alt="Mobile changed files viewer" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-mobile-terminal.png"><img src="./docs/images/herdr-gui-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-mobile-terminal.png"><img src="./docs/images/herdr-studio-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-gui-mobile-finder.png"><img src="./docs/images/herdr-gui-mobile-finder.png" alt="Mobile file explorer" width="100%" /></a>
+        <a href="./docs/images/herdr-studio-mobile-file-viewer.png"><img src="./docs/images/herdr-studio-mobile-file-viewer.png" alt="Mobile file viewer" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -82,7 +78,7 @@ Workspace terminal with live agent and session inspection.
 
 Click any screenshot to open the full-resolution image.
 
-[desktop-session]: ./docs/images/herdr-gui-desktop-session-inspect.png
+[desktop-session]: ./docs/images/herdr-studio-desktop-session-history.png
 
 ## Quick start
 
