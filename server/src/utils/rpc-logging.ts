@@ -1,5 +1,9 @@
-import { NO_TERMINAL_ATTACHED_MESSAGE } from "../bridge/terminal-bridge";
 import type { LogLevel } from "./logger";
+
+// RPC error text for terminal calls made before a terminal is attached. The
+// terminal bridge throws this exact message and the classifier below treats
+// it as an expected detach race, so both sides share one constant.
+export const NO_TERMINAL_ATTACHED_MESSAGE = "no terminal attached";
 
 export function isExpectedRpcError(
   method: string | null,

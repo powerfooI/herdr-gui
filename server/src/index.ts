@@ -483,7 +483,9 @@ function safeSend(
     },
     context,
     warn: (message) =>
-      logger.warn("websocket send failed", { detail: message }),
+      logger.warn("websocket send failed", {
+        detail: message.replace(/^\[bridge\] /, ""),
+      }),
   });
 }
 

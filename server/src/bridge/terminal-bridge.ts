@@ -4,6 +4,7 @@ import {
   serializeConnectionEnvelope,
 } from "../connections/protocol";
 import { type Logger, silentLogger } from "../utils/logger";
+import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 
 type TerminalSession = {
@@ -38,10 +39,6 @@ type ClipboardTarget = {
 const CLIPBOARD_INPUT_WINDOW_MS = 30_000;
 const CLIPBOARD_RELAY_READY_WAIT_MS = 500;
 const TERMINAL_FIRST_FRAME_WAIT_MS = 20_000;
-// RPC error text for terminal calls made before a terminal is attached. The
-// websocket layer classifies this message as an expected detach race, so keep
-// it in sync with utils/rpc-logging.ts.
-export const NO_TERMINAL_ATTACHED_MESSAGE = "no terminal attached";
 // Herdr rejects OSC 52 bodies above 256 KiB before emitting Clipboard.
 const MAX_TERMINAL_CLIPBOARD_BASE64_CHARS = 256 * 1024;
 const STANDARD_BASE64_RE =
