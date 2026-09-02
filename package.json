@@ -5,7 +5,7 @@
   "description": "Herdr Studio: a web client for Herdr (local socket bridge + React dashboard).",
   "license": "MIT",
   "author": "Arthur",
-  "homepage": "https://github.com/powerfooI/herdr-studio",
+  "homepage": "https://powerfooI.github.io/herdr-studio/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/powerfooI/herdr-studio.git"
@@ -20,6 +20,7 @@
     "dev:server": "cd server && bun run --hot src/index.ts",
     "dev:web": "cd web && bun run dev",
     "build:web": "cd web && bun run build",
+    "build:site": "bun scripts/build-pages.ts",
     "build:server": "cd server && bun run compile",
     "build": "bun run build:web && bun run build:server",
     "postbuild": "bun run clean:bun-build",

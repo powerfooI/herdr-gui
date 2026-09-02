@@ -4,6 +4,8 @@
 
 ### Added
 
+- Add a responsive GitHub Pages landing page with a product tour, mobile
+  previews, install guidance, social metadata, and automated deployment.
 - Add inline review annotations for diff lines, source lines, and rendered
   Markdown selections. A shared review panel edits and orders comments,
   preserves drafts per checkout, copies compiled feedback, or pre-fills an
