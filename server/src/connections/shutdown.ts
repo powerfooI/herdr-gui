@@ -1,3 +1,5 @@
+import { serverLogger } from "../utils/logger";
+
 type ShutdownControllerOptions = {
   stop: () => void | Promise<void>;
   exit: (code: number) => void;
@@ -39,10 +41,11 @@ export function createShutdownController(options: ShutdownControllerOptions) {
           try {
             options.onStopError?.(error);
           } catch (observerError) {
-            console.error(
-              "[bridge] shutdown error observer failed:",
-              observerError,
-            );
+            serverLogger
+              .child("connections")
+              .error("shutdown error observer failed", {
+                error: observerError,
+              });
           }
         } finally {
           cancelForceExit();

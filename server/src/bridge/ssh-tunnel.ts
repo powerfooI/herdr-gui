@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
+import { type Logger, silentLogger } from "../utils/logger";
 import { sshCommandArgv, sshTunnelArgv } from "./ssh-command";
 
 const SSH_STDERR_MAX_BYTES = 16 * 1024;
@@ -161,6 +162,7 @@ class SocketWaitCancelledError extends Error {}
 export function createSshTunnelManager(args: {
   connectionId?: string;
   formatError?: (error: unknown) => string;
+  logger?: Logger;
   config: SshTunnelConfig;
   runProcess: RunProcess;
   onUnexpectedExit?: (error: SshTunnelError) => void;
@@ -178,6 +180,7 @@ export function createSshTunnelManager(args: {
     platform?: string;
   };
 }) {
+  const logger = args.logger ?? silentLogger;
   const platform = args.dependencies?.platform ?? process.platform;
   const exists = args.dependencies?.exists ?? existsSync;
   const formatError =
@@ -341,17 +344,19 @@ export function createSshTunnelManager(args: {
       try {
         proc.kill();
       } catch (error) {
-        console.warn(
-          `[bridge] unable to stop SSH tunnel ${connectionDetail}: ${formatError(error)}`,
-        );
+        logger.warn("unable to stop SSH tunnel", {
+          connection: args.connectionId ?? "legacy-default",
+          error: formatError(error),
+        });
       }
       if (await processExitedWithin(proc, processStopTimeoutMs)) return;
       try {
         proc.kill(9);
       } catch (error) {
-        console.warn(
-          `[bridge] unable to force-stop SSH tunnel ${connectionDetail}: ${formatError(error)}`,
-        );
+        logger.warn("unable to force-stop SSH tunnel", {
+          connection: args.connectionId ?? "legacy-default",
+          error: formatError(error),
+        });
       }
       if (!(await processExitedWithin(proc, processForceKillTimeoutMs))) {
         throw new Error(
@@ -412,13 +417,17 @@ export function createSshTunnelManager(args: {
 
     const argv = sshTunnelArgv(host, forwards);
 
-    console.log(
-      `[bridge] starting SSH tunnel ${connectionDetail} to ${formatError(host)}`,
-    );
+    logger.debug("starting SSH tunnel", {
+      connection: args.connectionId ?? "legacy-default",
+      destination: formatError(host),
+    });
     for (const forward of forwards) {
-      console.log(
-        `[bridge]   ${connectionDetail} ${forward.label}: ${forward.local} -> ${forward.remote}`,
-      );
+      logger.debug("SSH tunnel forwarding socket", {
+        connection: args.connectionId ?? "legacy-default",
+        label: forward.label,
+        local: forward.local,
+        remote: forward.remote,
+      });
     }
 
     const proc = spawn(argv);
@@ -482,7 +491,9 @@ export function createSshTunnelManager(args: {
         );
       });
 
-    console.log("[bridge] SSH tunnel ready", connectionDetail);
+    logger.debug("SSH tunnel ready", {
+      connection: args.connectionId ?? "legacy-default",
+    });
   }
 
   function cleanupAutoSshTunnel(): Promise<void> {

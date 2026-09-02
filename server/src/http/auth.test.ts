@@ -121,7 +121,7 @@ describe("generated token login", () => {
     ).toBe(true);
   });
 
-  test("builds an encoded token URL for local and LAN startup output", () => {
+  test("builds an encoded token URL for browser launch", () => {
     expect(withLoginToken(browserUrlFor("0.0.0.0", 8787), "secret token")).toBe(
       "http://localhost:8787/?token=secret+token",
     );

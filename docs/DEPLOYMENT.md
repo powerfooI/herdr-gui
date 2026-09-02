@@ -76,6 +76,7 @@ Flags override environment variables, which override defaults. Run
 | `--ssh-host <user@host>` | `HERDR_SSH_HOST` | Disabled; supported on Linux and macOS |
 | `--session <name>` | `HERDR_SESSION` | Named Herdr session, if set |
 | `--public-dir <path>` | `PUBLIC_DIR` | Embedded assets |
+| `--log-level <level>` | `HERDR_GUI_LOG_LEVEL` | `info` |
 | `--open` | `OPEN_BROWSER=1` | Disabled |
 
 Additional runtime settings:
@@ -106,6 +107,27 @@ herdr-gui --host 0.0.0.0 --port 8787 --password 's3cr3t'
 ```
 
 Read [SECURITY.md](../SECURITY.md) before using a non-loopback bind.
+
+## Logging
+
+Runtime logs use one line per event with an ISO timestamp, severity, scope, and
+bounded key/value context. The default `info` level records startup, connection
+readiness and recovery, degraded states, and fatal failures without routine RPC,
+Herdr event, terminal frame, or successful auto-sync traffic.
+
+Use `debug` temporarily when diagnosing request or lifecycle behavior:
+
+```bash
+herdr-gui --log-level debug
+# or in herdr-gui.env
+HERDR_GUI_LOG_LEVEL=debug
+```
+
+For a managed service, restart after changing `herdr-gui.env`. Debug context can
+include workspace paths and connection or terminal identifiers, so return to
+`info` after collecting the required diagnostics. Runtime logs print browser
+and LAN URLs without authentication tokens; generated tokens remain in the
+protected token file described below.
 
 ## Multiple and remote Herdr connections
 

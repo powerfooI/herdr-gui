@@ -22,6 +22,9 @@ PORT=8787
 # Optional fixed password. By default, service install creates a generated token.
 # HERDR_GUI_PASSWORD=replace-with-a-strong-password
 
+# Operational logs default to info. Use debug only while diagnosing an issue.
+# HERDR_GUI_LOG_LEVEL=info
+
 # Optional Herdr connection settings.
 # HERDR_SOCKET_PATH=/path/to/herdr.sock
 # HERDR_CLIENT_SOCKET_PATH=/path/to/herdr-client.sock

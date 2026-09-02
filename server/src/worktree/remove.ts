@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { realpath, rename } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { sshCommandArgv } from "../bridge/ssh-command";
+import { serverLogger } from "../utils/logger";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -205,7 +206,10 @@ export async function removeWorktreeWithRecovery({
   params,
   checkoutPath,
   runtime,
-  log = console.warn,
+  log = (message) =>
+    serverLogger
+      .child("worktree")
+      .warn("cleanup warning", { detail: message.replace(/^\[bridge\] /, "") }),
 }: {
   call: HerdrCall;
   params: Record<string, unknown>;

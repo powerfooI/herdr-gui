@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { assertSshTunnelPlatformSupported } from "../bridge/ssh-tunnel";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
+import { type LogLevel, parseLogLevel, serverLogger } from "../utils/logger";
 
 type CliArgs = Partial<{
   host: string;
@@ -16,6 +17,7 @@ type CliArgs = Partial<{
   "ssh-host": string;
   session: string;
   "public-dir": string;
+  "log-level": string;
   open: boolean;
   help: boolean;
   version: boolean;
@@ -35,6 +37,7 @@ export type ServerConfig = {
   sshHost?: string;
   session?: string;
   openBrowserRequested: boolean;
+  logLevel: LogLevel;
   hasExplicitSocketPath: boolean;
   hasExplicitClientSocketPath: boolean;
 };
@@ -48,10 +51,18 @@ const cliOptions = {
   "ssh-host": { type: "string" },
   session: { type: "string" },
   "public-dir": { type: "string" },
+  "log-level": { type: "string" },
   open: { type: "boolean" },
   help: { type: "boolean" },
   version: { type: "boolean", short: "V" },
 } as const;
+
+export function resolveServerLogLevel(
+  cliValue: string | undefined,
+  envValue: string | undefined,
+): LogLevel {
+  return parseLogLevel(cliValue ?? envValue ?? "info");
+}
 
 export function loadServerConfig(appVersion: string): ServerConfig {
   let args: CliArgs;
@@ -91,6 +102,7 @@ Options (flags override env vars):
   --ssh-host <user@host>     remote Herdr over SSH (env HERDR_SSH_HOST)
   --session <name>           named herdr session   (env HERDR_SESSION)
   --public-dir <path>        static assets dir     (env PUBLIC_DIR,      default: embedded)
+  --log-level <level>        error|warn|info|debug  (env HERDR_GUI_LOG_LEVEL, default: info)
   --open                     open browser on start (env OPEN_BROWSER=1)
   -V, --version              show version
   --help                     show this help
@@ -101,6 +113,17 @@ Options (flags override env vars):
   if (args.version) {
     console.log(`herdr-gui ${appVersion}`);
     process.exit(0);
+  }
+
+  let logLevel: LogLevel;
+  try {
+    logLevel = resolveServerLogLevel(
+      args["log-level"],
+      process.env.HERDR_GUI_LOG_LEVEL,
+    );
+  } catch (error) {
+    console.error(`[bridge] ${(error as Error).message}`);
+    process.exit(2);
   }
 
   const host = String(args.host ?? process.env.HOST ?? "127.0.0.1");
@@ -164,6 +187,7 @@ Options (flags override env vars):
     session,
     openBrowserRequested:
       args.open === true || process.env.OPEN_BROWSER === "1",
+    logLevel,
     hasExplicitSocketPath,
     hasExplicitClientSocketPath,
   };
@@ -304,6 +328,6 @@ export function openBrowser(config: ServerConfig, url: string) {
   try {
     Bun.spawn([opener, ...openerArgs], { stdout: "ignore", stderr: "ignore" });
   } catch (e) {
-    console.error(`[bridge] failed to open browser: ${(e as Error).message}`);
+    serverLogger.child("browser").warn("failed to open browser", { error: e });
   }
 }

@@ -71,7 +71,14 @@ import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
 } from "./http/update";
+import {
+  configureServerLogger,
+  createRecoveryReporter,
+  type RecoveryReporter,
+  serverLogger,
+} from "./utils/logger";
 import { runProcessWithCodeTimeout, shQuote } from "./utils/process-utils";
+import { rpcLogLevel } from "./utils/rpc-logging";
 import { syncWorktreeBase } from "./worktree/create";
 import {
   removeWorktreeWithRecovery,
@@ -86,6 +93,8 @@ if (serviceCommandResult === SERVICE_COMMAND_CONTINUE) {
   process.exit(serviceCommandResult);
 }
 const config = loadServerConfig(APP_VERSION);
+configureServerLogger(config.logLevel);
+const logger = serverLogger;
 const downstreamConnectionConfig = {
   socketPath: config.socketPath,
   clientSocketPath: config.clientSocketPath,
@@ -140,7 +149,8 @@ const IMPORTANT_RPC_METHODS = new Set([
 ]);
 const SLOW_RPC_LOG_MS = 750;
 const legacyRoutingLogger = createLegacyRoutingLogger({
-  log: (message) => console.warn(message),
+  log: (message) =>
+    logger.warn("deprecated request routing", { detail: message }),
 });
 
 function clientLabel(ws: ServerWebSocket<unknown>): string {
@@ -233,15 +243,15 @@ function logRpc(
   const elapsedMs = Date.now() - startedAt;
   const failed = status === "error";
   if (!shouldLogRpc(method, elapsedMs, failed)) return;
-  const parts = [
-    `[bridge] rpc ${status}`,
-    `client=${clientLabel(ws)}`,
-    `method=${method ? logDetail(method) : "unknown"}`,
-    ...(connectionId ? [`connection=${logDetail(connectionId)}`] : []),
-    `duration=${elapsedMs}ms`,
-  ];
-  if (detail) parts.push(`detail=${logDetail(detail)}`);
-  console.log(parts.join(" "));
+  const level = rpcLogLevel({ method, status, detail });
+  logger[level]("rpc completed", {
+    status,
+    client: clientLabel(ws),
+    method: method ? logDetail(method) : "unknown",
+    connection: connectionId ? logDetail(connectionId) : undefined,
+    duration_ms: elapsedMs,
+    detail: detail ? logDetail(detail) : undefined,
+  });
 }
 
 function summarizeHerdrEvent(event: any): string {
@@ -282,9 +292,10 @@ try {
   });
 } catch (error) {
   const registryLoadError = sanitizeConnectionError(error);
-  console.error(
-    `[bridge] invalid connection registry preserved; profile mutations are disabled: ${registryLoadError}`,
-  );
+  logger.error("invalid connection registry preserved", {
+    error: registryLoadError,
+    profile_mutations: "disabled",
+  });
   connectionBootstrap = {
     defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
     explicitLegacyOverride,
@@ -296,16 +307,52 @@ try {
   };
 }
 
+const connectionFailureReporters = new Map<string, RecoveryReporter>();
+const readyConnectionGenerations = new Set<string>();
+
+function connectionFailureReporter(connectionId: string): RecoveryReporter {
+  let reporter = connectionFailureReporters.get(connectionId);
+  if (!reporter) {
+    reporter = createRecoveryReporter({
+      logger: logger.child("connections"),
+      failureMessage: "connection degraded",
+      recoveryMessage: "connection recovered",
+    });
+    connectionFailureReporters.set(connectionId, reporter);
+  }
+  return reporter;
+}
+
 const connectionManager = new ConnectionManager<LegacyConnectionRuntime>(
   connectionBootstrap.defaultConnectionId,
   (status) => {
-    const error = status.error
-      ? ` error=${logDetail(status.error.message)}`
-      : "";
-    console.log(
-      `[bridge] connection status id=${status.id} state=${status.state} generation=${status.generation}${error}`,
-    );
+    const fields = {
+      connection: status.id,
+      state: status.state,
+      generation: status.generation,
+    };
+    logger.debug("connection status", {
+      ...fields,
+      error: status.error?.message,
+    });
+    const reporter = connectionFailureReporter(status.id);
+    if (
+      (status.state === "error" || status.state === "reconnecting") &&
+      status.error
+    ) {
+      reporter.failure(status.error.message, fields);
+      return;
+    }
+    if (status.state !== "ready") return;
+    const generationKey = `${status.id}\0${status.generation}`;
+    if (reporter.recovered(fields)) {
+      readyConnectionGenerations.add(generationKey);
+    } else if (!readyConnectionGenerations.has(generationKey)) {
+      readyConnectionGenerations.add(generationKey);
+      logger.info("connection ready", fields);
+    }
   },
+  logger.child("connections"),
 );
 
 function runtimeFactoryForProfile(
@@ -333,16 +380,16 @@ function runtimeFactoryForProfile(
         identity,
         connectionGeneration: context.generation,
         config: profileConfig,
+        logger: logger.child("connection"),
         safeSend,
         clientLabel,
         markRpcError,
         onEvent: (event, eventIdentity) => {
           if (!context.isCurrent()) return;
-          console.log(
-            "[bridge] herdr event",
-            `connection=${eventIdentity.id}`,
-            summarizeHerdrEvent(event),
-          );
+          logger.debug("Herdr event", {
+            connection: eventIdentity.id,
+            detail: summarizeHerdrEvent(event),
+          });
           try {
             const line = serializeHerdrEventEnvelope(
               eventIdentity.id,
@@ -351,17 +398,11 @@ function runtimeFactoryForProfile(
             );
             for (const ws of clients) safeSend(ws, line, "event");
           } catch (error) {
-            console.error(
-              `[bridge] dropped invalid Herdr event connection=${eventIdentity.id}: ${sanitizeConnectionError(error)}`,
-            );
+            logger.warn("dropped invalid Herdr event", {
+              connection: eventIdentity.id,
+              error: sanitizeConnectionError(error),
+            });
           }
-        },
-        onError: (error, eventIdentity) => {
-          if (!context.isCurrent()) return;
-          console.error(
-            `[herdr connection=${eventIdentity.id}]`,
-            sanitizeConnectionError(error),
-          );
         },
         onTransportExit: profileConfig.sshHost
           ? (error) => {
@@ -441,6 +482,8 @@ function safeSend(
       webSocketCleanup.cleanup(ws);
     },
     context,
+    warn: (message) =>
+      logger.warn("websocket send failed", { detail: message }),
   });
 }
 
@@ -842,9 +885,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         .rememberWorktreeParent(result, workspaceId, requestIsCurrent)
         .catch((error) => {
           if (!requestIsCurrent()) return;
-          console.warn(
-            `[bridge] unable to persist worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
-          );
+          logger.warn("unable to persist worktree parent", {
+            connection: connectionId,
+            error: sanitizeConnectionError(error),
+          });
         });
       const hookSourceWorkspace = sourceWorkspace
         ? {
@@ -883,9 +927,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         .rememberWorktreeParent(result, workspaceId, requestIsCurrent)
         .catch((error) => {
           if (!requestIsCurrent()) return;
-          console.warn(
-            `[bridge] unable to persist opened worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
-          );
+          logger.warn("unable to persist opened worktree parent", {
+            connection: connectionId,
+            error: sanitizeConnectionError(error),
+          });
         });
       const openedHook = await runWorktreeOpenedHook(result, sourceWorkspace);
       sendReply(
@@ -947,18 +992,20 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
             runtime: worktreeRemovalRuntime,
           });
           if (removal.cleanup?.preserved_path) {
-            console.warn(
-              `[bridge] preserved stale worktree files connection=${connectionId} at ${removal.cleanup.preserved_path}`,
-            );
+            logger.warn("preserved stale worktree files", {
+              connection: connectionId,
+              path: removal.cleanup.preserved_path,
+            });
           }
           if (removeHookContext?.checkoutPath) {
             await worktreeParents
               .forgetWorktree(removeHookContext.checkoutPath, requestIsCurrent)
               .catch((error) => {
                 if (!requestIsCurrent()) return;
-                console.warn(
-                  `[bridge] unable to remove worktree parent connection=${connectionId}: ${sanitizeConnectionError(error)}`,
-                );
+                logger.warn("unable to remove worktree parent", {
+                  connection: connectionId,
+                  error: sanitizeConnectionError(error),
+                });
               });
           }
           const removedHook = await runWorktreeRemovedHook(removeHookContext);
@@ -1172,11 +1219,10 @@ function main() {
           open(ws) {
             clients.add(ws);
             const label = assignClientId(ws);
-            console.log(
-              "[bridge] client connected",
-              `client=${label}`,
-              `clients=${clients.size}`,
-            );
+            logger.debug("client connected", {
+              client: label,
+              clients: clients.size,
+            });
             notifyBrowserClientCount();
             safeSend(
               ws,
@@ -1257,14 +1303,13 @@ function main() {
           },
           close(ws) {
             const { client, viewedTerminals } = webSocketCleanup.complete(ws);
-            console.log(
-              "[bridge] client disconnected",
-              `client=${client}`,
-              `clients=${clients.size}`,
-              viewedTerminals.length
-                ? `terminals=${viewedTerminals.join(",")}`
-                : "terminals=none",
-            );
+            logger.debug("client disconnected", {
+              client,
+              clients: clients.size,
+              terminals: viewedTerminals.length
+                ? viewedTerminals.join(",")
+                : "none",
+            });
           },
         },
       }),
@@ -1275,59 +1320,60 @@ function main() {
       void runtime?.herdr
         .ping()
         .then((ping) =>
-          console.log(
-            `[bridge] herdr connection=${runtime.identity.id} ${ping.version} (protocol ${ping.protocol}) reachable`,
-          ),
+          logger.info("Herdr reachable", {
+            connection: runtime.identity.id,
+            version: ping.version,
+            protocol: ping.protocol,
+          }),
         )
         .catch((error) =>
-          console.error(
-            `[bridge] herdr connection=${runtime.identity.id} not reachable yet (${sanitizeConnectionError(error)}); ` +
-              "start a server with `herdr server`. RPCs will retry per request.",
-          ),
+          logger.warn("Herdr not reachable yet", {
+            connection: runtime.identity.id,
+            error: sanitizeConnectionError(error),
+            action: "start `herdr server`; RPCs retry per request",
+          }),
         );
     },
     onConnectionError: (error) => {
-      console.error(
-        `[bridge] default connection startup failed: ${sanitizeConnectionError(error)}`,
-      );
+      logger.warn("default connection startup failed", {
+        error: sanitizeConnectionError(error),
+      });
     },
   });
   const listeningPort = server.port ?? config.port;
-  console.log(
-    `[bridge] listening on http://${config.host}:${listeningPort}  (ws /ws)`,
-  );
+  const publicBrowserUrl = browserUrlFor(config.host, listeningPort);
+  logger.info("listening", {
+    url: publicBrowserUrl,
+    websocket: "/ws",
+    log_level: config.logLevel,
+  });
   if (config.authRequired) {
     if (config.generatedAuthTokenPath) {
-      console.log(
-        `[bridge] auth required (generated token stored at ${config.generatedAuthTokenPath})`,
-      );
+      logger.info("authentication required", {
+        mode: "generated token",
+        path: config.generatedAuthTokenPath,
+      });
     } else {
-      console.log("[bridge] auth required (password login enabled)");
+      logger.info("authentication required", { mode: "password" });
     }
   }
-  console.log(`[bridge] herdr socket: ${config.socketPath}`);
-  console.log(`[bridge] herdr client socket: ${config.clientSocketPath}`);
-  console.log(`[bridge] public dir: ${config.publicDir}`);
+  logger.debug("Herdr sockets configured", {
+    control_socket: config.socketPath,
+    client_socket: config.clientSocketPath,
+    public_dir: config.publicDir,
+  });
+  logger.info("browser URL", { url: publicBrowserUrl });
 
   const browserUrl = withLoginToken(
-    browserUrlFor(config.host, listeningPort),
+    publicBrowserUrl,
     config.generatedAuthToken,
   );
-  console.log(`[bridge] browser URL: ${browserUrl}`);
   if (isAnyHost(config.host)) {
-    const lanUrls = getLanIPs().map((ip) =>
-      withLoginToken(
-        `http://${ip}:${listeningPort}`,
-        config.generatedAuthToken,
-      ),
-    );
+    const lanUrls = getLanIPs().map((ip) => `http://${ip}:${listeningPort}`);
     if (lanUrls.length > 0) {
-      console.log("[bridge] accessible from your LAN at:");
-      for (const url of lanUrls) console.log(`[bridge]   ${url}`);
+      for (const url of lanUrls) logger.info("LAN URL", { url });
     } else {
-      console.log(
-        `[bridge] listening on all interfaces; no LAN IPv4 address was detected.`,
-      );
+      logger.warn("no LAN IPv4 address detected");
     }
   }
   openBrowser(config, browserUrl);
@@ -1344,9 +1390,9 @@ const shutdownController = createShutdownController({
   stop: stopManagerOnce,
   exit: (code) => process.exit(code),
   onStopError: (error) => {
-    console.error(
-      `[bridge] connection shutdown failed: ${sanitizeConnectionError(error)}`,
-    );
+    logger.error("connection shutdown failed", {
+      error: sanitizeConnectionError(error),
+    });
   },
 });
 
@@ -1370,6 +1416,6 @@ process.on("SIGTERM", () => {
 try {
   main();
 } catch (e) {
-  console.error(`[bridge] FATAL: ${(e as Error).message}`);
+  logger.error("fatal startup error", { error: e });
   void shutdownController.request(1);
 }

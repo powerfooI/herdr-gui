@@ -137,7 +137,7 @@ function bridgeListeningPort(stream: ReadableStream<Uint8Array>) {
         if (done) break;
         output += decoder.decode(value, { stream: true });
         const match = output.match(
-          /\[bridge\] listening on http:\/\/.*:(\d+)\s+\(ws \/ws\)/,
+          /\bINFO bridge listening\b[^\r\n]*\burl=http:\/\/[^\s]+:(\d+)\b/,
         );
         if (match && !settled) {
           settled = true;

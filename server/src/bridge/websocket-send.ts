@@ -1,4 +1,8 @@
+import { serverLogger } from "../utils/logger";
+
 export const WS_BACKPRESSURE_LIMIT_BYTES = 8 * 1024 * 1024;
+
+const websocketLogger = serverLogger.child("websocket");
 
 interface WebSocketSendTarget {
   close(code?: number, reason?: string): void;
@@ -91,7 +95,10 @@ export function sendWebSocketMessage(
   {
     cleanup,
     context = "message",
-    warn = (message) => console.warn(message),
+    warn = (message) =>
+      websocketLogger.warn("send failed", {
+        detail: message.replace(/^\[bridge\] /, ""),
+      }),
   }: WebSocketSendOptions,
 ): boolean {
   const sendContext = { cleanup, context, warn };

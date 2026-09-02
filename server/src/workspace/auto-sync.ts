@@ -8,6 +8,12 @@ import {
   updateGuiSettings,
   workspaceAutoSyncSettingsKey,
 } from "../config/gui-settings";
+import {
+  createRecoveryReporter,
+  type Logger,
+  type RecoveryReporter,
+  silentLogger,
+} from "../utils/logger";
 import { GIT_PULL_TIMEOUT_MS } from "./file-constants";
 import type { RunProcessWithCodeTimeout } from "./file-types";
 
@@ -216,6 +222,7 @@ export async function syncWorkspaceBranch({
 export function createWorkspaceAutoSync(args: {
   connectionId?: string;
   formatError?: (error: unknown) => string;
+  logger?: Logger;
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   shQuote: (value: string) => string;
@@ -226,6 +233,7 @@ export function createWorkspaceAutoSync(args: {
   updateSettings?: typeof updateGuiSettings;
   syncBranch?: typeof syncWorkspaceBranch;
 }) {
+  const logger = args.logger ?? silentLogger;
   const readSettings = args.readSettings ?? readGuiSettings;
   const updateSettings = args.updateSettings ?? updateGuiSettings;
   const syncBranch = args.syncBranch ?? syncWorkspaceBranch;
@@ -236,7 +244,13 @@ export function createWorkspaceAutoSync(args: {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 2_000));
-  const connectionDetail = `connection=${args.connectionId ?? "legacy-default"}`;
+  const connectionId = args.connectionId ?? "legacy-default";
+  const syncFailureReporters = new Map<string, RecoveryReporter>();
+  const tickFailureReporter = createRecoveryReporter({
+    logger,
+    failureMessage: "workspace auto-sync tick failed",
+    recoveryMessage: "workspace auto-sync tick recovered",
+  });
   let timer: ReturnType<typeof setInterval> | null = null;
   let started = false;
   let lifecycleGeneration = 0;
@@ -248,6 +262,19 @@ export function createWorkspaceAutoSync(args: {
 
   function current(generation: number) {
     return started && lifecycleGeneration === generation;
+  }
+
+  function syncFailureReporter(key: string): RecoveryReporter {
+    let reporter = syncFailureReporters.get(key);
+    if (!reporter) {
+      reporter = createRecoveryReporter({
+        logger,
+        failureMessage: "workspace auto-sync failed",
+        recoveryMessage: "workspace auto-sync recovered",
+      });
+      syncFailureReporters.set(key, reporter);
+    }
+    return reporter;
   }
 
   async function recordResult(
@@ -374,12 +401,11 @@ export function createWorkspaceAutoSync(args: {
         const { workspace, root } = target;
         forcedKeys.delete(key);
         runningKeys.add(key);
-        console.log(
-          "[bridge] workspace auto-sync started",
-          connectionDetail,
-          `workspace=${workspace.workspace_id ?? "unknown"}`,
-          `path=${root}`,
-        );
+        logger.debug("workspace auto-sync started", {
+          connection: connectionId,
+          workspace: workspace.workspace_id ?? "unknown",
+          path: root,
+        });
         let result: SyncResult;
         try {
           result = await syncBranch({
@@ -401,19 +427,26 @@ export function createWorkspaceAutoSync(args: {
         }
         await recordResult(generation, key, root, host, result);
         if (!current(generation)) return;
-        console.log(
-          "[bridge] workspace auto-sync finished",
-          connectionDetail,
-          `workspace=${workspace.workspace_id ?? "unknown"}`,
-          `status=${result.last_status ?? "failed"}`,
-          `detail=${formatError(result.last_message ?? "")}`,
-        );
+        const resultFields = {
+          connection: connectionId,
+          workspace: workspace.workspace_id ?? "unknown",
+          status: result.last_status ?? "failed",
+          detail: formatError(result.last_message ?? ""),
+        };
+        const reporter = syncFailureReporter(key);
+        if (result.last_status === "failed") {
+          reporter.failure(result.last_message ?? "sync failed", resultFields);
+        } else {
+          reporter.recovered(resultFields);
+          logger.debug("workspace auto-sync finished", resultFields);
+        }
       }
+      tickFailureReporter.recovered({ connection: connectionId });
     } catch (error) {
       if (current(generation)) {
-        console.warn(
-          `[bridge] workspace auto-sync tick failed ${connectionDetail}: ${formatError(error)}`,
-        );
+        tickFailureReporter.failure(formatError(error), {
+          connection: connectionId,
+        });
       }
     }
   }

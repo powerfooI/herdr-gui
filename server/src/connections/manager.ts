@@ -1,3 +1,4 @@
+import { type Logger, silentLogger } from "../utils/logger";
 import type {
   ConnectionId,
   ConnectionIdentity,
@@ -43,10 +44,6 @@ type ConnectionEntry<Runtime extends ConnectionRuntime> = {
 
 const MAX_STATUS_ERROR_LENGTH = 300;
 
-function reportConnectionManagerError(message: string): void {
-  process.stderr.write(`${message}\n`);
-}
-
 function deferredTask<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (error: unknown) => void;
@@ -86,6 +83,7 @@ export class ConnectionManager<
   constructor(
     private defaultConnectionId: ConnectionId,
     private readonly onStatus?: (status: ConnectionStatus) => void,
+    private readonly logger: Logger = silentLogger,
   ) {}
 
   register(args: {
@@ -152,9 +150,10 @@ export class ConnectionManager<
       // cleanup reported an error so the profile can never be reconnected.
       this.entries.delete(connectionId);
       if (cleanupError) {
-        reportConnectionManagerError(
-          `[bridge] connection unregister cleanup failed id=${connectionId}: ${sanitizeConnectionError(cleanupError)}`,
-        );
+        this.logger.error("connection unregister cleanup failed", {
+          connection: connectionId,
+          error: sanitizeConnectionError(cleanupError),
+        });
       }
     } finally {
       this.removing.delete(connectionId);
@@ -213,9 +212,10 @@ export class ConnectionManager<
           result.status === "rejected",
       );
       if (cleanupFailure) {
-        reportConnectionManagerError(
-          `[bridge] failed runtime cleanup id=${entry.identity.id}: ${sanitizeConnectionError(cleanupFailure.reason)}`,
-        );
+        this.logger.error("failed runtime cleanup", {
+          connection: entry.identity.id,
+          error: sanitizeConnectionError(cleanupFailure.reason),
+        });
       }
       if (
         entry.generation === failedGeneration &&
@@ -280,9 +280,10 @@ export class ConnectionManager<
       try {
         callback(runtime);
       } catch (error) {
-        reportConnectionManagerError(
-          `[bridge] connection runtime callback failed id=${runtime.identity.id}: ${sanitizeConnectionError(error)}`,
-        );
+        this.logger.error("connection runtime callback failed", {
+          connection: runtime.identity.id,
+          error: sanitizeConnectionError(error),
+        });
       }
     }
   }
@@ -385,9 +386,10 @@ export class ConnectionManager<
           try {
             await runtime.stop();
           } catch (cleanupError) {
-            reportConnectionManagerError(
-              `[bridge] failed runtime cleanup failed id=${entry.identity.id}: ${sanitizeConnectionError(cleanupError)}`,
-            );
+            this.logger.error("failed runtime cleanup", {
+              connection: entry.identity.id,
+              error: sanitizeConnectionError(cleanupError),
+            });
           } finally {
             if (entry.runtime === runtime) entry.runtime = null;
           }
@@ -510,9 +512,10 @@ export class ConnectionManager<
     void Promise.all(
       Array.from(this.entries.keys(), (connectionId) =>
         this.stop(connectionId).catch((error) => {
-          reportConnectionManagerError(
-            `[bridge] connection stop failed id=${connectionId}: ${sanitizeConnectionError(error)}`,
-          );
+          this.logger.error("connection stop failed", {
+            connection: connectionId,
+            error: sanitizeConnectionError(error),
+          });
         }),
       ),
     ).then(() => deferred.resolve(), deferred.reject);
@@ -564,9 +567,10 @@ export class ConnectionManager<
     try {
       this.onStatus?.(this.toStatus(entry));
     } catch (error) {
-      reportConnectionManagerError(
-        `[bridge] connection status observer failed id=${entry.identity.id}: ${sanitizeConnectionError(error)}`,
-      );
+      this.logger.error("connection status observer failed", {
+        connection: entry.identity.id,
+        error: sanitizeConnectionError(error),
+      });
     }
   }
 }
