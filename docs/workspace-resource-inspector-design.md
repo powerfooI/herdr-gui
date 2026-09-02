@@ -557,8 +557,8 @@ Existing shortcuts keep their key bindings but become context-resolved:
 - Ctrl+Shift+G: toggle Changes for the active tab workspace.
 - Ctrl+Shift+W: focus Workspace navigation.
 - Cmd/Ctrl+F: search the currently focused terminal/resource surface.
-- Escape: close transient search/menu state first, then close expanded mode or
-  the Inspector according to existing escape priority.
+- Escape: close transient search/menu/notification state; it no longer
+  closes expanded mode or the Inspector (use the header buttons instead).
 
 Focus rules:
 

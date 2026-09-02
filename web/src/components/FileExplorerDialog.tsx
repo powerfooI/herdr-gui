@@ -2102,14 +2102,13 @@ function FileExplorerContent({
               <File size={16} />
             )}
           </span>
-          <span className="file-main">
-            <span
-              className="file-name"
-              title={entry.ignored ? "Ignored by Git" : undefined}
-            >
-              {entry.name}
-            </span>
-            <span className="file-path">{entry.path}</span>
+          <span
+            className="file-name"
+            title={
+              entry.ignored ? `${entry.path} · Ignored by Git` : entry.path
+            }
+          >
+            {entry.name}
           </span>
           {gitStatus ? (
             <span

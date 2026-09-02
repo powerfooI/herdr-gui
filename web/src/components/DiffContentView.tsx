@@ -42,6 +42,7 @@ import type {
   GitDiffKind,
 } from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
+import { gitDiffCode, gitDiffCodeLabel } from "../gitDiffStatus";
 import { requestFilePreview } from "./FileExplorerDialog";
 import {
   AnnotationComposerPopover,
@@ -515,6 +516,15 @@ const DiffFileSection = memo(function DiffFileSection({
     onSelectFile?.(section.entry);
   };
 
+  const statusCode = gitDiffCode(section.entry);
+  const metaNote = [
+    section.autoCollapse?.label ?? null,
+    section.file?.truncated ? "truncated" : null,
+    section.collapsed && section.autoCollapse ? "auto-collapsed" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <article
       className={`diff-file-section ${embedded ? "is-embedded" : ""} ${currentSearchMatch ? "is-search-current" : ""}`}
@@ -546,14 +556,17 @@ const DiffFileSection = memo(function DiffFileSection({
           </button>
           <div className="diff-file-section-title">
             <strong>{section.entry.path}</strong>
-            <span>
-              {section.entry.kind} · {section.entry.status}
-              {section.autoCollapse ? ` · ${section.autoCollapse.label}` : ""}
-              {section.file?.truncated ? " · truncated" : ""}
-              {section.collapsed && section.autoCollapse
-                ? " · auto-collapsed"
-                : ""}
+            <span
+              className={`git-status-code git-status-${statusCode.toLowerCase()}`}
+              role="img"
+              aria-label={gitDiffCodeLabel(statusCode)}
+              title={gitDiffCodeLabel(statusCode)}
+            >
+              {statusCode}
             </span>
+            {metaNote ? (
+              <span className="diff-file-section-meta">{metaNote}</span>
+            ) : null}
           </div>
           <button
             type="button"
@@ -1336,37 +1349,37 @@ export function DiffContentView({
               ) : null}
             </div>
           ) : null}
-          {!mobile ? (
-            <div className="diff-display-controls">
-              <div className="diff-view-toggle" aria-label="Diff view mode">
-                <button
-                  type="button"
-                  className={viewMode === "split" ? "is-active" : ""}
-                  onClick={() => setViewMode("split")}
-                  aria-pressed={viewMode === "split"}
-                >
-                  Split
-                </button>
-                <button
-                  type="button"
-                  className={viewMode === "unified" ? "is-active" : ""}
-                  onClick={() => setViewMode("unified")}
-                  aria-pressed={viewMode === "unified"}
-                >
-                  Unified
-                </button>
-              </div>
+        </div>
+        {!mobile ? (
+          <div className="diff-display-controls">
+            <div className="diff-view-toggle" aria-label="Diff view mode">
               <button
                 type="button"
-                className={`diff-wrap-toggle ${desktopWrap ? "is-active" : ""}`}
-                onClick={() => setDesktopWrap((value) => !value)}
-                aria-pressed={desktopWrap}
+                className={viewMode === "split" ? "is-active" : ""}
+                onClick={() => setViewMode("split")}
+                aria-pressed={viewMode === "split"}
               >
-                {desktopWrap ? "Wrap" : "No wrap"}
+                Split
+              </button>
+              <button
+                type="button"
+                className={viewMode === "unified" ? "is-active" : ""}
+                onClick={() => setViewMode("unified")}
+                aria-pressed={viewMode === "unified"}
+              >
+                Unified
               </button>
             </div>
-          ) : null}
-        </div>
+            <button
+              type="button"
+              className={`diff-wrap-toggle ${desktopWrap ? "is-active" : ""}`}
+              onClick={() => setDesktopWrap((value) => !value)}
+              aria-pressed={desktopWrap}
+            >
+              {desktopWrap ? "Wrap" : "No wrap"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {error && !visibleEntries.length ? (

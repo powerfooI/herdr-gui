@@ -4823,12 +4823,12 @@ textarea:focus {
   color: var(--text-strong);
 }
 .file-row.is-ignored .file-icon,
-.file-row.is-ignored .file-main,
+.file-row.is-ignored .file-name,
 .file-row.is-ignored .file-meta {
   opacity: 0.48;
 }
 .file-row.is-ignored:hover .file-icon,
-.file-row.is-ignored:hover .file-main,
+.file-row.is-ignored:hover .file-name,
 .file-row.is-ignored:hover .file-meta {
   opacity: 0.7;
 }
@@ -5536,8 +5536,10 @@ textarea:focus {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  min-height: 42px;
-  padding: 8px 12px;
+  /* Same height as the navigation header (scope toggle block + its
+     margin), so both header rows read as one line. */
+  min-height: 46px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--viewer-border);
   background: var(--viewer-header-bg);
 }
@@ -5549,9 +5551,13 @@ textarea:focus {
 .diff-content-view.is-embedded .diff-content-actions {
   flex-basis: auto;
 }
+.diff-content-view.is-embedded .diff-display-controls {
+  order: 3;
+}
 .diff-content-title {
   min-width: 0;
-  flex: 1 1 160px;
+  /* Grow so the display controls and search cluster stay right-aligned. */
+  flex: 1 1 auto;
   display: grid;
   gap: 1px;
 }
@@ -5568,8 +5574,11 @@ textarea:focus {
 }
 .diff-content-actions {
   min-width: 0;
-  max-width: 100%;
-  flex: 1 1 420px;
+  max-width: min(560px, 100%);
+  /* After the display controls: on narrow widths the search wraps to its
+     own full-width row below the title row. */
+  order: 2;
+  flex: 1 1 220px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -5587,8 +5596,8 @@ textarea:focus {
   background: var(--viewer-content-bg);
 }
 .diff-hunk-navigation button {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5623,6 +5632,7 @@ textarea:focus {
 }
 .diff-display-controls {
   flex: 0 0 auto;
+  order: 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -5766,22 +5776,23 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 48px;
-  padding: 8px 12px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--viewer-border);
   background: color-mix(in srgb, var(--viewer-header-bg) 88%, var(--diff-bg));
 }
 .diff-file-section-title {
   flex: 1 1 auto;
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .diff-file-collapse {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5800,7 +5811,7 @@ textarea:focus {
   opacity: 0.45;
 }
 .diff-file-section-title strong,
-.diff-file-section-title span {
+.diff-file-section-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5810,7 +5821,8 @@ textarea:focus {
   color: var(--text-strong);
   font-size: 13px;
 }
-.diff-file-section-title span {
+.diff-file-section-meta {
+  flex: 0 1 auto;
   color: var(--muted);
   font-size: 11px;
 }
@@ -5819,7 +5831,7 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 9px;
   border-radius: 8px;
   background: var(--viewer-content-bg);
@@ -6409,26 +6421,13 @@ textarea:focus {
   justify-content: center;
   color: var(--muted);
 }
-.file-main {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-.file-name,
-.file-path {
+.file-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.file-name {
   color: var(--text);
   font-weight: 600;
-}
-.file-path {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
 }
 .file-meta {
   color: var(--muted);
@@ -8695,6 +8694,7 @@ textarea:focus {
   .diff-content-actions {
     flex: 1 1 100%;
     min-width: 0;
+    max-width: 100%;
   }
   .diff-search-controls {
     flex-basis: 100%;
@@ -8705,9 +8705,6 @@ textarea:focus {
   }
   .diff-search-count {
     min-width: 36px;
-  }
-  .diff-file-section-head {
-    align-items: flex-start;
   }
   .diff-file-open span {
     display: none;
