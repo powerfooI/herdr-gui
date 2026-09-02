@@ -23,7 +23,7 @@ navToggle?.addEventListener("click", () => {
 });
 
 nav?.addEventListener("click", (event) => {
-  if (event.target instanceof HTMLAnchorElement) {
+  if (event.target instanceof Element && event.target.closest("a")) {
     closeNavigation();
   }
 });
