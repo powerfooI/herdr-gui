@@ -2039,20 +2039,6 @@ export default function App() {
           if (canDismissUpdate) store.dismissUpdate();
           return;
         }
-        const inspector = inspectorStateRef.current;
-        if (inspector?.expanded) {
-          e.preventDefault();
-          e.stopPropagation();
-          const next = { ...inspector, expanded: false };
-          commitInspectorState(next);
-          writeInspectorPreferences(localStorage, next);
-          return;
-        }
-        if (inspector?.open) {
-          e.preventDefault();
-          e.stopPropagation();
-          closeInspector();
-        }
         return;
       }
       const tabAction = tabShortcutAction(e);
@@ -2190,10 +2176,7 @@ export default function App() {
       window.removeEventListener("blur", onBlur);
     };
   }, [
-    activateTerminalSurface,
-    closeInspector,
     closePaneJump,
-    commitInspectorState,
     commitPaneJump,
     defaultPaneJumpIndex,
     movePaneJumpSelection,

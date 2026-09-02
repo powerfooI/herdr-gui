@@ -663,7 +663,9 @@ export function WorkspaceInspectorHost({
           <button
             type="button"
             className="workspace-inspector-expand-action"
-            title={state.expanded ? "Restore dock" : "Expand Inspector"}
+            title={
+              state.expanded ? "Restore Inspector dock" : "Expand Inspector"
+            }
             aria-label={
               state.expanded ? "Restore Inspector dock" : "Expand Inspector"
             }

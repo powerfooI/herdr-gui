@@ -25,6 +25,14 @@
   mutating so stale menus can't destroy newer work.
 - Dim Git-ignored files in the Files explorer.
 
+### Changed
+
+- Pressing Esc no longer collapses or closes the Inspector now that it docks
+  beside the content instead of covering it; use the header buttons to
+  expand, restore, or close it.
+- Simplify the Files explorer rows to show only the file or folder name; the
+  full path remains available as a hover tooltip.
+
 ### Fixed
 
 - Parse C-style quoted Git paths (spaces, quotes, backslashes) in Changes
