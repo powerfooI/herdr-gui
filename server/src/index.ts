@@ -308,7 +308,7 @@ try {
 }
 
 const connectionFailureReporters = new Map<string, RecoveryReporter>();
-const readyConnectionGenerations = new Set<string>();
+const readyConnectionGenerations = new Map<string, number>();
 
 function connectionFailureReporter(connectionId: string): RecoveryReporter {
   let reporter = connectionFailureReporters.get(connectionId);
@@ -344,11 +344,12 @@ const connectionManager = new ConnectionManager<LegacyConnectionRuntime>(
       return;
     }
     if (status.state !== "ready") return;
-    const generationKey = `${status.id}\0${status.generation}`;
     if (reporter.recovered(fields)) {
-      readyConnectionGenerations.add(generationKey);
-    } else if (!readyConnectionGenerations.has(generationKey)) {
-      readyConnectionGenerations.add(generationKey);
+      readyConnectionGenerations.set(status.id, status.generation);
+    } else if (
+      readyConnectionGenerations.get(status.id) !== status.generation
+    ) {
+      readyConnectionGenerations.set(status.id, status.generation);
       logger.info("connection ready", fields);
     }
   },

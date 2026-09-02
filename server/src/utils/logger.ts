@@ -48,8 +48,10 @@ export function parseLogLevel(value: unknown): LogLevel {
   if ((LOG_LEVELS as readonly string[]).includes(normalized)) {
     return normalized as LogLevel;
   }
+  const rendered =
+    typeof value === "string" ? JSON.stringify(value) : renderValue(value);
   throw new Error(
-    `invalid log level ${JSON.stringify(value)}; expected ${LOG_LEVELS.join(", ")}`,
+    `invalid log level ${rendered}; expected ${LOG_LEVELS.join(", ")}`,
   );
 }
 
@@ -79,8 +81,7 @@ function sanitizeText(value: string, limit: number): string {
     .slice(0, limit);
 }
 
-function fieldText(key: string, value: unknown): string {
-  if (SENSITIVE_FIELD.test(key)) return "***";
+function renderValue(value: unknown): string {
   if (value instanceof Error)
     return sanitizeText(value.message, MAX_FIELD_LENGTH);
   if (typeof value === "string") return sanitizeText(value, MAX_FIELD_LENGTH);
@@ -101,6 +102,11 @@ function fieldText(key: string, value: unknown): string {
       return "[unprintable]";
     }
   }
+}
+
+function fieldText(key: string, value: unknown): string {
+  if (SENSITIVE_FIELD.test(key)) return "***";
+  return renderValue(value);
 }
 
 function quoteField(value: string): string {

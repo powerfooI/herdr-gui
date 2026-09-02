@@ -85,6 +85,17 @@ describe("log level parsing", () => {
       'invalid log level "trace"; expected error, warn, info, debug',
     );
   });
+
+  test("rejects unstringifiable values without masking the error", () => {
+    expect(() => parseLogLevel(10n)).toThrow(
+      "invalid log level 10; expected error, warn, info, debug",
+    );
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => parseLogLevel(circular)).toThrow(
+      "invalid log level [object Object]; expected error, warn, info, debug",
+    );
+  });
 });
 
 describe("recovery reporter", () => {
