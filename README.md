@@ -10,6 +10,7 @@ dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
 
 ## Documentation
 
+- [Project website](https://powerfooI.github.io/herdr-studio/)
 - [Feature tour and keyboard shortcuts](./FEATURES.md)
 - [Installation, configuration, services, and builds](./docs/DEPLOYMENT.md)
 - [Architecture and implementation](./docs/ARCHITECTURE.md)

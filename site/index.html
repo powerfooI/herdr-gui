@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080b12" />
+    <meta
+      name="description"
+      content="Herdr Studio is an independent, open-source community project for Herdr. Control terminals, inspect agent sessions, review files and diffs, and manage worktrees from desktop or mobile."
+    />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="Herdr Studio - Keep every agent in sight"
+    />
+    <meta
+      property="og:description"
+      content="A fast, visual workspace for every terminal, agent, file, diff, and worktree running in Herdr."
+    />
+    <meta
+      property="og:url"
+      content="https://powerfooI.github.io/herdr-studio/"
+    />
+    <meta
+      property="og:image"
+      content="https://powerfooI.github.io/herdr-studio/og.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Herdr Studio - Keep every agent in sight"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Herdr Studio - Keep every agent in sight"
+    />
+    <meta
+      name="twitter:description"
+      content="An independent, open-source community project for Herdr."
+    />
+    <meta
+      name="twitter:image"
+      content="https://powerfooI.github.io/herdr-studio/og.png"
+    />
+    <link rel="canonical" href="https://powerfooI.github.io/herdr-studio/" />
+    <link rel="icon" href="./assets/herdr-icon-48.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Herdr Studio - Keep every agent in sight</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Herdr Studio",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "description": "An open-source browser and PWA client for Herdr.",
+        "url": "https://powerfooI.github.io/herdr-studio/",
+        "downloadUrl": "https://github.com/powerfooI/herdr-studio/releases/latest",
+        "license": "https://opensource.org/license/mit"
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="page-grid" aria-hidden="true"></div>
+
+    <header class="site-header" data-header>
+      <div class="shell header-inner">
+        <a class="brand" href="#top" aria-label="Herdr Studio home">
+          <span class="brand-mark">
+            <img
+              src="./assets/herdr-icon-48.png"
+              srcset="
+                ./assets/herdr-icon-48.png 48w,
+                ./assets/herdr-icon-72.png 72w,
+                ./assets/herdr-icon.png    96w
+              "
+              sizes="36px"
+              alt=""
+              width="36"
+              height="36"
+            />
+          </span>
+          <span>Herdr Studio</span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="primary-nav"
+          data-nav-toggle
+        >
+          <span class="sr-only">Toggle navigation</span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <nav class="primary-nav" id="primary-nav" aria-label="Primary" data-nav>
+          <a href="#product">Product</a>
+          <a href="#workflow">How it works</a>
+          <a href="#mobile">Mobile</a>
+          <a href="https://github.com/powerfooI/herdr-studio#documentation"
+            >Docs</a
+          >
+          <a
+            class="github-link"
+            href="https://github.com/powerfooI/herdr-studio"
+            aria-label="Herdr Studio on GitHub"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.5v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0c2.2-1.5 3.1-1.2 3.1-1.2.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5A11.4 11.4 0 0 0 12 .8Z"
+              />
+            </svg>
+            <span data-star-count>GitHub</span>
+          </a>
+          <a class="button button-small button-primary" href="#install"
+            >Install</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero shell" id="top">
+        <div class="hero-copy reveal">
+          <div class="eyebrow">
+            <span class="status-dot"></span>
+            Community-built browser client for
+            <a
+              href="https://herdr.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Herdr</a
+            >
+          </div>
+          <h1>Keep every agent <span>in sight.</span></h1>
+          <p class="hero-lede">
+            <a
+              href="https://herdr.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Herdr</a
+            >
+            keeps the terminals alive. Herdr Studio turns the whole herd into a
+            fast, visual workspace for terminals, sessions, files, diffs, and
+            worktrees from any modern browser.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#install">
+              Install Herdr Studio
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m7 4 6 6-6 6" />
+              </svg>
+            </a>
+            <a
+              class="button button-secondary"
+              href="https://github.com/powerfooI/herdr-studio"
+            >
+              View source
+            </a>
+          </div>
+          <div class="platform-line">
+            <span>macOS</span>
+            <span>Linux</span>
+            <span>Windows</span>
+            <span>PWA</span>
+          </div>
+          <p class="hero-requirement">
+            Independent community project for
+            <a
+              href="https://herdr.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Herdr</a
+            >
+            &middot; Requires a running Herdr server.
+          </p>
+        </div>
+
+        <div class="hero-visual reveal reveal-delay" data-spotlight>
+          <div class="product-window">
+            <div class="window-bar" aria-hidden="true">
+              <span class="traffic traffic-red"></span>
+              <span class="traffic traffic-yellow"></span>
+              <span class="traffic traffic-green"></span>
+              <div class="window-title">Herdr Studio</div>
+              <span class="window-live"><i></i> Connected</span>
+            </div>
+            <a
+              href="./assets/herdr-studio-desktop-session-history.png"
+              aria-label="Open the Herdr Studio session history screenshot"
+            >
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="
+                    ./assets/herdr-studio-hero-720.avif   720w,
+                    ./assets/herdr-studio-hero-1200.avif 1200w,
+                    ./assets/herdr-studio-hero-2400.avif 2400w
+                  "
+                  sizes="(max-width: 620px) calc(100vw - 8px), (max-width: 1240px) calc(100vw - 48px), 1180px"
+                />
+                <img
+                  src="./assets/herdr-studio-desktop-session-history.png"
+                  alt="Herdr Studio showing multiple workspaces, a live terminal, and agent session history"
+                  width="4990"
+                  height="2820"
+                  fetchpriority="high"
+                />
+              </picture>
+            </a>
+          </div>
+
+          <div class="floating-card agent-card" aria-hidden="true">
+            <div class="agent-avatar">&gt;_</div>
+            <div>
+              <strong>codex</strong>
+              <span><i></i> Working</span>
+            </div>
+            <b>18m</b>
+          </div>
+
+          <div class="floating-card task-card" aria-hidden="true">
+            <span class="task-check">
+              <svg viewBox="0 0 20 20"><path d="m5 10 3 3 7-7" /></svg>
+            </span>
+            <div>
+              <strong>Release checks passed</strong>
+              <span>Session updated just now</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-proof reveal">
+          <div>
+            <strong>One view</strong>
+            <span>Every workspace and recognized agent</span>
+          </div>
+          <div>
+            <strong>Real terminal</strong>
+            <span>Streaming, scrollback, paste, and links</span>
+          </div>
+          <div>
+            <strong>Local or SSH</strong>
+            <span>Supported local and remote hosts</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section shell" id="product">
+        <div class="section-heading reveal">
+          <div>
+            <p class="kicker">A control room, not another dashboard</p>
+            <h2>See the work. Steer the work.</h2>
+          </div>
+          <p>
+            Move from a waiting agent to the exact file, diff, or transcript
+            without reconstructing context across terminal windows.
+          </p>
+        </div>
+
+        <div class="bento-grid">
+          <article class="bento bento-wide reveal" data-spotlight>
+            <div class="bento-copy">
+              <span class="feature-number">01</span>
+              <h3>The whole herd, one glance.</h3>
+              <p>
+                Browse workspaces, tabs, panes, and worktrees in one tree. Agent
+                status shows who is working, idle, done, or waiting for you.
+              </p>
+              <a
+                href="https://github.com/powerfooI/herdr-studio/blob/main/FEATURES.md#agent-awareness-and-session-inspection"
+              >
+                Explore agent awareness <span aria-hidden="true">&rarr;</span>
+              </a>
+            </div>
+            <div class="agent-stack" aria-hidden="true">
+              <div class="mini-agent active">
+                <span class="mini-icon">C</span>
+                <div>
+                  <strong>codex</strong><small>Implementing auth flow</small>
+                </div>
+                <b>Working</b>
+              </div>
+              <div class="mini-agent blocked">
+                <span class="mini-icon">P</span>
+                <div><strong>pi</strong><small>Needs confirmation</small></div>
+                <b>Blocked</b>
+              </div>
+              <div class="mini-agent done">
+                <span class="mini-icon">K</span>
+                <div><strong>kimi</strong><small>Research complete</small></div>
+                <b>Done</b>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="bento bento-terminal reveal reveal-delay"
+            data-spotlight
+          >
+            <div class="terminal-preview" aria-hidden="true">
+              <div><span class="prompt">$</span> bun run precommit</div>
+              <div class="terminal-muted">format <span>passed</span></div>
+              <div class="terminal-muted">lint <span>passed</span></div>
+              <div class="terminal-muted">typecheck <span>passed</span></div>
+              <div class="terminal-success">All checks passed in 8.4s</div>
+              <div class="terminal-cursor">
+                <span class="prompt">$</span> <i></i>
+              </div>
+            </div>
+            <div class="bento-copy">
+              <span class="feature-number">02</span>
+              <h3>A real terminal in your browser.</h3>
+              <p>
+                Full terminal streaming with split panes, scrollback, multiline
+                paste, clickable links, file previews, and IME-safe input.
+              </p>
+            </div>
+          </article>
+
+          <article class="bento reveal" data-spotlight>
+            <div class="bento-copy">
+              <span class="feature-number">03</span>
+              <h3>Review without losing the thread.</h3>
+              <p>
+                Inspect changed files, annotate exact lines, preview Markdown,
+                and send compiled feedback back to an agent pane.
+              </p>
+            </div>
+            <div class="diff-snippet" aria-hidden="true">
+              <div class="diff-file">
+                <span></span>src/session.ts <b>+8 -3</b>
+              </div>
+              <code class="diff-del">- return session.raw;</code>
+              <code class="diff-add">+ return normalize(session);</code>
+              <code class="diff-add">+ notifySubscribers();</code>
+              <div class="annotation-chip">
+                <span>1</span> Keep the raw export path
+              </div>
+            </div>
+          </article>
+
+          <article class="bento reveal reveal-delay" data-spotlight>
+            <div class="bento-copy">
+              <span class="feature-number">04</span>
+              <h3>Worktrees become a workflow.</h3>
+              <p>
+                Create, open, update, and safely remove linked Git worktrees
+                while preserving the source checkout and its dirty files.
+              </p>
+            </div>
+            <div class="branch-map" aria-hidden="true">
+              <span class="branch-line"></span>
+              <div>
+                <i></i><strong>main</strong><small>source checkout</small>
+              </div>
+              <div>
+                <i></i><strong>feat/agent-radar</strong
+                ><small>3 files changed</small>
+              </div>
+              <div>
+                <i></i><strong>fix/mobile-ime</strong><small>up to date</small>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section
+        class="section showcase-section"
+        aria-labelledby="showcase-title"
+      >
+        <div class="shell">
+          <div class="section-heading showcase-heading reveal">
+            <div>
+              <p class="kicker">Everything stays connected</p>
+              <h2 id="showcase-title">Context is one click away.</h2>
+            </div>
+            <p>
+              Files, changes, terminals, and session history share the same
+              active workspace, so every view starts in the right place.
+            </p>
+          </div>
+
+          <div class="showcase reveal">
+            <div
+              class="showcase-tabs"
+              role="tablist"
+              aria-label="Product views"
+            >
+              <button
+                type="button"
+                role="tab"
+                id="tab-sessions"
+                aria-controls="showcase-panel"
+                aria-selected="true"
+                tabindex="0"
+                data-showcase-tab
+                data-image="./assets/herdr-studio-desktop-session-history.png"
+                data-alt="Herdr Studio session history beside a live terminal"
+                data-label="Session history"
+                data-title="Know what happened without reading every line."
+                data-copy="Scan agent messages, inspect session details, search transcripts, and export the original record or normalized ATIF trajectory."
+              >
+                <span>01</span> Sessions
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-files"
+                aria-controls="showcase-panel"
+                aria-selected="false"
+                tabindex="-1"
+                data-showcase-tab
+                data-image="./assets/herdr-studio-desktop-file-explorer.png"
+                data-alt="Herdr Studio file explorer with a rendered README preview"
+                data-label="File explorer"
+                data-title="Browse the repository without leaving the terminal."
+                data-copy="Preview source, Markdown, Mermaid, and images; search loaded files; upload, download, copy paths, and manage files locally or over SSH."
+              >
+                <span>02</span> Files
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-changes"
+                aria-controls="showcase-panel"
+                aria-selected="false"
+                tabindex="-1"
+                data-showcase-tab
+                data-image="./assets/herdr-studio-desktop-diff-viewer.png"
+                data-alt="Herdr Studio changed-files view with a visual image diff"
+                data-label="Changes"
+                data-title="Turn a working tree into an actionable review."
+                data-copy="Move between staged, unstaged, untracked, and branch changes. Annotate precise lines and hand structured feedback back to an agent."
+              >
+                <span>03</span> Changes
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-terminal"
+                aria-controls="showcase-panel"
+                aria-selected="false"
+                tabindex="-1"
+                data-showcase-tab
+                data-image="./assets/herdr-studio-desktop-terminal.png"
+                data-alt="Herdr Studio full browser terminal"
+                data-label="Full terminal"
+                data-title="The terminal remains the source of truth."
+                data-copy="Use the same agent CLIs and shell workflows you already trust, with responsive sizing, pane controls, scrollback, paste, and keyboard navigation."
+              >
+                <span>04</span> Terminal
+              </button>
+            </div>
+
+            <div
+              class="showcase-panel"
+              id="showcase-panel"
+              role="tabpanel"
+              aria-labelledby="tab-sessions"
+              tabindex="0"
+              data-showcase-panel
+            >
+              <div class="showcase-window">
+                <div class="showcase-topline">
+                  <span><i></i><i></i><i></i></span>
+                  <strong data-showcase-label>Session history</strong>
+                  <em>Local / Connected</em>
+                </div>
+                <a
+                  href="./assets/herdr-studio-desktop-session-history.png"
+                  aria-label="Open the current Herdr Studio product screenshot"
+                  data-showcase-link
+                >
+                  <img
+                    src="./assets/herdr-studio-desktop-session-history.png"
+                    alt="Herdr Studio session history beside a live terminal"
+                    width="4990"
+                    height="2820"
+                    loading="lazy"
+                    decoding="async"
+                    data-showcase-image
+                  />
+                </a>
+              </div>
+              <div class="showcase-caption" aria-live="polite">
+                <h3 data-showcase-title>
+                  Know what happened without reading every line.
+                </h3>
+                <p data-showcase-copy>
+                  Scan agent messages, inspect session details, search
+                  transcripts, and export the original record or normalized ATIF
+                  trajectory.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section shell workflow-section" id="workflow">
+        <div class="section-heading reveal">
+          <div>
+            <p class="kicker">From daemon to dashboard</p>
+            <h2>Running in three steps.</h2>
+          </div>
+          <p>
+            Herdr Studio is a thin bridge around the runtime you already use.
+            Your agents still live in real terminal sessions owned by Herdr.
+          </p>
+        </div>
+
+        <ol class="workflow-grid">
+          <li class="workflow-step reveal">
+            <span>1</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 6h16v12H4zM7 9l3 3-3 3m5 0h5" />
+              </svg>
+            </div>
+            <h3>Herdr keeps agents alive</h3>
+            <p>
+              Start the coding agents you already use. Herdr owns their terminal
+              sessions, even when your browser or laptop disconnects.
+            </p>
+          </li>
+          <li class="workflow-step reveal reveal-delay">
+            <span>2</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M8 5 3 12l5 7m8-14 5 7-5 7M14 3l-4 18" />
+              </svg>
+            </div>
+            <h3>Studio connects locally or over SSH</h3>
+            <p>
+              Run one standalone binary beside Herdr. It bridges the local
+              socket API, terminal stream, files, Git operations, and session
+              records.
+            </p>
+          </li>
+          <li class="workflow-step reveal reveal-delay-two">
+            <span>3</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 5h16v12H4zM8 21h8M12 17v4M7 9h3v3H7z" />
+              </svg>
+            </div>
+            <h3>Your browser becomes the cockpit</h3>
+            <p>
+              Open the printed URL from desktop or mobile. Install it as a PWA
+              for a focused, app-like control surface.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section mobile-section" id="mobile">
+        <div class="shell mobile-layout">
+          <div class="mobile-copy reveal">
+            <p class="kicker">The control room travels</p>
+            <h2>Designed for the screen you have.</h2>
+            <p>
+              Check a blocked agent from the train. Review a diff from the
+              couch. Send the one command that unblocks a long-running task
+              without opening your laptop.
+            </p>
+            <ul>
+              <li>
+                <span></span>Touch-safe terminal controls and configurable
+                shortcuts
+              </li>
+              <li>
+                <span></span>Responsive file, diff, pane, and session views
+              </li>
+              <li>
+                <span></span>Installable PWA on iPhone, iPad, macOS, Chrome, and
+                Edge
+              </li>
+            </ul>
+            <a
+              class="text-link"
+              href="https://github.com/powerfooI/herdr-studio/blob/main/FEATURES.md#mobile-and-pwa"
+            >
+              Explore mobile features <span aria-hidden="true">&rarr;</span>
+            </a>
+          </div>
+
+          <div
+            class="phone-stage reveal reveal-delay"
+            role="group"
+            aria-label="Herdr Studio mobile views"
+          >
+            <figure class="phone phone-left">
+              <div class="phone-speaker"></div>
+              <a href="./assets/herdr-studio-mobile-changed-files.png">
+                <img
+                  src="./assets/herdr-studio-mobile-changed-files.png"
+                  alt="Herdr Studio changed files view on mobile"
+                  width="1179"
+                  height="2426"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+            </figure>
+            <figure class="phone phone-center">
+              <div class="phone-speaker"></div>
+              <a href="./assets/herdr-studio-mobile-terminal.png">
+                <img
+                  src="./assets/herdr-studio-mobile-terminal.png"
+                  alt="Herdr Studio terminal controls on mobile"
+                  width="1179"
+                  height="2426"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+            </figure>
+            <figure class="phone phone-right">
+              <div class="phone-speaker"></div>
+              <a href="./assets/herdr-studio-mobile-file-viewer.png">
+                <img
+                  src="./assets/herdr-studio-mobile-file-viewer.png"
+                  alt="Herdr Studio rendered file preview on mobile"
+                  width="1179"
+                  height="2426"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section shell details-section">
+        <div class="details-heading reveal">
+          <p class="kicker">Built for real repositories</p>
+          <h2>Deep where it matters.<br />Quiet everywhere else.</h2>
+        </div>
+        <div class="details-grid">
+          <article class="detail-card reveal">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3" />
+            </svg>
+            <h3>Session intelligence</h3>
+            <p>
+              Messages, metadata, search, raw transcripts, and ATIF export for
+              supported agents.
+            </p>
+          </article>
+          <article class="detail-card reveal reveal-delay">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6M4 21h16" />
+            </svg>
+            <h3>Review annotations</h3>
+            <p>
+              Attach comments to diff lines, source gutters, or rendered
+              Markdown passages.
+            </p>
+          </article>
+          <article class="detail-card reveal">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M7 4v6m10-6v6M6 13h4v4H6zM14 13h4v4h-4z" />
+            </svg>
+            <h3>Worktree lifecycle</h3>
+            <p>
+              Create, open, update, and remove linked worktrees with optional
+              Paseo hooks.
+            </p>
+          </article>
+          <article class="detail-card reveal reveal-delay">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3a9 9 0 1 0 9 9M12 3v9h9M4 19l4-4" />
+            </svg>
+            <h3>Remote-ready</h3>
+            <p>
+              Use SSH profiles for remote Herdr servers while keeping files and
+              Git operations aligned.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section shell install-section" id="install">
+        <div class="install-card reveal" data-spotlight>
+          <div class="install-copy">
+            <p class="kicker">Ready when the next task starts</p>
+            <h2>Give your agents a window.</h2>
+            <p>
+              Install the standalone binary on macOS or Linux, start Herdr
+              Studio, and open the URL it prints. Windows x64 and ARM64 archives
+              are available from GitHub Releases.
+            </p>
+            <div class="install-actions">
+              <a
+                class="button button-primary"
+                href="https://github.com/powerfooI/herdr-studio/releases/latest"
+              >
+                Download latest release
+              </a>
+              <a
+                class="button button-secondary"
+                href="https://github.com/powerfooI/herdr-studio/blob/main/docs/DEPLOYMENT.md"
+              >
+                Deployment guide
+              </a>
+            </div>
+          </div>
+
+          <div class="install-terminal">
+            <div class="install-terminal-bar">
+              <span><i></i><i></i><i></i></span>
+              <strong>Install</strong>
+              <button
+                type="button"
+                data-copy-command
+                aria-label="Copy install command"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M7 6V4h9v9h-2M4 7h9v9H4z" />
+                </svg>
+                <span aria-live="polite">Copy</span>
+              </button>
+            </div>
+            <pre><code data-install-command><span>$</span> curl -fsSL \
+  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh \
+  | sh</code></pre>
+            <div class="install-result" aria-hidden="true">
+              <span></span>
+              <p>
+                <strong>Herdr Studio installed</strong
+                ><small>Run <code>herdr-gui</code> to start</small>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="#top">
+            <span class="brand-mark">
+              <img
+                src="./assets/herdr-icon-48.png"
+                srcset="
+                  ./assets/herdr-icon-48.png 48w,
+                  ./assets/herdr-icon-72.png 72w,
+                  ./assets/herdr-icon.png    96w
+                "
+                sizes="36px"
+                alt=""
+                width="36"
+                height="36"
+              />
+            </span>
+            <span>Herdr Studio</span>
+          </a>
+          <p>
+            An independent, open-source community project for
+            <a
+              href="https://herdr.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Herdr</a
+            >.
+          </p>
+        </div>
+        <div class="footer-links">
+          <div>
+            <strong>Product</strong>
+            <a href="#product">Features</a>
+            <a href="#mobile">Mobile &amp; PWA</a>
+            <a href="https://github.com/powerfooI/herdr-studio/releases/latest"
+              >Releases</a
+            >
+          </div>
+          <div>
+            <strong>Resources</strong>
+            <a href="https://github.com/powerfooI/herdr-studio#documentation"
+              >Documentation</a
+            >
+            <a
+              href="https://github.com/powerfooI/herdr-studio/blob/main/SECURITY.md"
+              >Security</a
+            >
+            <a
+              href="https://github.com/powerfooI/herdr-studio/blob/main/CONTRIBUTING.md"
+              >Contributing</a
+            >
+          </div>
+          <div>
+            <strong>Project</strong>
+            <a href="https://github.com/powerfooI/herdr-studio">GitHub</a>
+            <a href="https://github.com/powerfooI/herdr-studio/issues"
+              >Issues</a
+            >
+            <a
+              href="https://github.com/powerfooI/herdr-studio/blob/main/LICENSE"
+              >MIT License</a
+            >
+          </div>
+        </div>
+      </div>
+      <div class="shell footer-bottom">
+        <span>&copy; <span data-year></span> Herdr Studio contributors.</span>
+        <span>Real terminals. Clear context. Any screen.</span>
+      </div>
+    </footer>
+
+    <script src="./main.js" defer></script>
+  </body>
+</html>
