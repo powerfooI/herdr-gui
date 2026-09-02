@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
+import { serverLogger } from "../utils/logger";
 import { sourceCheckoutPath as workspaceSourceCheckoutPath } from "../workspace/utils";
 
 export type GuiRepoSettings = {
@@ -134,9 +135,10 @@ export async function readGuiSettings(): Promise<GuiSettings> {
   try {
     cachedGuiSettings = normalizeGuiSettings(JSON.parse(await file.text()));
   } catch (e) {
-    console.warn(
-      `[bridge] ignoring invalid Herdr Studio settings at ${path}: ${(e as Error).message}`,
-    );
+    serverLogger.child("settings").warn("ignoring invalid settings", {
+      path,
+      error: e,
+    });
     cachedGuiSettings = defaultGuiSettings();
   }
   return cachedGuiSettings;

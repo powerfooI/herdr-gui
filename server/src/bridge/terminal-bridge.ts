@@ -3,6 +3,8 @@ import {
   CONNECTION_CHANGED_DURING_REQUEST,
   serializeConnectionEnvelope,
 } from "../connections/protocol";
+import { type Logger, silentLogger } from "../utils/logger";
+import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 
 type TerminalSession = {
@@ -45,6 +47,7 @@ const STANDARD_BASE64_RE =
 export function createTerminalBridge(args: {
   connectionId?: string;
   connectionGeneration?: number;
+  logger?: Logger;
   formatError?: (error: unknown) => string;
   clientSocketPath: string;
   herdrProtocol: () => Promise<number>;
@@ -65,6 +68,7 @@ export function createTerminalBridge(args: {
     paneId: string | null;
   }) => Promise<boolean>;
 }) {
+  const logger = args.logger ?? silentLogger;
   const terminals = new Map<ServerWebSocket<unknown>, TerminalSession>();
   const terminalViewers = new Map<ServerWebSocket<unknown>, Set<string>>();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
@@ -84,7 +88,6 @@ export function createTerminalBridge(args: {
           args.connectionGeneration,
         )
       : JSON.stringify(message);
-  const connectionDetail = `connection=${args.connectionId ?? "legacy-default"}`;
   const formatError =
     args.formatError ??
     ((error: unknown) =>
@@ -110,10 +113,9 @@ export function createTerminalBridge(args: {
       data.length > MAX_TERMINAL_CLIPBOARD_BASE64_CHARS ||
       !STANDARD_BASE64_RE.test(data)
     ) {
-      console.warn(
-        "[bridge] dropped invalid terminal clipboard payload",
-        connectionDetail,
-      );
+      logger.warn("dropped invalid terminal clipboard payload", {
+        connection: args.connectionId ?? "legacy-default",
+      });
       return;
     }
 
@@ -128,11 +130,10 @@ export function createTerminalBridge(args: {
         ? clipboardTarget
         : null;
     if (!recentTarget) {
-      console.warn(
-        "[bridge] dropped terminal clipboard without matching recent input",
-        connectionDetail,
-        ...(terminalId ? [`terminal=${terminalId}`] : []),
-      );
+      logger.warn("dropped terminal clipboard without recent input", {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: terminalId,
+      });
       return;
     }
     const targetTerminalId = recentTarget.terminalId;
@@ -144,13 +145,12 @@ export function createTerminalBridge(args: {
         data,
       },
     });
-    console.log(
-      "[bridge] terminal clipboard",
-      connectionDetail,
-      `terminal=${targetTerminalId}`,
-      `payload=${formatBytes(data.length)}`,
-      `target=${args.clientLabel(target)}`,
-    );
+    logger.debug("terminal clipboard", {
+      connection: args.connectionId ?? "legacy-default",
+      terminal: targetTerminalId,
+      payload: formatBytes(data.length),
+      target: args.clientLabel(target),
+    });
     args.safeSend(target, payload, "terminal-clipboard");
   }
 
@@ -236,7 +236,10 @@ export function createTerminalBridge(args: {
     clipboardRelaySize = { cols, rows };
     relay.on("clipboard", ({ data }) => forwardClipboard(data));
     relay.on("error", (error) =>
-      console.error("[clipboard-relay]", connectionDetail, formatError(error)),
+      logger.warn("clipboard relay error", {
+        connection: args.connectionId ?? "legacy-default",
+        error: formatError(error),
+      }),
     );
     relay.on("close", () => {
       if (clipboardRelay !== relay) return;
@@ -256,7 +259,9 @@ export function createTerminalBridge(args: {
           relay.close();
           return;
         }
-        console.log("[bridge] clipboard relay connected", connectionDetail);
+        logger.debug("clipboard relay connected", {
+          connection: args.connectionId ?? "legacy-default",
+        });
       })
       .catch((error) => {
         if (clipboardRelay === relay) {
@@ -264,11 +269,10 @@ export function createTerminalBridge(args: {
           clipboardRelaySize = null;
         }
         if (!disposed && sharedTerminals.size > 0) {
-          console.error(
-            "[clipboard-relay] connect failed:",
-            connectionDetail,
-            formatError(error),
-          );
+          logger.warn("clipboard relay connection failed", {
+            connection: args.connectionId ?? "legacy-default",
+            error: formatError(error),
+          });
         }
       })
       .finally(() => {
@@ -298,10 +302,9 @@ export function createTerminalBridge(args: {
     if (timer) clearTimeout(timer);
     if (disposed) return false;
     if (timedOut) {
-      console.warn(
-        "[clipboard-relay] still connecting; terminal attach will continue",
-        connectionDetail,
-      );
+      logger.debug("clipboard relay still connecting", {
+        connection: args.connectionId ?? "legacy-default",
+      });
       return false;
     }
     if (!clipboardRelay || clipboardRelay.isClosed) return false;
@@ -330,11 +333,11 @@ export function createTerminalBridge(args: {
     ]);
     if (timer) clearTimeout(timer);
     if (timedOut) {
-      console.warn(
-        "[bridge] terminal first frame still pending; clipboard relay deferred",
-        connectionDetail,
-        `terminal=${shared.terminalId}`,
-      );
+      logger.warn("terminal first frame still pending", {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: shared.terminalId,
+        clipboard_relay: "deferred",
+      });
     }
     return seen;
   }
@@ -426,13 +429,12 @@ export function createTerminalBridge(args: {
       lastError: null,
     };
     sharedTerminals.set(terminalId, shared);
-    console.log(
-      "[bridge] thin connecting",
-      connectionDetail,
-      `terminal=${terminalId}`,
-      `size=${cols}x${rows}`,
-      `socket=${args.clientSocketPath}`,
-    );
+    logger.debug("terminal stream connecting", {
+      connection: args.connectionId ?? "legacy-default",
+      terminal: terminalId,
+      size: `${cols}x${rows}`,
+      socket: args.clientSocketPath,
+    });
 
     thin.on("terminal", (t) => {
       const resolve = shared.resolveFirstFrame;
@@ -445,16 +447,15 @@ export function createTerminalBridge(args: {
       shared.bytes += t.bytes.length;
       const now = Date.now();
       if (!shared.firstFrameLogged || now - shared.lastFrameLogAt >= 30_000) {
-        console.log(
-          "[bridge] thin frame",
-          connectionDetail,
-          `terminal=${terminalId}`,
-          `size=${t.width}x${t.height}`,
-          `full=${t.full}`,
-          `frames=${shared.frames}`,
-          `bytes=${formatBytes(shared.bytes)}`,
-          `viewers=${shared.viewers.size}`,
-        );
+        logger.debug("terminal frame", {
+          connection: args.connectionId ?? "legacy-default",
+          terminal: terminalId,
+          size: `${t.width}x${t.height}`,
+          full: t.full,
+          frames: shared.frames,
+          bytes: formatBytes(shared.bytes),
+          viewers: shared.viewers.size,
+        });
         shared.firstFrameLogged = true;
         shared.lastFrameLogAt = now;
       }
@@ -479,24 +480,21 @@ export function createTerminalBridge(args: {
     // side effects directly to the terminal attachment.
     thin.on("clipboard", ({ data }) => forwardClipboard(data, terminalId));
     thin.on("welcome", (w) => {
-      const parts = [
-        "[bridge] thin welcome",
-        connectionDetail,
-        `terminal=${terminalId}`,
-        `version=${w.version}`,
-        `encoding=${w.encoding}`,
-      ];
-      if (w.error) parts.push(`error=${formatError(w.error)}`);
-      console.log(...parts);
+      logger.debug("terminal stream welcome", {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: terminalId,
+        version: w.version,
+        encoding: w.encoding,
+        error: w.error ? formatError(w.error) : undefined,
+      });
     });
     thin.on("error", (error) => {
       shared.lastError = formatError(error);
-      console.error(
-        "[thin]",
-        connectionDetail,
-        formatError(terminalId),
-        formatError(error),
-      );
+      logger.warn("terminal stream error", {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: formatError(terminalId),
+        error: formatError(error),
+      });
     });
     thin.on("close", () => {
       const resolve = shared.resolveFirstFrame;
@@ -504,13 +502,12 @@ export function createTerminalBridge(args: {
         shared.resolveFirstFrame = null;
         resolve(false);
       }
-      console.log(
-        "[bridge] thin closed",
-        connectionDetail,
-        `terminal=${terminalId}`,
-        `frames=${shared.frames}`,
-        `bytes=${formatBytes(shared.bytes)}`,
-      );
+      logger.debug("terminal stream closed", {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: terminalId,
+        frames: shared.frames,
+        bytes: formatBytes(shared.bytes),
+      });
       if (sharedTerminals.get(terminalId)?.thin === thin) {
         sharedTerminals.delete(terminalId);
       }
@@ -519,12 +516,11 @@ export function createTerminalBridge(args: {
       // silence otherwise, so tell them to re-attach instead of leaving a
       // blank terminal behind.
       if (isCurrent(creationRevision) && shared.viewers.size > 0) {
-        console.log(
-          "[bridge] terminal stream closed with live viewers",
-          connectionDetail,
-          `terminal=${terminalId}`,
-          `viewers=${shared.viewers.size}`,
-        );
+        logger.warn("terminal stream closed with live viewers", {
+          connection: args.connectionId ?? "legacy-default",
+          terminal: terminalId,
+          viewers: shared.viewers.size,
+        });
         const closedPayload = serialize({
           terminal_closed: {
             terminal_id: terminalId,
@@ -636,14 +632,14 @@ export function createTerminalBridge(args: {
           shared.thin.resize(cols, rows);
           shared.cols = cols;
           shared.rows = rows;
-          console.log(
-            refreshReusedTerminal
-              ? "[bridge] terminal refreshed"
-              : "[bridge] terminal resized",
-            connectionDetail,
-            `client=${args.clientLabel(ws)}`,
-            `terminal=${terminalId}`,
-            `size=${cols}x${rows}`,
+          logger.debug(
+            refreshReusedTerminal ? "terminal refreshed" : "terminal resized",
+            {
+              connection: args.connectionId ?? "legacy-default",
+              client: args.clientLabel(ws),
+              terminal: terminalId,
+              size: `${cols}x${rows}`,
+            },
           );
         }
         if (relaySize && relayRevision !== null) {
@@ -654,15 +650,14 @@ export function createTerminalBridge(args: {
           shared.thin.close();
           throw new Error("terminal bridge disposed");
         }
-        console.log(
-          "[bridge] terminal attached",
-          connectionDetail,
-          `client=${args.clientLabel(ws)}`,
-          `terminal=${terminalId}`,
-          `viewers=${shared.viewers.size}`,
-          `size=${cols}x${rows}`,
-          `shared=${sharedMode}`,
-        );
+        logger.debug("terminal attached", {
+          connection: args.connectionId ?? "legacy-default",
+          client: args.clientLabel(ws),
+          terminal: terminalId,
+          viewers: shared.viewers.size,
+          size: `${cols}x${rows}`,
+          shared: sharedMode,
+        });
         return reply({ ok: true });
       }
 
@@ -710,19 +705,21 @@ export function createTerminalBridge(args: {
       const thin = shared?.thin;
       if (method === "terminal.detach") {
         detachTerminalViewer(ws, requestedTerminalId ?? null);
-        console.log(
-          "[bridge] terminal detached",
-          connectionDetail,
-          `client=${args.clientLabel(ws)}`,
-          `terminal=${requestedTerminalId ?? "none"}`,
-          requestedTerminalId && sharedTerminals.has(requestedTerminalId)
-            ? `viewers=${sharedTerminals.get(requestedTerminalId)?.viewers.size}`
-            : "viewers=0",
-        );
+        logger.debug("terminal detached", {
+          connection: args.connectionId ?? "legacy-default",
+          client: args.clientLabel(ws),
+          terminal: requestedTerminalId ?? "none",
+          viewers:
+            requestedTerminalId && sharedTerminals.has(requestedTerminalId)
+              ? sharedTerminals.get(requestedTerminalId)?.viewers.size
+              : 0,
+        });
         return reply({ ok: true });
       }
       if (method === "terminal.input") {
-        if (!thin || !requestedTerminalId) return fail("no terminal attached");
+        if (!thin || !requestedTerminalId) {
+          return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+        }
         const b64 = String(params.data ?? "");
         if (!b64 || !STANDARD_BASE64_RE.test(b64)) {
           return fail("invalid terminal input");
@@ -738,7 +735,7 @@ export function createTerminalBridge(args: {
         return reply({ ok: true });
       }
       if (method === "terminal.resize") {
-        if (!thin || !shared) return fail("no terminal attached");
+        if (!thin || !shared) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         const cols = Number(params.cols ?? 100);
         const rows = Number(params.rows ?? 30);
         const relaySize = relaySizeFromParams(params, { cols, rows });
@@ -749,17 +746,16 @@ export function createTerminalBridge(args: {
           clipboardRelayRevision += 1;
           syncClipboardRelaySize(relaySize.cols, relaySize.rows);
         }
-        console.log(
-          "[bridge] terminal resized",
-          connectionDetail,
-          `client=${args.clientLabel(ws)}`,
-          `terminal=${requestedTerminalId ?? "none"}`,
-          `size=${cols}x${rows}`,
-        );
+        logger.debug("terminal resized", {
+          connection: args.connectionId ?? "legacy-default",
+          client: args.clientLabel(ws),
+          terminal: requestedTerminalId ?? "none",
+          size: `${cols}x${rows}`,
+        });
         return reply({ ok: true });
       }
       if (method === "terminal.scroll") {
-        if (!thin) return fail("no terminal attached");
+        if (!thin) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         const direction = params.direction === "up" ? "up" : "down";
         const lines = Number(params.lines ?? 3);
         const column =

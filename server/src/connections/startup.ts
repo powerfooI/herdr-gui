@@ -1,3 +1,5 @@
+import { serverLogger } from "../utils/logger";
+
 export function bindListenerBeforeConnectionStart<Listener>(args: {
   bindListener: () => Listener;
   startConnection: () => void | Promise<void>;
@@ -8,10 +10,11 @@ export function bindListenerBeforeConnectionStart<Listener>(args: {
     try {
       args.onConnectionError(error);
     } catch (observerError) {
-      console.error(
-        "[bridge] connection startup error observer failed:",
-        observerError,
-      );
+      serverLogger
+        .child("connections")
+        .error("connection startup error observer failed", {
+          error: observerError,
+        });
     }
   };
   try {

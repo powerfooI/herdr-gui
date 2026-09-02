@@ -6,6 +6,9 @@
 
 - Add a responsive GitHub Pages landing page with a product tour, mobile
   previews, install guidance, social metadata, and automated deployment.
+- Add configurable server log levels with concise, timestamped default output,
+  deduplicated retry failures and recovery summaries, and debug-only request,
+  event, terminal, and successful auto-sync diagnostics.
 - Add inline review annotations for diff lines, source lines, and rendered
   Markdown selections. A shared review panel edits and orders comments,
   preserves drafts per checkout, copies compiled feedback, or pre-fills an
