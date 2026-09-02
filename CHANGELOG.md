@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Support Herdr protocol 22 (upcoming Herdr 0.9.x): the bridge encodes the
+  redesigned TerminalHello handshake, renumbered server message variants, and
+  the extended Resize layout, while keeping compatibility with Herdr protocol
+  14-21. Closing a primary workspace now explicitly closes its linked-worktree
+  group, matching the new Herdr close semantics. Herdr versions newer than
+  protocol 22 are rejected with a clear error instead of a broken connection.
+
 ## 0.5.0 - 2026-09-02
 
 ### Added
