@@ -2079,8 +2079,14 @@ export const store = {
   },
 
   closeWorkspace(workspaceId: string) {
+    // close_group preserves the pre-0.9 close-the-whole-group behavior. Older
+    // Herdr servers ignore the unknown param; protocol 21+ requires it to
+    // close a primary workspace while linked-worktree workspaces are open.
     return action((lease) =>
-      lease.client.call("workspace.close", { workspace_id: workspaceId }),
+      lease.client.call("workspace.close", {
+        workspace_id: workspaceId,
+        close_group: true,
+      }),
     );
   },
 

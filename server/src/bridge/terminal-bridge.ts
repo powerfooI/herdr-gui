@@ -6,6 +6,7 @@ import {
 import { type Logger, silentLogger } from "../utils/logger";
 import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
+import { isTerminalHelloProtocol } from "./protocol-compat";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -77,6 +78,9 @@ export function createTerminalBridge(args: {
   let clipboardTarget: ClipboardTarget | null = null;
   let clipboardRelaySize: { cols: number; rows: number } | null = null;
   let clipboardRelayRevision = 0;
+  // Set when the server speaks protocol 22+ and the relay is known to be
+  // undeliverable, so repeated checks neither reconnect nor re-log.
+  let clipboardRelaySkipped = false;
   let lifecycleRevision = 0;
   let disposed = false;
 
@@ -227,57 +231,78 @@ export function createTerminalBridge(args: {
 
   function ensureClipboardRelay(cols: number, rows: number) {
     if (disposed) throw new Error("terminal bridge disposed");
+    if (clipboardRelaySkipped) return Promise.resolve();
     if (clipboardRelay && !clipboardRelay.isClosed) {
       return clipboardRelayConnecting ?? Promise.resolve();
     }
 
-    const relay = new ThinClient(args.clientSocketPath, args.herdrProtocol);
-    clipboardRelay = relay;
-    clipboardRelaySize = { cols, rows };
-    relay.on("clipboard", ({ data }) => forwardClipboard(data));
-    relay.on("error", (error) =>
-      logger.warn("clipboard relay error", {
-        connection: args.connectionId ?? "legacy-default",
-        error: formatError(error),
-      }),
-    );
-    relay.on("close", () => {
-      if (clipboardRelay !== relay) return;
-      clipboardRelay = null;
-      clipboardRelayConnecting = null;
-      clipboardRelaySize = null;
-    });
+    const connecting = (async () => {
+      // Herdr 0.9.x (protocol 22) routes client-local side effects such as
+      // OSC 52 only to the foreground *shell* (endpoint-protocol) client;
+      // direct terminal connections like this relay are never foreground and
+      // can never receive ServerMessage::Clipboard there. Skip the relay and
+      // log the degradation instead of idling silently. Clipboard sync on
+      // protocol 22+ returns with the endpoint-protocol migration.
+      const protocol = await args.herdrProtocol();
+      if (isTerminalHelloProtocol(protocol)) {
+        clipboardRelaySkipped = true;
+        logger.warn(
+          "clipboard sync unavailable: Herdr protocol 22+ routes OSC 52 only to endpoint shell clients",
+          { connection: args.connectionId ?? "legacy-default" },
+        );
+        return;
+      }
 
-    // Herdr routes client-local side effects such as OSC 52 only to its
-    // foreground app client. Direct terminal attachments intentionally cannot
-    // receive them, so keep one lightweight app connection while terminals are
-    // being viewed and route its clipboard messages back to the input owner.
-    const connecting = relay
-      .connect(cols, rows, { launchMode: "app", encoding: 1 })
-      .then(() => {
-        if (disposed) {
-          relay.close();
-          return;
-        }
-        logger.debug("clipboard relay connected", {
+      const relay = new ThinClient(args.clientSocketPath, args.herdrProtocol);
+      clipboardRelay = relay;
+      clipboardRelaySize = { cols, rows };
+      relay.on("clipboard", ({ data }) => forwardClipboard(data));
+      relay.on("error", (error) =>
+        logger.warn("clipboard relay error", {
           connection: args.connectionId ?? "legacy-default",
-        });
-      })
-      .catch((error) => {
-        if (clipboardRelay === relay) {
-          clipboardRelay = null;
-          clipboardRelaySize = null;
-        }
-        if (!disposed && sharedTerminals.size > 0) {
-          logger.warn("clipboard relay connection failed", {
-            connection: args.connectionId ?? "legacy-default",
-            error: formatError(error),
-          });
-        }
-      })
-      .finally(() => {
-        if (clipboardRelay === relay) clipboardRelayConnecting = null;
+          error: formatError(error),
+        }),
+      );
+      relay.on("close", () => {
+        if (clipboardRelay !== relay) return;
+        clipboardRelay = null;
+        clipboardRelayConnecting = null;
+        clipboardRelaySize = null;
       });
+
+      // Herdr before protocol 22 routes client-local side effects such as
+      // OSC 52 only to its foreground app client. Direct terminal attachments
+      // intentionally cannot receive them, so keep one lightweight app
+      // connection while terminals are being viewed and route its clipboard
+      // messages back to the input owner.
+      await relay
+        .connect(cols, rows, { launchMode: "app", encoding: 1 })
+        .then(() => {
+          if (disposed) {
+            relay.close();
+            return;
+          }
+          logger.debug("clipboard relay connected", {
+            connection: args.connectionId ?? "legacy-default",
+          });
+        })
+        .catch((error) => {
+          if (clipboardRelay === relay) {
+            clipboardRelay = null;
+            clipboardRelaySize = null;
+          }
+          if (!disposed && sharedTerminals.size > 0) {
+            logger.warn("clipboard relay connection failed", {
+              connection: args.connectionId ?? "legacy-default",
+              error: formatError(error),
+            });
+          }
+        });
+    })().finally(() => {
+      if (clipboardRelayConnecting === connecting) {
+        clipboardRelayConnecting = null;
+      }
+    });
     clipboardRelayConnecting = connecting;
     return connecting;
   }

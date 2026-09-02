@@ -50,9 +50,16 @@ async function startHandshakeServer(
       reader.varint(); // rows
       reader.varint(); // cell_width_px
       reader.varint(); // cell_height_px
-      reader.varint(); // requested_encoding
-      reader.varint(); // keybindings
-      const launchMode = reader.varint();
+      let launchMode = 0;
+      if (protocol >= 22) {
+        // TerminalHello: requested_encoding, keybindings, and launch_mode
+        // were removed; only pixel_mouse remains.
+        expect(reader.bool()).toBe(false);
+      } else {
+        reader.varint(); // requested_encoding
+        reader.varint(); // keybindings
+        launchMode = reader.varint();
+      }
       onHello({ protocol, launchMode });
       const response = welcome(protocol);
       const writer = new BinWriter();
@@ -112,18 +119,20 @@ async function startMessageServer(
 }
 
 describe("Herdr thin-client protocol compatibility", () => {
-  test("supports the compatible floor and future protocol versions", () => {
-    expect([14, 15, 16, 17, 18, 999].map(isSupportedHerdrProtocol)).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-    ]);
+  test("supports the compatible floor through the known ceiling", () => {
+    expect(
+      [14, 15, 16, 17, 18, 20, 21, 22].map(isSupportedHerdrProtocol),
+    ).toEqual([true, true, true, true, true, true, true, true]);
     expect(isSupportedHerdrProtocol(13)).toBe(false);
+    // Protocols newer than 22 have an unknown wire layout and must fail
+    // loudly instead of mis-decoding.
+    expect(isSupportedHerdrProtocol(23)).toBe(false);
+    expect(isSupportedHerdrProtocol(999)).toBe(false);
     expect(() => assertSupportedHerdrProtocol(13)).toThrow(
-      "requires protocol 14 or newer",
+      "supports protocols 14-22",
+    );
+    expect(() => assertSupportedHerdrProtocol(23)).toThrow(
+      "supports protocols 14-22",
     );
     expect(() => assertSupportedHerdrProtocol(17.5)).toThrow(
       "invalid protocol version",
@@ -190,6 +199,79 @@ describe("Herdr thin-client protocol compatibility", () => {
     await client.connect(100, 30, { launchMode: "app", encoding: 1 });
 
     expect(seen).toEqual([{ protocol: 20, launchMode: 0 }]);
+    client.close();
+  });
+
+  test("uses the TerminalHello layout on protocol 22", async () => {
+    const seen: Array<{ protocol: number; launchMode: number }> = [];
+    const socketPath = await startHandshakeServer(
+      (requestedProtocol) => ({ version: requestedProtocol }),
+      () => undefined,
+      (hello) => seen.push(hello),
+    );
+    const client = new ThinClient(socketPath, async () => 22);
+
+    await client.connect(100, 30, {
+      launchMode: "terminal-attach",
+      encoding: 1,
+    });
+
+    // The 6-field TerminalHello carries no launch mode at all.
+    expect(seen).toEqual([{ protocol: 22, launchMode: 0 }]);
+    client.close();
+  });
+
+  test("decodes terminal frames at the protocol 22 variant index", async () => {
+    const socketPath = await startMessageServer((variant, socket) => {
+      if (variant !== 5) return;
+      const writer = new BinWriter();
+      writer.variant(1); // ServerMessage::Terminal on protocol 22
+      writer.varint(7); // seq
+      writer.varint(100); // width
+      writer.varint(30); // height
+      writer.bool(true); // full
+      writer.bytes(Buffer.from("hello"));
+      socket.write(encodeFrame(writer.toBuffer()));
+    });
+    const client = new ThinClient(socketPath, async () => 22);
+    const terminal = new Promise<{
+      seq: number;
+      width: number;
+      height: number;
+      full: boolean;
+      bytes: Buffer;
+    }>((resolve) => client.once("terminal", resolve));
+
+    await client.connect(100, 30, { launchMode: "terminal-attach" });
+    client.attach("term_1", true);
+
+    expect(await terminal).toEqual({
+      seq: 7,
+      width: 100,
+      height: 30,
+      full: true,
+      bytes: Buffer.from("hello"),
+    });
+    client.close();
+  });
+
+  test("appends pixel_mouse to resize only on protocol 22", async () => {
+    const resizes: number[] = [];
+    const socketPath = await startMessageServer((variant, _socket, reader) => {
+      if (variant !== 3) return;
+      reader.varint(); // cols
+      reader.varint(); // rows
+      reader.varint(); // cell_width_px
+      reader.varint(); // cell_height_px
+      resizes.push(reader.bool() ? 1 : 0);
+    });
+    const client = new ThinClient(socketPath, async () => 22);
+
+    await client.connect(100, 30, { launchMode: "terminal-attach" });
+    client.resize(120, 40);
+    await Bun.sleep(10);
+
+    expect(resizes).toEqual([0]);
     client.close();
   });
 
