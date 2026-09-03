@@ -106,16 +106,6 @@ instead of running the script. See the
 fixed-version installation, authentication, remote connections, updates, and
 user-service setup.
 
-Herdr 0.7.2 or newer can also install Herdr Studio as a plugin:
-
-```bash
-herdr plugin install powerfooI/herdr-studio
-```
-
-The plugin builds from source with Bun and manages the same standalone binary
-through plugin actions and an interactive popup pane; see the
-[deployment guide](./docs/DEPLOYMENT.md#herdr-plugin).
-
 ## Install as a PWA
 
 For day-to-day use, install Herdr Studio as a standalone web app after starting
