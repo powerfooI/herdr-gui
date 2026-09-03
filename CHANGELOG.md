@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1 - 2026-09-03
+
 ### Added
 
 - Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
