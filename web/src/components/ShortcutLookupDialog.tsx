@@ -31,6 +31,12 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
         keys: "Cmd+Option+Left / Right",
         description: "Switch tabs in the focused workspace",
       },
+      {
+        keys: "Cmd+Ctrl+Left / Right / Up / Down",
+        description: "Focus the neighboring pane",
+      },
+      { keys: "Cmd+D", description: "Split the active pane right" },
+      { keys: "Cmd+Shift+D", description: "Split the active pane down" },
       { keys: "Ctrl+Shift+W", description: "Open Workspaces" },
       {
         keys: "Cmd/Ctrl + Shift + E",

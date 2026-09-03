@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
+  `Cmd+D` splits the active pane right, and `Cmd+Shift+D` splits it down.
+
 ## 0.5.0 - 2026-09-02
 
 ### Added

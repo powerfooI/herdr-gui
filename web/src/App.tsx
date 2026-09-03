@@ -90,6 +90,7 @@ import {
   WORKTREE_REMOVED_EVENT,
   type WorktreeRemovedTarget,
 } from "./store";
+import { paneShortcutAction } from "./paneShortcuts";
 import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import {
@@ -2086,6 +2087,48 @@ export default function App() {
         const targetTabId = adjacentTabId(tabs, activeTabId, tabAction);
         if (!targetTabId || targetTabId === activeTabId) return;
         store.focusTab(targetTabId);
+        return;
+      }
+      const paneAction = paneShortcutAction(e);
+      if (paneAction) {
+        // Browser-level Cmd+D may still be reserved by the host browser, but
+        // standalone/webview clients can route it through this handler.
+        e.preventDefault();
+        e.stopPropagation();
+        if (
+          isEditableElement(e.target) ||
+          document.querySelector(".modal-backdrop")
+        ) {
+          return;
+        }
+        if (e.repeat && paneAction.type === "split") return;
+
+        const current = store.get();
+        const focusedWorkspace = current.workspaces.find((w) => w.focused);
+        const activeTab =
+          current.tabs.find(
+            (tab) => tab.tab_id === focusedWorkspace?.active_tab_id,
+          ) ?? current.tabs.find((tab) => tab.focused);
+        const activePane =
+          current.panes.find(
+            (pane) => pane.pane_id === current.selectedPaneId,
+          ) ??
+          current.panes.find(
+            (pane) => pane.pane_id === current.layout?.focused_pane_id,
+          ) ??
+          current.panes.find(
+            (pane) => pane.tab_id === activeTab?.tab_id && pane.focused,
+          ) ??
+          current.panes.find((pane) => pane.tab_id === activeTab?.tab_id);
+        if (!activePane) return;
+        if (paneAction.type === "split") {
+          void store.splitPane(activePane.pane_id, paneAction.direction);
+        } else {
+          void store.focusPaneDirection(
+            activePane.pane_id,
+            paneAction.direction,
+          );
+        }
         return;
       }
       const tabIndex = tabShortcutIndex(e);
