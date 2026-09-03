@@ -6,10 +6,11 @@ description = "Browser and PWA client for Herdr: workspaces, tabs, panes, agent 
 platforms = ["linux", "macos", "windows"]
 
 # Thin launcher: every action delegates to scripts/studio-plugin.ts, which
-# builds server/herdr-gui on demand and forwards to its service CLI
-# (systemd, launchd, or Windows Task Scheduler). The verb set is a frozen
-# contract; see scripts/studio-plugin.ts. Builds need Bun on PATH; the
-# compiled binary runs standalone afterwards.
+# downloads the checksum-verified prebuilt release binary matching this
+# checkout's version on demand and forwards service verbs to it (systemd,
+# launchd, or Windows Task Scheduler). The verb set is a frozen contract; see
+# scripts/studio-plugin.ts. The shim itself runs on Bun; `build-source`
+# compiles from source for development.
 # The panel opens as a session-modal popup in the Herdr TUI by default. Open
 # it with --placement split (or tab/zoomed/overlay) to get a regular pane
 # that other Herdr clients, including Herdr Studio itself, can see.
