@@ -10,6 +10,9 @@ platforms = ["linux", "macos", "windows"]
 # (systemd, launchd, or Windows Task Scheduler). The verb set is a frozen
 # contract; see scripts/studio-plugin.ts. Builds need Bun on PATH; the
 # compiled binary runs standalone afterwards.
+# The panel opens as a session-modal popup in the Herdr TUI by default. Open
+# it with --placement split (or tab/zoomed/overlay) to get a regular pane
+# that other Herdr clients, including Herdr Studio itself, can see.
 
 [[build]]
 command = ["bun", "scripts/studio-plugin.ts", "build"]

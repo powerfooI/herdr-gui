@@ -14,9 +14,9 @@ user services, and standalone builds.
 
 ## Install a release
 
-The installer supports Linux and macOS on x86-64 and arm64. It verifies the
-release checksum and installs the standalone binary to
-`~/.local/bin/herdr-gui`:
+Prebuilt standalone binaries are available for Linux, macOS, and Windows on
+x86-64 and arm64. On Linux and macOS, the installer verifies the release
+checksum and installs the standalone binary to `~/.local/bin/herdr-gui`:
 
 ```bash
 curl -fsSL \
@@ -60,6 +60,39 @@ curl -fsSL \
 must use HTTPS, except for loopback testing, and their URLs cannot contain
 credentials, query strings, or fragments. The installer and in-app updater
 preserve a replaced executable as `herdr-gui.previous` for manual recovery.
+
+## Herdr plugin
+
+Herdr 0.7.2 or newer can install Herdr Studio as a plugin. The plugin builds
+the standalone binary from source, so [Bun](https://bun.sh) must be on `PATH`:
+
+```bash
+herdr plugin install powerfooI/herdr-studio
+```
+
+Plugin actions manage the same user service described in
+[Run as a user service](#run-as-a-user-service):
+
+```bash
+herdr plugin action invoke herdr.studio.start      # install and start the service
+herdr plugin action invoke herdr.studio.url        # print the login URL
+herdr plugin action invoke herdr.studio.status
+herdr plugin action invoke herdr.studio.restart
+herdr plugin action invoke herdr.studio.uninstall  # remove the service
+```
+
+Plugin actions run asynchronously; their output is recorded in the plugin
+command log (`herdr plugin log list --plugin herdr.studio`). For an
+interactive view, open the plugin's popup pane in the Herdr TUI:
+
+```bash
+herdr plugin pane open --plugin herdr.studio --entrypoint panel
+```
+
+The panel shows service status, the login URL, and the version, with
+single-key start, restart, and uninstall controls. It opens as a
+session-modal popup by default; pass `--placement split` (or `tab`, `zoomed`,
+`overlay`) to open it as a regular pane that other Herdr clients can see.
 
 ## Basic runtime configuration
 
