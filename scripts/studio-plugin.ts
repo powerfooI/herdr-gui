@@ -5,9 +5,11 @@
 // at install time.
 //
 // Verbs: build, start, restart, status, url, version, uninstall, panel.
-// `build` needs Bun on PATH; every other verb delegates to the compiled
-// standalone binary and builds it first when missing (plugin link mode).
-// `panel` is the interactive popup TUI behind the manifest [[panes]] entry.
+// `build` needs Bun on PATH. The service verbs (start, restart, status,
+// uninstall) delegate to the compiled standalone binary, building it first
+// when missing (plugin link mode). `url` and `version` only read on-disk
+// state and never build. `panel` is the interactive popup TUI behind the
+// manifest [[panes]] entry and builds on demand for its service keys.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -95,18 +97,36 @@ function configDir(): string {
   return join(homedir(), ".config", "herdr-gui");
 }
 
+// Mirrors the server's service env parser: leading whitespace, an optional
+// `export` prefix, whitespace around `=`, and optionally quoted values; the
+// last occurrence wins.
+function readServiceEnv(contents: string, name: string): string | undefined {
+  let value: string | undefined;
+  for (const line of contents.split(/\r?\n/)) {
+    const match = line.match(
+      new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=\\s*(.*?)\\s*$`),
+    );
+    if (!match) continue;
+    const raw = match[1] ?? "";
+    value =
+      raw.length >= 2 &&
+      (raw.startsWith("'") || raw.startsWith('"')) &&
+      raw.at(-1) === raw[0]
+        ? raw.slice(1, -1)
+        : raw;
+  }
+  return value;
+}
+
 function computeUrl(): string {
   const dir = configDir();
   const envFile = join(dir, "herdr-gui.env");
   let host = "127.0.0.1";
   let port = "8787";
   if (existsSync(envFile)) {
-    for (const line of readFileSync(envFile, "utf8").split("\n")) {
-      const match = /^(HOST|PORT)=(.*)$/.exec(line.trim());
-      if (!match) continue;
-      if (match[1] === "HOST") host = match[2].trim();
-      if (match[1] === "PORT") port = match[2].trim();
-    }
+    const contents = readFileSync(envFile, "utf8");
+    host = readServiceEnv(contents, "HOST") ?? host;
+    port = readServiceEnv(contents, "PORT") ?? port;
   }
   const anyHost = host === "0.0.0.0" || host === "::";
   const browserHost = anyHost ? "localhost" : host;
@@ -184,12 +204,21 @@ function panel(): Promise<number> {
   const stdin = process.stdin;
   return new Promise((resolve) => {
     let message = "";
+    let done = false;
     const cleanup = (code: number) => {
+      if (done) return;
+      done = true;
       process.stdout.write("\x1b[?25h\x1b[0m\n");
       stdin.setRawMode(false);
       stdin.pause();
       resolve(code);
     };
+    // The host can end the session by closing stdin or signaling the
+    // process; leave the terminal restored in every exit path.
+    stdin.on("end", () => cleanup(0));
+    stdin.on("close", () => cleanup(0));
+    process.on("SIGTERM", () => cleanup(0));
+    process.on("SIGINT", () => cleanup(0));
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", (chunk: Buffer) => {
