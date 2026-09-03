@@ -2109,13 +2109,11 @@ export default function App() {
           current.tabs.find(
             (tab) => tab.tab_id === focusedWorkspace?.active_tab_id,
           ) ?? current.tabs.find((tab) => tab.focused);
+        // Resolve the selection only while it belongs to the visible layout,
+        // then fall back to tab-local panes like the command menu does.
+        const layoutActivePaneId = activePaneIdForSnapshot(current);
         const activePane =
-          current.panes.find(
-            (pane) => pane.pane_id === current.selectedPaneId,
-          ) ??
-          current.panes.find(
-            (pane) => pane.pane_id === current.layout?.focused_pane_id,
-          ) ??
+          current.panes.find((pane) => pane.pane_id === layoutActivePaneId) ??
           current.panes.find(
             (pane) => pane.tab_id === activeTab?.tab_id && pane.focused,
           ) ??
