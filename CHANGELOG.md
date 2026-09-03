@@ -6,6 +6,13 @@
 
 - Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
   `Cmd+D` splits the active pane right, and `Cmd+Shift+D` splits it down.
+- Add a Herdr plugin manifest and launcher so Herdr Studio can be installed
+  and managed with `herdr plugin install powerfooI/herdr-studio`, with start,
+  restart, status, URL, version, and uninstall actions on Linux, macOS, and
+  Windows.
+- Add an interactive Herdr Studio popup pane (`herdr.studio` plugin `panel`
+  entrypoint) showing service status, the login URL, and start, restart, and
+  uninstall keys.
 
 ## 0.5.0 - 2026-09-02
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-// Prepare a release PR by bumping the three package.json versions and moving
+// Prepare a release PR by bumping the package.json and herdr-plugin.toml
+// versions and moving
 // the CHANGELOG "Unreleased" entries under the new version. This script only
 // updates the working tree; it does not commit, merge, tag, or push anything.
 //
@@ -20,7 +21,8 @@ const PACKAGE_FILES = [
   "server/package.json",
 ];
 const CHANGELOG_FILE = "CHANGELOG.md";
-const RELEASE_FILES = [...PACKAGE_FILES, CHANGELOG_FILE];
+const PLUGIN_MANIFEST_FILE = "herdr-plugin.toml";
+const RELEASE_FILES = [...PACKAGE_FILES, CHANGELOG_FILE, PLUGIN_MANIFEST_FILE];
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 
@@ -47,6 +49,33 @@ export function replacePackageVersion(
     );
   }
   return `${packageJsonText.slice(0, match.index)}${match[1]}"version": "${next}"${packageJsonText.slice(
+    match.index + match[0].length,
+  )}`;
+}
+
+export function parseManifestVersion(manifestText: string): string {
+  const match = /^(\s*)version = "([^"]+)"/m.exec(manifestText);
+  if (!match) {
+    throw new Error('herdr-plugin.toml has no top-level "version" field');
+  }
+  return match[2];
+}
+
+export function replaceManifestVersion(
+  manifestText: string,
+  expectedCurrent: string,
+  next: string,
+): string {
+  const match = /^(\s*)version = "([^"]+)"/m.exec(manifestText);
+  if (!match || match.index === undefined) {
+    throw new Error('herdr-plugin.toml has no top-level "version" field');
+  }
+  if (match[2] !== expectedCurrent) {
+    throw new Error(
+      `herdr-plugin.toml version is ${match[2]}, expected ${expectedCurrent}`,
+    );
+  }
+  return `${manifestText.slice(0, match.index)}${match[1]}version = "${next}"${manifestText.slice(
     match.index + match[0].length,
   )}`;
 }
@@ -173,6 +202,13 @@ function main() {
       `${mismatchedPackage.file} version is ${mismatchedPackage.version}, expected ${current}`,
     );
   }
+  const manifestPath = join(REPO_ROOT, PLUGIN_MANIFEST_FILE);
+  const manifestText = readFileSync(manifestPath, "utf8");
+  if (parseManifestVersion(manifestText) !== current) {
+    abort(
+      `${PLUGIN_MANIFEST_FILE} version is ${parseManifestVersion(manifestText)}, expected ${current}`,
+    );
+  }
 
   const version = resolveNextVersion(current, input);
   const tag = `v${version}`;
@@ -193,10 +229,12 @@ function main() {
     version,
     date,
   );
+  const manifestWrite = replaceManifestVersion(manifestText, current, version);
   for (const { path, text } of packageWrites) {
     writeFileSync(path, text);
   }
   writeFileSync(changelogPath, changelogWrite);
+  writeFileSync(manifestPath, manifestWrite);
 
   console.log(
     `Prepared release ${version}. Review the changes and submit them as a release PR.`,
