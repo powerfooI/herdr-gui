@@ -81,6 +81,17 @@ describe("parseManifestVersion", () => {
   test("rejects a manifest without a version", () => {
     expect(() => parseManifestVersion(`id = "x"`)).toThrow("version");
   });
+
+  test("tolerates leading whitespace like the package version parser", () => {
+    const indented = PLUGIN_MANIFEST.replace(
+      'version = "0.4.1"',
+      '  version = "0.4.1"',
+    );
+    expect(parseManifestVersion(indented)).toBe("0.4.1");
+    expect(
+      parseManifestVersion(replaceManifestVersion(indented, "0.4.1", "0.4.2")),
+    ).toBe("0.4.2");
+  });
 });
 
 describe("replaceManifestVersion", () => {

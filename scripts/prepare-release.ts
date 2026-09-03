@@ -54,11 +54,11 @@ export function replacePackageVersion(
 }
 
 export function parseManifestVersion(manifestText: string): string {
-  const match = /^version = "([^"]+)"/m.exec(manifestText);
+  const match = /^(\s*)version = "([^"]+)"/m.exec(manifestText);
   if (!match) {
     throw new Error('herdr-plugin.toml has no top-level "version" field');
   }
-  return match[1];
+  return match[2];
 }
 
 export function replaceManifestVersion(
@@ -66,16 +66,16 @@ export function replaceManifestVersion(
   expectedCurrent: string,
   next: string,
 ): string {
-  const match = /^version = "([^"]+)"/m.exec(manifestText);
+  const match = /^(\s*)version = "([^"]+)"/m.exec(manifestText);
   if (!match || match.index === undefined) {
     throw new Error('herdr-plugin.toml has no top-level "version" field');
   }
-  if (match[1] !== expectedCurrent) {
+  if (match[2] !== expectedCurrent) {
     throw new Error(
-      `herdr-plugin.toml version is ${match[1]}, expected ${expectedCurrent}`,
+      `herdr-plugin.toml version is ${match[2]}, expected ${expectedCurrent}`,
     );
   }
-  return `${manifestText.slice(0, match.index)}version = "${next}"${manifestText.slice(
+  return `${manifestText.slice(0, match.index)}${match[1]}version = "${next}"${manifestText.slice(
     match.index + match[0].length,
   )}`;
 }

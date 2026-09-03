@@ -114,11 +114,14 @@ function computeUrl(): string {
     ? `[${browserHost}]`
     : browserHost;
   let url = `http://${formatted}:${port}`;
-  // Non-loopback binds log in with the generated token; loopback is open.
+  // Only non-loopback binds require the generated login token (the server
+  // skips auth on loopback); the token file can also be absent or stale.
+  const loopback =
+    host === "127.0.0.1" || host === "localhost" || host === "::1";
   const tokenPath = join(dir, "auth-token");
-  if (existsSync(tokenPath)) {
+  if (!loopback && existsSync(tokenPath)) {
     const token = readFileSync(tokenPath, "utf8").trim();
-    if (token) url = `${url}/?token=${token}`;
+    if (token) url = `${url}/?token=${encodeURIComponent(token)}`;
   }
   return url;
 }
