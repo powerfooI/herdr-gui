@@ -1,0 +1,51 @@
+id = "herdr.studio"
+name = "Herdr Studio"
+version = "0.5.0"
+min_herdr_version = "0.7.2"
+description = "Browser and PWA client for Herdr: workspaces, tabs, panes, agent status, session inspection, diffs, and review annotations"
+platforms = ["linux", "macos", "windows"]
+
+# Thin launcher: every action delegates to scripts/studio-plugin.ts, which
+# builds server/herdr-gui on demand and forwards to its service CLI
+# (systemd, launchd, or Windows Task Scheduler). The verb set is a frozen
+# contract; see scripts/studio-plugin.ts. Builds need Bun on PATH; the
+# compiled binary runs standalone afterwards.
+
+[[build]]
+command = ["bun", "scripts/studio-plugin.ts", "build"]
+
+[[actions]]
+id = "start"
+title = "Start Herdr Studio"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "start"]
+
+[[actions]]
+id = "restart"
+title = "Restart Herdr Studio"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "restart"]
+
+[[actions]]
+id = "status"
+title = "Herdr Studio status"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "status"]
+
+[[actions]]
+id = "url"
+title = "Show Herdr Studio URL"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "url"]
+
+[[actions]]
+id = "version"
+title = "Show Herdr Studio version"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "version"]
+
+[[actions]]
+id = "uninstall"
+title = "Uninstall Herdr Studio service"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "uninstall"]
