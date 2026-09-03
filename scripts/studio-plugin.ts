@@ -110,27 +110,28 @@ async function downloadPrebuilt(): Promise<number> {
   const base = `https://github.com/${RELEASE_REPOSITORY}/releases/download/v${version}`;
   const archiveName = `${target.asset}.tar.xz`;
   console.error(`studio-plugin: downloading ${archiveName} (v${version})`);
-  const [checksumResponse, archiveResponse] = await Promise.all([
-    fetch(`${base}/${archiveName}.sha256`),
-    fetch(`${base}/${archiveName}`),
-  ]);
-  if (!checksumResponse.ok || !archiveResponse.ok) {
-    console.error(
-      `studio-plugin: download failed (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}); does release v${version} exist?`,
-    );
-    return 1;
-  }
-  const expected = parseSha256File(await checksumResponse.text());
-  const archive = new Uint8Array(await archiveResponse.arrayBuffer());
-  const actual = createHash("sha256").update(archive).digest("hex");
-  if (!expected || actual !== expected) {
-    console.error(
-      `studio-plugin: checksum mismatch (expected ${expected ?? "<none>"}, got ${actual})`,
-    );
-    return 1;
-  }
-  const tmp = mkdtempSync(join(tmpdir(), "studio-plugin-"));
+  let tmp: string | null = null;
   try {
+    const [checksumResponse, archiveResponse] = await Promise.all([
+      fetch(`${base}/${archiveName}.sha256`),
+      fetch(`${base}/${archiveName}`),
+    ]);
+    if (!checksumResponse.ok || !archiveResponse.ok) {
+      console.error(
+        `studio-plugin: download failed (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}); does release v${version} exist?`,
+      );
+      return 1;
+    }
+    const expected = parseSha256File(await checksumResponse.text());
+    const archive = new Uint8Array(await archiveResponse.arrayBuffer());
+    const actual = createHash("sha256").update(archive).digest("hex");
+    if (!expected || actual !== expected) {
+      console.error(
+        `studio-plugin: checksum mismatch (expected ${expected ?? "<none>"}, got ${actual})`,
+      );
+      return 1;
+    }
+    tmp = mkdtempSync(join(tmpdir(), "studio-plugin-"));
     const archivePath = join(tmp, archiveName);
     writeFileSync(archivePath, archive);
     const extract = spawnSync("tar", ["-xJf", archivePath, "-C", tmp], {
@@ -148,8 +149,13 @@ async function downloadPrebuilt(): Promise<number> {
     if (process.platform !== "win32") chmodSync(destination, 0o755);
     console.error(`studio-plugin: installed ${target.binary} ${version}`);
     return 0;
+  } catch (error) {
+    console.error(
+      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return 1;
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
 }
 
@@ -349,6 +355,7 @@ function panel(): Promise<number> {
       renderPanel(message);
       void (async () => {
         const binary = await ensureBinary();
+        if (done) return;
         if (!binary) {
           message = "download failed";
         } else {
