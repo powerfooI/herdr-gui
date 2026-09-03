@@ -63,8 +63,10 @@ preserve a replaced executable as `herdr-gui.previous` for manual recovery.
 
 ## Herdr plugin
 
-Herdr 0.7.2 or newer can install Herdr Studio as a plugin. The plugin builds
-the standalone binary from source, so [Bun](https://bun.sh) must be on `PATH`:
+Herdr 0.7.2 or newer can install Herdr Studio as a plugin. The plugin
+downloads the checksum-verified prebuilt release binary matching the plugin
+version, so no source toolchain is needed; the plugin shim itself runs on
+[Bun](https://bun.sh):
 
 ```bash
 herdr plugin install powerfooI/herdr-studio

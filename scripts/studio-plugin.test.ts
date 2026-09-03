@@ -2,7 +2,48 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computeUrl, readServiceEnv } from "./studio-plugin";
+import {
+  computeUrl,
+  parseSha256File,
+  readServiceEnv,
+  releaseAssetFor,
+} from "./studio-plugin";
+
+describe("releaseAssetFor", () => {
+  test("maps every supported platform to an archive and binary name", () => {
+    expect(releaseAssetFor("darwin", "arm64")).toEqual({
+      asset: "herdr-gui-darwin-arm64",
+      binary: "herdr-gui",
+    });
+    expect(releaseAssetFor("linux", "x64")).toEqual({
+      asset: "herdr-gui-linux-x64",
+      binary: "herdr-gui",
+    });
+    expect(releaseAssetFor("win32", "x64")?.binary).toBe("herdr-gui.exe");
+    expect(releaseAssetFor("win32", "arm64")?.asset).toBe(
+      "herdr-gui-windows-arm64",
+    );
+  });
+
+  test("returns null for unsupported platforms", () => {
+    expect(releaseAssetFor("freebsd", "x64")).toBeNull();
+    expect(releaseAssetFor("darwin", "ia32")).toBeNull();
+  });
+});
+
+describe("parseSha256File", () => {
+  test("extracts the digest from shasum output", () => {
+    const digest = "a".repeat(64);
+    expect(parseSha256File(`${digest}  herdr-gui-darwin-arm64.tar.xz\n`)).toBe(
+      digest,
+    );
+  });
+
+  test("rejects content without a digest", () => {
+    expect(parseSha256File("not a checksum")).toBeNull();
+    expect(parseSha256File("zzzz" + "0".repeat(60))).toBeNull();
+  });
+});
 
 describe("readServiceEnv", () => {
   test("reads plain values", () => {

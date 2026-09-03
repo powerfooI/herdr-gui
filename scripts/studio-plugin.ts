@@ -4,16 +4,28 @@
 // are a frozen contract because managed installs call the action set cached
 // at install time.
 //
-// Verbs: build, start, restart, status, url, version, uninstall, panel.
-// `build` needs Bun on PATH. The service verbs (start, restart, status,
-// uninstall) delegate to the compiled standalone binary, building it first
-// when missing (plugin link mode). `url` and `version` only read on-disk
-// state and never build. `panel` is the interactive popup TUI behind the
-// manifest [[panes]] entry and builds on demand for its service keys.
+// Verbs: build, build-source, start, restart, status, url, version,
+// uninstall, panel. The whole shim runs on Bun. `build` downloads the
+// checksum-verified prebuilt release binary matching this checkout's
+// version; `build-source` compiles from source for development. The service
+// verbs (start, restart, status, uninstall) delegate to the binary,
+// downloading it first when missing. `url` and `version` only read on-disk
+// state. `panel` is the interactive popup TUI behind the manifest [[panes]]
+// entry and downloads on demand for its service keys.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,7 +68,106 @@ function capture(argv: string[]): { code: number; out: string; err: string } {
   };
 }
 
-function build(): number {
+// Release archives ship one prebuilt binary per platform; `build` downloads
+// and checksum-verifies the archive matching this checkout's version, so
+// plugin users never need a source toolchain. `build-source` compiles from
+// source and remains for development.
+export const PLATFORM_ASSETS: Record<
+  string,
+  { asset: string; binary: string }
+> = {
+  "darwin-arm64": { asset: "herdr-gui-darwin-arm64", binary: "herdr-gui" },
+  "darwin-x64": { asset: "herdr-gui-darwin-x64", binary: "herdr-gui" },
+  "linux-arm64": { asset: "herdr-gui-linux-arm64", binary: "herdr-gui" },
+  "linux-x64": { asset: "herdr-gui-linux-x64", binary: "herdr-gui" },
+  "win32-arm64": { asset: "herdr-gui-windows-arm64", binary: "herdr-gui.exe" },
+  "win32-x64": { asset: "herdr-gui-windows-x64", binary: "herdr-gui.exe" },
+};
+
+const RELEASE_REPOSITORY = "powerfooI/herdr-studio";
+
+export function releaseAssetFor(
+  platform: string,
+  arch: string,
+): { asset: string; binary: string } | null {
+  return PLATFORM_ASSETS[`${platform}-${arch}`] ?? null;
+}
+
+export function parseSha256File(text: string): string | null {
+  const match = /\b([0-9a-f]{64})\b/.exec(text);
+  return match?.[1] ?? null;
+}
+
+async function downloadPrebuilt(): Promise<number> {
+  const target = releaseAssetFor(process.platform, process.arch);
+  if (!target) {
+    console.error(
+      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}`,
+    );
+    return 1;
+  }
+  const version = packageVersion();
+  const base = `https://github.com/${RELEASE_REPOSITORY}/releases/download/v${version}`;
+  const archiveName = `${target.asset}.tar.xz`;
+  console.error(`studio-plugin: downloading ${archiveName} (v${version})`);
+  let tmp: string | null = null;
+  try {
+    const [checksumResponse, archiveResponse] = await Promise.all([
+      fetch(`${base}/${archiveName}.sha256`),
+      fetch(`${base}/${archiveName}`),
+    ]);
+    if (!checksumResponse.ok || !archiveResponse.ok) {
+      console.error(
+        `studio-plugin: download failed (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}); does release v${version} exist?`,
+      );
+      return 1;
+    }
+    const expected = parseSha256File(await checksumResponse.text());
+    const archive = new Uint8Array(await archiveResponse.arrayBuffer());
+    const actual = createHash("sha256").update(archive).digest("hex");
+    if (!expected || actual !== expected) {
+      console.error(
+        `studio-plugin: checksum mismatch (expected ${expected ?? "<none>"}, got ${actual})`,
+      );
+      return 1;
+    }
+    tmp = mkdtempSync(join(tmpdir(), "studio-plugin-"));
+    const archivePath = join(tmp, archiveName);
+    writeFileSync(archivePath, archive);
+    const extract = spawnSync("tar", ["-xJf", archivePath, "-C", tmp], {
+      encoding: "utf8",
+    });
+    if (extract.error) {
+      console.error(
+        `studio-plugin: cannot run tar: ${extract.error.message} (tar with xz support is required)`,
+      );
+      return 1;
+    }
+    if (extract.status !== 0) {
+      console.error(
+        `studio-plugin: extraction failed (exit ${extract.status}): ${extract.stderr.trim()}`,
+      );
+      return 1;
+    }
+    const extracted = join(tmp, target.asset, target.binary);
+    const serverDir = join(REPO_ROOT, "server");
+    mkdirSync(serverDir, { recursive: true });
+    const destination = join(serverDir, target.binary);
+    copyFileSync(extracted, destination);
+    if (process.platform !== "win32") chmodSync(destination, 0o755);
+    console.error(`studio-plugin: installed ${target.binary} ${version}`);
+    return 0;
+  } catch (error) {
+    console.error(
+      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return 1;
+  } finally {
+    if (tmp) rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function buildSource(): number {
   // This repo is not a Bun workspace: web/ and server/ carry their own
   // dependencies, so a clean checkout needs an install in each location.
   for (const dir of [".", "web", "server"]) {
@@ -66,20 +177,24 @@ function build(): number {
   return run(["bun", "run", "build"]);
 }
 
-function ensureBinary(): string | null {
+async function ensureBinary(): Promise<string | null> {
   const existing = binaryPath();
   if (existing) return existing;
-  console.error("studio-plugin: herdr-gui binary missing, building it first");
-  if (build() !== 0) return null;
-  const built = binaryPath();
-  if (!built) {
-    console.error("studio-plugin: build finished but no binary was produced");
+  console.error(
+    "studio-plugin: herdr-gui binary missing, downloading it first",
+  );
+  if ((await downloadPrebuilt()) !== 0) return null;
+  const downloaded = binaryPath();
+  if (!downloaded) {
+    console.error(
+      "studio-plugin: download finished but no binary was produced",
+    );
   }
-  return built;
+  return downloaded;
 }
 
-function service(...args: string[]): number {
-  const binary = ensureBinary();
+async function service(...args: string[]): Promise<number> {
+  const binary = await ensureBinary();
   if (!binary) return 1;
   return run([binary, "service", ...args]);
 }
@@ -211,6 +326,7 @@ function panel(): Promise<number> {
   return new Promise((resolve) => {
     let message = "";
     let done = false;
+    let busy = false;
     const cleanup = (code: number) => {
       if (done) return;
       done = true;
@@ -241,20 +357,27 @@ function panel(): Promise<number> {
             : key === "u"
               ? ["uninstall"]
               : null;
-      if (!args) return;
-      const binary = ensureBinary();
-      if (!binary) {
-        message = "build failed";
-        renderPanel(message);
-        return;
-      }
+      if (!args || busy) return;
+      busy = true;
       message = "working...";
       renderPanel(message);
-      const result = capture([binary, "service", ...args]);
-      const detail = (result.err || result.out).trim().split("\n").pop() ?? "";
-      message =
-        result.code === 0 ? "done" : `failed (exit ${result.code}): ${detail}`;
-      renderPanel(message);
+      void (async () => {
+        const binary = await ensureBinary();
+        if (done) return;
+        if (!binary) {
+          message = "download failed";
+        } else {
+          const result = capture([binary, "service", ...args]);
+          const detail =
+            (result.err || result.out).trim().split("\n").pop() ?? "";
+          message =
+            result.code === 0
+              ? "done"
+              : `failed (exit ${result.code}): ${detail}`;
+        }
+        busy = false;
+        renderPanel(message);
+      })();
     });
     renderPanel(message);
   });
@@ -263,7 +386,9 @@ function panel(): Promise<number> {
 async function main(): Promise<number> {
   switch (process.argv[2]) {
     case "build":
-      return build();
+      return downloadPrebuilt();
+    case "build-source":
+      return buildSource();
     case "start":
       return service("install", "--force");
     case "restart":
@@ -280,7 +405,7 @@ async function main(): Promise<number> {
       return panel();
     default:
       console.error(
-        "usage: studio-plugin.ts <build|start|restart|status|url|version|uninstall|panel>",
+        "usage: studio-plugin.ts <build|build-source|start|restart|status|url|version|uninstall|panel>",
       );
       return process.argv[2] ? 1 : 0;
   }
