@@ -137,8 +137,16 @@ async function downloadPrebuilt(): Promise<number> {
     const extract = spawnSync("tar", ["-xJf", archivePath, "-C", tmp], {
       encoding: "utf8",
     });
+    if (extract.error) {
+      console.error(
+        `studio-plugin: cannot run tar: ${extract.error.message} (tar with xz support is required)`,
+      );
+      return 1;
+    }
     if (extract.status !== 0) {
-      console.error(`studio-plugin: extraction failed: ${extract.stderr}`);
+      console.error(
+        `studio-plugin: extraction failed (exit ${extract.status}): ${extract.stderr.trim()}`,
+      );
       return 1;
     }
     const extracted = join(tmp, target.asset, target.binary);
