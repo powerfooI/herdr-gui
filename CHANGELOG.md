@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1 - 2026-09-03
+
 ### Added
 
 - Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
@@ -9,7 +11,8 @@
 - Add a Herdr plugin manifest and launcher so Herdr Studio can be installed
   and managed with `herdr plugin install powerfooI/herdr-studio`, with start,
   restart, status, URL, version, and uninstall actions on Linux, macOS, and
-  Windows.
+  Windows. The plugin downloads a checksum-verified prebuilt release binary,
+  so no source toolchain is needed.
 - Add an interactive Herdr Studio popup pane (`herdr.studio` plugin `panel`
   entrypoint) showing service status, the login URL, and start, restart, and
   uninstall keys.
