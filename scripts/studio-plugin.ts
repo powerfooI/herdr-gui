@@ -29,9 +29,9 @@ function binaryPath(): string | null {
   return null;
 }
 
-function run(argv: string[]): number {
+function run(argv: string[], cwd = REPO_ROOT): number {
   const result = spawnSync(argv[0], argv.slice(1), {
-    cwd: REPO_ROOT,
+    cwd,
     stdio: "inherit",
   });
   if (result.error) {
@@ -57,8 +57,12 @@ function capture(argv: string[]): { code: number; out: string; err: string } {
 }
 
 function build(): number {
-  const install = run(["bun", "install"]);
-  if (install !== 0) return install;
+  // This repo is not a Bun workspace: web/ and server/ carry their own
+  // dependencies, so a clean checkout needs an install in each location.
+  for (const dir of [".", "web", "server"]) {
+    const code = run(["bun", "install"], join(REPO_ROOT, dir));
+    if (code !== 0) return code;
+  }
   return run(["bun", "run", "build"]);
 }
 
@@ -100,7 +104,10 @@ function configDir(): string {
 // Mirrors the server's service env parser: leading whitespace, an optional
 // `export` prefix, whitespace around `=`, and optionally quoted values; the
 // last occurrence wins.
-function readServiceEnv(contents: string, name: string): string | undefined {
+export function readServiceEnv(
+  contents: string,
+  name: string,
+): string | undefined {
   let value: string | undefined;
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(
@@ -118,8 +125,7 @@ function readServiceEnv(contents: string, name: string): string | undefined {
   return value;
 }
 
-function computeUrl(): string {
-  const dir = configDir();
+export function computeUrl(dir = configDir()): string {
   const envFile = join(dir, "herdr-gui.env");
   let host = "127.0.0.1";
   let port = "8787";
@@ -280,4 +286,6 @@ async function main(): Promise<number> {
   }
 }
 
-process.exit(await main());
+if (import.meta.main) {
+  process.exit(await main());
+}
