@@ -290,14 +290,17 @@ The in-app reference is available from **Menu → Keyboard shortcuts**.
 | `Cmd+T` | Create a tab in the focused workspace |
 | `Cmd+W` | Close the focused tab |
 | `Cmd+Option+Left` / `Cmd+Option+Right` | Switch tabs, wrapping at either end |
+| `Cmd+Ctrl+Left` / `Cmd+Ctrl+Right` / `Cmd+Ctrl+Up` / `Cmd+Ctrl+Down` | Focus the neighboring pane |
+| `Cmd+D` | Split the active pane right |
+| `Cmd+Shift+D` | Split the active pane down |
 | `Ctrl+1` … `Ctrl+9` | Switch to a numbered tab in the focused workspace |
 | `Ctrl+Shift+W` | Open Workspaces |
 | `Cmd/Ctrl+Shift+E` | Toggle File Explorer |
 | `Ctrl+Shift+G` | Open Diff Viewer |
 | `Esc` | Dismiss the current menu, dialog, notification, or update banner |
 
-A host browser can reserve shortcuts such as `Cmd+T` and `Cmd+W`; they are most
-reliable in an installed PWA or another standalone/webview host.
+A host browser can reserve shortcuts such as `Cmd+T`, `Cmd+W`, and `Cmd+D`;
+they are most reliable in an installed PWA or another standalone/webview host.
 
 ### Terminal
 
