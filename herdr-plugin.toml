@@ -14,6 +14,14 @@ platforms = ["linux", "macos", "windows"]
 [[build]]
 command = ["bun", "scripts/studio-plugin.ts", "build"]
 
+[[panes]]
+id = "panel"
+title = "Herdr Studio"
+placement = "popup"
+width = "72%"
+height = 12
+command = ["bun", "scripts/studio-plugin.ts", "panel"]
+
 [[actions]]
 id = "start"
 title = "Start Herdr Studio"

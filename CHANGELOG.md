@@ -10,6 +10,9 @@
   and managed with `herdr plugin install powerfooI/herdr-studio`, with start,
   restart, status, URL, version, and uninstall actions on Linux, macOS, and
   Windows.
+- Add an interactive Herdr Studio popup pane (`herdr.studio` plugin `panel`
+  entrypoint) showing service status, the login URL, and start, restart, and
+  uninstall keys.
 
 ## 0.5.0 - 2026-09-02
 
