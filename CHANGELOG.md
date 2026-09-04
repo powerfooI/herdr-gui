@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### Added
+
+- Add a Text size control (Menu > Appearance) that scales the whole interface
+  between 80% and 150%, making the app easier to read on mobile where browser
+  zoom shortcuts are unavailable.
+
+### Changed
+
+- Replace the desktop dropdown application menu with a mobile bottom sheet on
+  narrow screens: slide-up sheet with a grab handle, grid tile actions,
+  and full-width preference rows sized for touch. The desktop-only Keyboard
+  shortcuts item is hidden in the sheet.
+
+### Fixed
+
+- Fit the mobile terminal shortcut bar to the screen width: keys shrink with
+  label ellipsis instead of overflowing into horizontal scrolling.
+
+## 0.5.1 - 2026-09-03
+
+### Added
+
+- Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
+  `Cmd+D` splits the active pane right, and `Cmd+Shift+D` splits it down.
+- Add a Herdr plugin manifest and launcher so Herdr Studio can be installed
+  and managed with `herdr plugin install powerfooI/herdr-studio`, with start,
+  restart, status, URL, version, and uninstall actions on Linux, macOS, and
+  Windows. The plugin downloads a checksum-verified prebuilt release binary,
+  so no source toolchain is needed.
+- Add an interactive Herdr Studio popup pane (`herdr.studio` plugin `panel`
+  entrypoint) showing service status, the login URL, and start, restart, and
+  uninstall keys.
+
 ## 0.5.0 - 2026-09-02
 
 ### Added

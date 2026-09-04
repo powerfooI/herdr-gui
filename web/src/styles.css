@@ -1195,6 +1195,40 @@ textarea:focus {
   background: var(--panel-2);
   color: var(--text-strong);
 }
+.config-scale-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--input-bg);
+}
+.config-scale-control button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.config-scale-control button:hover:not(:disabled) {
+  color: var(--text);
+}
+.config-scale-control button:disabled {
+  opacity: 0.45;
+}
+.config-scale-control .config-scale-value {
+  min-width: 42px;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
 .config-accent-control {
   display: flex;
   align-items: center;
@@ -1518,6 +1552,16 @@ textarea:focus {
     transform: rotate(360deg);
   }
 }
+@keyframes config-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -1530,6 +1574,11 @@ textarea:focus {
 }
 @media (prefers-reduced-motion: reduce) {
   .toast {
+    animation: none;
+  }
+  /* Higher specificity than the mobile sheet rule so reduced motion wins
+     regardless of source order. */
+  .config-menu .config-dropdown {
     animation: none;
   }
   .toast,
@@ -8029,6 +8078,146 @@ textarea:focus {
   .mobile-shortcuts-actions button:first-child {
     grid-column: 1 / -1;
   }
+  /* Mobile application menu: a bottom sheet with tile actions instead of
+     the desktop dropdown list. */
+  .config-dropdown {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: min(78dvh, 640px);
+    max-height: min(
+      calc(78dvh / var(--ui-scale, 1)),
+      calc(640px / var(--ui-scale, 1))
+    );
+    padding: 4px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+    border: none;
+    border-top: 1px solid var(--shell-border);
+    border-radius: 14px 14px 0 0;
+    animation: config-sheet-in 160ms ease;
+  }
+  .config-dropdown::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 6px;
+    border-radius: 999px;
+    background: var(--border);
+  }
+  .config-summary {
+    align-items: center;
+    padding: 2px 4px 8px;
+  }
+  .config-section {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px 0;
+  }
+  .config-title,
+  .config-preference-row,
+  .config-runtime-row,
+  .config-details-toggle,
+  .config-details {
+    grid-column: 1 / -1;
+  }
+  .config-title {
+    margin: 0 2px;
+    font-size: 10px;
+  }
+  .config-preference-row,
+  .config-runtime-row,
+  .config-details-toggle {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 38px;
+    padding: 4px 6px;
+  }
+  .config-item-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+  }
+  .config-item-copy {
+    gap: 0;
+  }
+  .config-item-copy span {
+    display: none;
+  }
+  .config-menu-item {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--input-bg);
+  }
+  .config-menu-item > svg {
+    display: none;
+  }
+  .config-menu-item-desktop-only {
+    display: none;
+  }
+  .config-section-tiles-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .config-section-tiles-3 .config-menu-item .config-item-copy strong {
+    white-space: normal;
+  }
+  .config-menu-item:hover:not(:disabled) {
+    border-color: var(--border-soft);
+  }
+  .config-menu-item .config-item-icon {
+    width: 28px;
+    height: 28px;
+  }
+  .config-menu-item .config-item-copy {
+    width: 100%;
+    text-align: center;
+  }
+  .config-menu-item .config-item-copy strong {
+    font-size: 11px;
+  }
+  .config-theme-control button {
+    width: 30px;
+    height: 26px;
+  }
+  .config-accent-control button {
+    width: 18px;
+    height: 18px;
+  }
+  .config-accent-control button[data-accent="neutral"]::after {
+    top: 7px;
+    width: 12px;
+  }
+  .config-scale-control button {
+    min-width: 28px;
+    height: 26px;
+    padding: 0 5px;
+  }
+  .config-scale-control .config-scale-value {
+    min-width: 40px;
+  }
+  .settings-switch {
+    width: 36px;
+    height: 20px;
+  }
+  .settings-switch > span {
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+  }
+  .settings-switch.is-on > span {
+    transform: translateX(16px);
+  }
   .worktree-lifecycle-modal {
     width: 100%;
     height: calc(
@@ -8982,18 +9171,19 @@ textarea:focus {
     width: 100%;
     min-width: 0;
     display: grid;
-    grid-template-columns: repeat(var(--mobile-shortcut-columns), 48px);
+    grid-template-columns: repeat(
+        var(--mobile-shortcut-columns),
+        minmax(0, 1fr)
+      );
     gap: 2px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .terminal-composer-shortcuts::-webkit-scrollbar {
-    display: none;
   }
   .terminal-composer-shortcut-row {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(var(--mobile-shortcut-columns), 48px);
+    grid-template-columns: repeat(
+        var(--mobile-shortcut-columns),
+        minmax(0, 1fr)
+      );
     gap: 2px;
   }
   .terminal-composer-shortcut-spacer,
@@ -9003,10 +9193,10 @@ textarea:focus {
     pointer-events: none;
   }
   .terminal-composer-shortcuts button {
-    width: 48px;
+    width: 100%;
+    max-width: 48px;
     min-width: 0;
     height: 28px;
-    flex: 0 0 48px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

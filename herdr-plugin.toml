@@ -1,0 +1,63 @@
+id = "herdr.studio"
+name = "Herdr Studio"
+version = "0.5.1"
+min_herdr_version = "0.7.2"
+description = "Browser and PWA client for Herdr: workspaces, tabs, panes, agent status, session inspection, diffs, and review annotations"
+platforms = ["linux", "macos", "windows"]
+
+# Thin launcher: every action delegates to scripts/studio-plugin.ts, which
+# downloads the checksum-verified prebuilt release binary matching this
+# checkout's version on demand and forwards service verbs to it (systemd,
+# launchd, or Windows Task Scheduler). The verb set is a frozen contract; see
+# scripts/studio-plugin.ts. The shim itself runs on Bun; `build-source`
+# compiles from source for development.
+# The panel opens as a session-modal popup in the Herdr TUI by default. Open
+# it with --placement split (or tab/zoomed/overlay) to get a regular pane
+# that other Herdr clients, including Herdr Studio itself, can see.
+
+[[build]]
+command = ["bun", "scripts/studio-plugin.ts", "build"]
+
+[[panes]]
+id = "panel"
+title = "Herdr Studio"
+placement = "popup"
+width = "72%"
+height = 12
+command = ["bun", "scripts/studio-plugin.ts", "panel"]
+
+[[actions]]
+id = "start"
+title = "Start Herdr Studio"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "start"]
+
+[[actions]]
+id = "restart"
+title = "Restart Herdr Studio"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "restart"]
+
+[[actions]]
+id = "status"
+title = "Herdr Studio status"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "status"]
+
+[[actions]]
+id = "url"
+title = "Show Herdr Studio URL"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "url"]
+
+[[actions]]
+id = "version"
+title = "Show Herdr Studio version"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "version"]
+
+[[actions]]
+id = "uninstall"
+title = "Uninstall Herdr Studio service"
+contexts = ["workspace"]
+command = ["bun", "scripts/studio-plugin.ts", "uninstall"]

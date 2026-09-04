@@ -30,6 +30,8 @@ import {
   type AccentColor,
   normalizeAccentColor,
   normalizeThemePreference,
+  normalizeUiScale,
+  UI_SCALE_DEFAULT,
   type ResolvedTheme,
   resolveSystemTheme,
   SYSTEM_THEME_QUERY,
@@ -90,6 +92,7 @@ import {
   WORKTREE_REMOVED_EVENT,
   type WorktreeRemovedTarget,
 } from "./store";
+import { paneShortcutAction } from "./paneShortcuts";
 import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import {
@@ -132,6 +135,7 @@ const MAX_SIDEBAR = 560;
 const DEFAULT_SIDEBAR = 284;
 const THEME_KEY = "theme";
 const ACCENT_COLOR_KEY = "accentColor";
+const UI_SCALE_KEY = "uiScale";
 const LazyTerminalView = lazy(() =>
   import("./components/TerminalView").then((module) => ({
     default: module.TerminalView,
@@ -234,6 +238,10 @@ function loadSystemTheme(): ResolvedTheme {
 
 function loadAccentColor(): AccentColor {
   return normalizeAccentColor(localStorage.getItem(ACCENT_COLOR_KEY));
+}
+
+function loadUiScale(): number {
+  return normalizeUiScale(localStorage.getItem(UI_SCALE_KEY));
 }
 
 function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
@@ -363,9 +371,12 @@ function ViewportDebugOverlay() {
   );
 }
 
-function useVisualViewportCssVars() {
+function useVisualViewportCssVars(uiScale: number) {
   useEffect(() => {
     const root = document.documentElement;
+    // CSS zoom scales every computed px length, so emit viewport geometry in
+    // pre-zoom units to keep the rendered shell matching the real viewport.
+    const geometryScale = uiScale / 100;
     let pollTimer: number | undefined;
     let settleTimers: number[] = [];
 
@@ -381,7 +392,7 @@ function useVisualViewportCssVars() {
       root.classList.toggle("keyboard-open", keyboardOpen);
       root.style.setProperty(
         "--app-viewport-height",
-        `${Math.round(height)}px`,
+        `${Math.round(height / geometryScale)}px`,
       );
       // Keep the app surface at the full layout height, even while the
       // keyboard is open. iOS can over-report the keyboard occlusion (the
@@ -391,29 +402,29 @@ function useVisualViewportCssVars() {
       // with padding-bottom in the mobile styles.
       root.style.setProperty(
         "--app-height",
-        `calc(${Math.round(window.innerHeight)}px + env(safe-area-inset-bottom, 0px))`,
+        `calc(${Math.round(window.innerHeight / geometryScale)}px + env(safe-area-inset-bottom, 0px))`,
       );
       root.style.setProperty(
         "--app-viewport-offset-top",
-        `${Math.round(offsetTop)}px`,
+        `${Math.round(offsetTop / geometryScale)}px`,
       );
       root.style.setProperty(
         "--keyboard-inset-bottom",
-        `${Math.round(keyboardInset)}px`,
+        `${Math.round(keyboardInset / geometryScale)}px`,
       );
       // Both platforms need the visual viewport lift here; without it some
       // Android browsers place the composer behind the software keyboard.
       const contentInset = Math.max(0, keyboardInset - keyboardInsetTrim);
       root.style.setProperty(
         "--keyboard-inset-content",
-        `${Math.round(contentInset)}px`,
+        `${Math.round(contentInset / geometryScale)}px`,
       );
       root.style.setProperty(
         "--keyboard-inset-composer-gap",
         `${Math.round(
-          usesIosKeyboardViewportLift
+          (usesIosKeyboardViewportLift
             ? Math.max(0, keyboardInset - contentInset)
-            : 0,
+            : 0) / geometryScale,
         )}px`,
       );
       return keyboardOpen;
@@ -478,7 +489,7 @@ function useVisualViewportCssVars() {
       root.style.removeProperty("--keyboard-inset-content");
       root.style.removeProperty("--keyboard-inset-composer-gap");
     };
-  }, []);
+  }, [uiScale]);
 }
 
 function isEditableElement(target: EventTarget | null) {
@@ -1025,7 +1036,6 @@ export default function App() {
     shallowEqual,
   );
   const connectionClient = useConnectionClient();
-  useVisualViewportCssVars();
   const mobile = useMobileLayout();
   useEffect(() => {
     activateTerminalComposerDraftScope(
@@ -1042,6 +1052,8 @@ export default function App() {
   const [accentColor, setAccentColor] = useState<AccentColor>(() =>
     loadAccentColor(),
   );
+  const [uiScale, setUiScale] = useState<number>(() => loadUiScale());
+  useVisualViewportCssVars(uiScale);
   const [mobileTerminalShortcuts, setMobileTerminalShortcuts] =
     useState<MobileTerminalShortcutRows>(loadMobileTerminalShortcuts);
   const [mobileTerminalSideShortcuts, setMobileTerminalSideShortcuts] =
@@ -2088,6 +2100,46 @@ export default function App() {
         store.focusTab(targetTabId);
         return;
       }
+      const paneAction = paneShortcutAction(e);
+      if (paneAction) {
+        // Browser-level Cmd+D may still be reserved by the host browser, but
+        // standalone/webview clients can route it through this handler.
+        e.preventDefault();
+        e.stopPropagation();
+        if (
+          isEditableElement(e.target) ||
+          document.querySelector(".modal-backdrop")
+        ) {
+          return;
+        }
+        if (e.repeat && paneAction.type === "split") return;
+
+        const current = store.get();
+        const focusedWorkspace = current.workspaces.find((w) => w.focused);
+        const activeTab =
+          current.tabs.find(
+            (tab) => tab.tab_id === focusedWorkspace?.active_tab_id,
+          ) ?? current.tabs.find((tab) => tab.focused);
+        // Resolve the selection only while it belongs to the visible layout,
+        // then fall back to tab-local panes like the command menu does.
+        const layoutActivePaneId = activePaneIdForSnapshot(current);
+        const activePane =
+          current.panes.find((pane) => pane.pane_id === layoutActivePaneId) ??
+          current.panes.find(
+            (pane) => pane.tab_id === activeTab?.tab_id && pane.focused,
+          ) ??
+          current.panes.find((pane) => pane.tab_id === activeTab?.tab_id);
+        if (!activePane) return;
+        if (paneAction.type === "split") {
+          void store.splitPane(activePane.pane_id, paneAction.direction);
+        } else {
+          void store.focusPaneDirection(
+            activePane.pane_id,
+            paneAction.direction,
+          );
+        }
+        return;
+      }
       const tabIndex = tabShortcutIndex(e);
       if (tabIndex !== null) {
         if (isEditableElement(e.target)) return;
@@ -2203,7 +2255,18 @@ export default function App() {
     localStorage.setItem(THEME_KEY, theme);
     document.documentElement.dataset.accent = accentColor;
     localStorage.setItem(ACCENT_COLOR_KEY, accentColor);
-  }, [accentColor, systemTheme, theme]);
+    document.documentElement.style.zoom =
+      uiScale === UI_SCALE_DEFAULT ? "" : String(uiScale / 100);
+    if (uiScale === UI_SCALE_DEFAULT) {
+      document.documentElement.style.removeProperty("--ui-scale");
+    } else {
+      document.documentElement.style.setProperty(
+        "--ui-scale",
+        String(uiScale / 100),
+      );
+    }
+    localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+  }, [accentColor, systemTheme, theme, uiScale]);
   useEffect(() => {
     localStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -2426,6 +2489,8 @@ export default function App() {
               mobileTerminalSideShortcuts={mobileTerminalSideShortcuts}
               onThemeChange={setTheme}
               onAccentColorChange={setAccentColor}
+              uiScale={uiScale}
+              onUiScaleChange={setUiScale}
               onMobileTerminalShortcutsChange={setMobileTerminalShortcuts}
               onMobileTerminalSideShortcutsChange={
                 setMobileTerminalSideShortcuts

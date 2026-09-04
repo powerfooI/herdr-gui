@@ -57,7 +57,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add package.json web/package.json server/package.json CHANGELOG.md
+          git add package.json web/package.json server/package.json herdr-plugin.toml CHANGELOG.md
           git commit -m "Release $VERSION"
           gh auth setup-git
           git push origin "$branch"

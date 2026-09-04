@@ -71,8 +71,9 @@ fixes only, and accumulate entries under `## Unreleased` as changes land.
 Stable releases use separate prepare and publish phases:
 
 1. Run the **Prepare Release** workflow with `X.Y.Z` or
-   `patch`/`minor`/`major`. It updates the three `package.json` versions,
-   finalizes `CHANGELOG.md` from `## Unreleased`, and opens a normal release PR.
+   `patch`/`minor`/`major`. It updates the three `package.json` versions plus
+   `herdr-plugin.toml`, finalizes `CHANGELOG.md` from `## Unreleased`, and
+   opens a normal release PR.
    Review and merge that PR after its checks pass; the workflow never merges or
    tags on its own.
 2. Run the **Publish Release** workflow with the merged `X.Y.Z` version. It

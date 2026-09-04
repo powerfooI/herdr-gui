@@ -40,3 +40,18 @@ export function resolveSystemTheme(
 }
 
 export const SYSTEM_THEME_QUERY = "(prefers-color-scheme: light)";
+
+export const UI_SCALE_DEFAULT = 100;
+export const UI_SCALE_MIN = 80;
+export const UI_SCALE_MAX = 150;
+export const UI_SCALE_STEP = 5;
+
+export function clampUiScale(value: number): number {
+  if (!Number.isFinite(value)) return UI_SCALE_DEFAULT;
+  const stepped = Math.round(value / UI_SCALE_STEP) * UI_SCALE_STEP;
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, stepped));
+}
+
+export function normalizeUiScale(value: string | null): number {
+  return value === null ? UI_SCALE_DEFAULT : clampUiScale(Number(value));
+}

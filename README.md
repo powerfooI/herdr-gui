@@ -83,8 +83,8 @@ Click any screenshot to open the full-resolution image.
 
 ## Quick start
 
-Herdr must already be installed and running. On Linux and macOS, install the
-latest standalone Herdr Studio binary with:
+Herdr must already be installed and running. Install the latest standalone
+Herdr Studio binary with:
 
 ```bash
 curl -fsSL \
@@ -98,9 +98,11 @@ Make sure `~/.local/bin` is in `PATH`, then start the application:
 herdr-gui
 ```
 
-Open the URL printed by the process. Windows x64 and ARM64 archives are
-available from the [latest release](https://github.com/powerfooI/herdr-studio/releases/latest).
-See the [deployment guide](./docs/DEPLOYMENT.md) for checksum verification,
+Open the URL printed by the process. On Windows, download the matching x64 or
+ARM64 archive from the
+[latest release](https://github.com/powerfooI/herdr-studio/releases/latest)
+instead of running the script. See the
+[deployment guide](./docs/DEPLOYMENT.md) for checksum verification,
 fixed-version installation, authentication, remote connections, updates, and
 user-service setup.
 

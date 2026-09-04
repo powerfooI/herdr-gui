@@ -265,6 +265,8 @@ browser and do not change Herdr server configuration.
 - Enable browser task-completion notifications that return directly to the
   relevant pane.
 - Choose light/dark themes (or follow the system color scheme) and persistent accent colors.
+- Scale the interface from 80% to 150% via Menu → Appearance → Text size,
+  useful on mobile where browser zoom shortcuts are unavailable.
 - Install and manage a systemd or launchd user service from the CLI.
 - Check for Herdr Studio releases and perform a checksum-verified, one-click binary
   update when running a standalone binary under a supported supervisor.
@@ -277,7 +279,7 @@ see [SECURITY.md](./SECURITY.md) before exposing the service.
 
 ## Keyboard Shortcut Reference
 
-The in-app reference is available from **Menu → Keyboard shortcuts**.
+The in-app reference is available on desktop from **Menu → Keyboard shortcuts** (the mobile sheet omits it).
 
 ### Global
 
@@ -290,14 +292,17 @@ The in-app reference is available from **Menu → Keyboard shortcuts**.
 | `Cmd+T` | Create a tab in the focused workspace |
 | `Cmd+W` | Close the focused tab |
 | `Cmd+Option+Left` / `Cmd+Option+Right` | Switch tabs, wrapping at either end |
+| `Cmd+Ctrl+Left` / `Cmd+Ctrl+Right` / `Cmd+Ctrl+Up` / `Cmd+Ctrl+Down` | Focus the neighboring pane |
+| `Cmd+D` | Split the active pane right |
+| `Cmd+Shift+D` | Split the active pane down |
 | `Ctrl+1` … `Ctrl+9` | Switch to a numbered tab in the focused workspace |
 | `Ctrl+Shift+W` | Open Workspaces |
 | `Cmd/Ctrl+Shift+E` | Toggle File Explorer |
 | `Ctrl+Shift+G` | Open Diff Viewer |
 | `Esc` | Dismiss the current menu, dialog, notification, or update banner |
 
-A host browser can reserve shortcuts such as `Cmd+T` and `Cmd+W`; they are most
-reliable in an installed PWA or another standalone/webview host.
+A host browser can reserve shortcuts such as `Cmd+T`, `Cmd+W`, and `Cmd+D`;
+they are most reliable in an installed PWA or another standalone/webview host.
 
 ### Terminal
 
