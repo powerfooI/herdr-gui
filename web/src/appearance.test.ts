@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  clampUiScale,
   normalizeAccentColor,
   normalizeThemePreference,
+  normalizeUiScale,
   resolveSystemTheme,
+  UI_SCALE_DEFAULT,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
 } from "./appearance";
 
 const matches = (value: boolean) => ({ matches: value });
@@ -36,5 +41,42 @@ describe("appearance preferences", () => {
   test("resolves the system theme from the color-scheme media query", () => {
     expect(resolveSystemTheme(matches(true))).toBe("light");
     expect(resolveSystemTheme(matches(false))).toBe("dark");
+  });
+});
+
+describe("clampUiScale", () => {
+  test("keeps in-range values on the step grid", () => {
+    expect(clampUiScale(100)).toBe(100);
+    expect(clampUiScale(125)).toBe(125);
+  });
+
+  test("rounds values to the nearest step", () => {
+    expect(clampUiScale(103)).toBe(105);
+    expect(clampUiScale(102)).toBe(100);
+  });
+
+  test("clamps to the supported range", () => {
+    expect(clampUiScale(10)).toBe(UI_SCALE_MIN);
+    expect(clampUiScale(500)).toBe(UI_SCALE_MAX);
+  });
+
+  test("falls back to the default for non-finite values", () => {
+    expect(clampUiScale(Number.NaN)).toBe(UI_SCALE_DEFAULT);
+    expect(clampUiScale(Number.POSITIVE_INFINITY)).toBe(UI_SCALE_DEFAULT);
+  });
+});
+
+describe("normalizeUiScale", () => {
+  test("defaults when nothing is stored", () => {
+    expect(normalizeUiScale(null)).toBe(UI_SCALE_DEFAULT);
+  });
+
+  test("defaults for unparsable stored values", () => {
+    expect(normalizeUiScale("large")).toBe(UI_SCALE_DEFAULT);
+  });
+
+  test("parses and clamps stored values", () => {
+    expect(normalizeUiScale("110")).toBe(110);
+    expect(normalizeUiScale("999")).toBe(UI_SCALE_MAX);
   });
 });

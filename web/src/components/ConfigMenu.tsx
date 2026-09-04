@@ -1,14 +1,17 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
+  ALargeSmall,
   Bell,
   ChevronDown,
   ChevronRight,
   Download,
   GitBranch,
   Keyboard,
+  Minus,
   Moon,
   Palette,
+  Plus,
   RefreshCw,
   ScrollText,
   Server,
@@ -18,7 +21,15 @@ import {
 } from "lucide-react";
 import packageJson from "../../package.json";
 import type { Theme } from "../App";
-import { ACCENT_OPTIONS, type AccentColor } from "../appearance";
+import {
+  ACCENT_OPTIONS,
+  type AccentColor,
+  clampUiScale,
+  UI_SCALE_DEFAULT,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  UI_SCALE_STEP,
+} from "../appearance";
 import { connectionHttpPath } from "../connectionHttp";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
@@ -53,10 +64,12 @@ type HerdrInfo = {
 type ConfigMenuProps = {
   theme: Theme;
   accentColor: AccentColor;
+  uiScale: number;
   mobileTerminalShortcuts: MobileTerminalShortcutRows;
   mobileTerminalSideShortcuts: MobileTerminalSideShortcuts;
   onThemeChange: (theme: Theme) => void;
   onAccentColorChange: (accentColor: AccentColor) => void;
+  onUiScaleChange: (scale: number) => void;
   onMobileTerminalShortcutsChange: (rows: MobileTerminalShortcutRows) => void;
   onMobileTerminalSideShortcutsChange: (
     shortcuts: MobileTerminalSideShortcuts,
@@ -66,10 +79,12 @@ type ConfigMenuProps = {
 export function ConfigMenu({
   theme,
   accentColor,
+  uiScale,
   mobileTerminalShortcuts,
   mobileTerminalSideShortcuts,
   onThemeChange,
   onAccentColorChange,
+  onUiScaleChange,
   onMobileTerminalShortcutsChange,
   onMobileTerminalSideShortcutsChange,
 }: ConfigMenuProps) {
@@ -311,6 +326,51 @@ export function ConfigMenu({
                   ))}
                 </div>
               </div>
+              <div className="config-preference-row">
+                <span className="config-item-icon">
+                  <ALargeSmall size={15} />
+                </span>
+                <div className="config-item-copy">
+                  <strong>Text size</strong>
+                  <span>Scale the interface, handy on mobile</span>
+                </div>
+                <div
+                  className="config-scale-control"
+                  role="group"
+                  aria-label="Text size"
+                >
+                  <button
+                    type="button"
+                    aria-label="Decrease text size"
+                    disabled={uiScale <= UI_SCALE_MIN}
+                    onClick={() =>
+                      onUiScaleChange(clampUiScale(uiScale - UI_SCALE_STEP))
+                    }
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="config-scale-value"
+                    aria-label={`Reset text size, currently ${uiScale}%`}
+                    title="Reset to 100%"
+                    disabled={uiScale === UI_SCALE_DEFAULT}
+                    onClick={() => onUiScaleChange(UI_SCALE_DEFAULT)}
+                  >
+                    {uiScale}%
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Increase text size"
+                    disabled={uiScale >= UI_SCALE_MAX}
+                    onClick={() =>
+                      onUiScaleChange(clampUiScale(uiScale + UI_SCALE_STEP))
+                    }
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="config-section">
@@ -391,7 +451,7 @@ export function ConfigMenu({
               />
             </div>
 
-            <div className="config-section">
+            <div className="config-section config-section-tiles-3">
               <div className="config-title">Help & updates</div>
               <ConfigMenuItem
                 icon={<ScrollText size={15} />}
@@ -406,6 +466,7 @@ export function ConfigMenu({
                 icon={<Keyboard size={15} />}
                 label="Keyboard shortcuts"
                 description="View shortcut lookup"
+                className="config-menu-item-desktop-only"
                 onClick={() => {
                   setOpen(false);
                   setShortcutsOpen(true);
@@ -524,6 +585,7 @@ function ConfigMenuItem({
   onClick,
   disabled = false,
   primary = false,
+  className,
 }: {
   icon: ReactNode;
   label: string;
@@ -531,11 +593,12 @@ function ConfigMenuItem({
   onClick: () => void;
   disabled?: boolean;
   primary?: boolean;
+  className?: string;
 }) {
   return (
     <button
       type="button"
-      className={`config-menu-item ${primary ? "is-primary" : ""}`}
+      className={`config-menu-item${primary ? " is-primary" : ""}${className ? ` ${className}` : ""}`}
       onClick={onClick}
       disabled={disabled}
     >

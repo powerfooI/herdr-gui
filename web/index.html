@@ -37,6 +37,14 @@
               : "dark";
         document.documentElement.dataset.theme = resolvedTheme;
         document.documentElement.style.colorScheme = resolvedTheme;
+        // Apply the persisted interface scale too so the first paint matches
+        // the Text size preference.
+        const storedUiScale = localStorage.getItem("uiScale");
+        const uiScale = storedUiScale === null ? 100 : Number(storedUiScale);
+        if (Number.isFinite(uiScale) && uiScale !== 100) {
+          const clampedUiScale = Math.min(150, Math.max(80, uiScale));
+          document.documentElement.style.zoom = String(clampedUiScale / 100);
+        }
       } catch {}
     </script>
   </head>

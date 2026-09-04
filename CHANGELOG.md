@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- Add a Text size control (Menu > Appearance) that scales the whole interface
+  between 80% and 150%, making the app easier to read on mobile where browser
+  zoom shortcuts are unavailable.
+
+### Changed
+
+- Replace the desktop dropdown application menu with a mobile bottom sheet on
+  narrow screens: slide-up sheet with a grab handle, grid tile actions,
+  and full-width preference rows sized for touch. The desktop-only Keyboard
+  shortcuts item is hidden in the sheet.
+
+### Fixed
+
+- Fit the mobile terminal shortcut bar to the screen width: keys shrink with
+  label ellipsis instead of overflowing into horizontal scrolling.
+
 ## 0.5.1 - 2026-09-03
 
 ### Added

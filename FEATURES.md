@@ -265,6 +265,8 @@ browser and do not change Herdr server configuration.
 - Enable browser task-completion notifications that return directly to the
   relevant pane.
 - Choose light/dark themes (or follow the system color scheme) and persistent accent colors.
+- Scale the interface from 80% to 150% via Menu → Appearance → Text size,
+  useful on mobile where browser zoom shortcuts are unavailable.
 - Install and manage a systemd or launchd user service from the CLI.
 - Check for Herdr Studio releases and perform a checksum-verified, one-click binary
   update when running a standalone binary under a supported supervisor.
@@ -277,7 +279,7 @@ see [SECURITY.md](./SECURITY.md) before exposing the service.
 
 ## Keyboard Shortcut Reference
 
-The in-app reference is available from **Menu → Keyboard shortcuts**.
+The in-app reference is available on desktop from **Menu → Keyboard shortcuts** (the mobile sheet omits it).
 
 ### Global
 
