@@ -42,7 +42,11 @@
         const storedUiScale = localStorage.getItem("uiScale");
         const uiScale = storedUiScale === null ? 100 : Number(storedUiScale);
         if (Number.isFinite(uiScale) && uiScale !== 100) {
-          const clampedUiScale = Math.min(150, Math.max(80, uiScale));
+          // Keep in sync with clampUiScale in web/src/appearance.ts.
+          const clampedUiScale = Math.min(
+            150,
+            Math.max(80, Math.round(uiScale / 5) * 5),
+          );
           document.documentElement.style.zoom = String(clampedUiScale / 100);
         }
       } catch {}
