@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createAgentSessionHandlers } from "./agent-sessions";
 import type { AgentSessionFileAccess } from "./session-file-access";
-import { createSessionProjectionCache } from "./session-projection-cache";
+import {
+  createSessionProjectionCache,
+  estimateRetainedBytes,
+} from "./session-projection-cache";
 import type { AgentSessionResolved, SessionFile } from "./session-types";
 import type { HistoryUpdate } from "./session-history";
 
@@ -111,6 +114,38 @@ function delta(update: HistoryUpdate) {
   if (update.mode !== "delta") throw new Error("Expected delta");
   return update;
 }
+
+describe("bounded cache payload estimation", () => {
+  test("counts nested strings, arguments and repeated revision values", () => {
+    const value = {
+      arguments: { command: "x".repeat(1024), flags: [true, null, 1] },
+      extra: { detail: "y".repeat(2048) },
+    };
+    const bytes = estimateRetainedBytes(value, Infinity);
+    expect(bytes).toBeGreaterThan(2 * (1024 + 2048));
+    expect(estimateRetainedBytes(value, bytes)).toBe(bytes);
+    expect(estimateRetainedBytes(value, bytes - 1)).toBe(Infinity);
+    expect(estimateRetainedBytes([value, value], Infinity)).toBeGreaterThan(
+      2 * bytes,
+    );
+  });
+
+  test("stops before visiting the remaining payload once over budget", () => {
+    const value: unknown[] = ["x".repeat(1000), null];
+    Object.defineProperty(value, "1", {
+      get() {
+        throw new Error("Visited payload after budget was exceeded");
+      },
+    });
+    expect(estimateRetainedBytes(value, 100)).toBe(Infinity);
+  });
+
+  test("deep payloads are not admitted instead of overflowing the call stack", () => {
+    let value: unknown = "leaf";
+    for (let depth = 0; depth < 100; depth++) value = { nested: value };
+    expect(estimateRetainedBytes(value, 32 * 1024 * 1024)).toBe(Infinity);
+  });
+});
 
 describe("session projection cache and history revisions", () => {
   test("coalesces history, summary, preview and ATIF; unchanged refresh never reads again", async () => {
@@ -336,6 +371,34 @@ describe("session projection cache and history revisions", () => {
       const unchanged = await cache.history(f.resolved, cursor);
       expect(delta(unchanged.update).upserts).toEqual([]);
       expect(f.reads).toBe(expectedReads);
+    }
+  });
+
+  test("oversized cache admission does not serialize the entire projection", async () => {
+    const f = fixture();
+    f.set([message("x".repeat(100_000))]);
+    const cache = createSessionProjectionCache(f.files, {
+      entries: 16,
+      bytes: 16 * 1024,
+    });
+    const stringify = JSON.stringify;
+    const spy = spyOn(JSON, "stringify").mockImplementation((value) => {
+      if (Array.isArray(value) && value[0]?.trajectory) {
+        throw new Error("Cache admission serialized the entire projection");
+      }
+      return stringify(value);
+    });
+    try {
+      const first = await cache.history(f.resolved, null);
+      expect(first.projection.trajectory.steps[0].message).toHaveLength(
+        100_000,
+      );
+      const next = await cache.history(f.resolved, first.update.cursor);
+      expect(next.update.mode).toBe("snapshot");
+      expect(next.update.cursor.epoch).not.toBe(first.update.cursor.epoch);
+      expect(f.reads).toBe(2);
+    } finally {
+      spy.mockRestore();
     }
   });
 

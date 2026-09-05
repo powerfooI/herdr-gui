@@ -61,6 +61,41 @@ type Cached = {
   bytes: number;
   fallbackTime: number;
 };
+// Cache admission only needs a conservative retained-value estimate, not a
+// serialized copy. Count shared values again; stop at the budget or deep input.
+export function estimateRetainedBytes(
+  value: unknown,
+  budget: number,
+  depth = 0,
+): number {
+  if (depth > 64 || budget < 0) return Infinity;
+  if (typeof value === "string") {
+    const bytes = 32 + 2 * value.length;
+    return bytes > budget ? Infinity : bytes;
+  }
+  if (value === null || typeof value !== "object")
+    return budget < 16 ? Infinity : 16;
+
+  let bytes = 64;
+  if (bytes > budget) return Infinity;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      bytes += 8 + estimateRetainedBytes(item, budget - bytes - 8, depth + 1);
+      if (bytes > budget) return Infinity;
+    }
+  } else {
+    const record = value as Record<string, unknown>;
+    for (const key in record) {
+      if (!Object.hasOwn(record, key)) continue;
+      bytes += 32 + 2 * key.length;
+      if (bytes > budget) return Infinity;
+      bytes += estimateRetainedBytes(record[key], budget - bytes, depth + 1);
+      if (bytes > budget) return Infinity;
+    }
+  }
+  return bytes;
+}
+
 function signature(file: SessionFile) {
   return JSON.stringify([
     file.path,
@@ -174,8 +209,10 @@ export function createSessionProjectionCache(
         bytes: 0,
         fallbackTime,
       };
-      // UTF-16 payload estimate; excludes transient parser/projector allocations.
-      value.bytes = 2 * JSON.stringify([projection, [...versions]]).length;
+      value.bytes = estimateRetainedBytes(
+        [projection, ...versions.values()],
+        limits.bytes,
+      );
       if (!isCurrent()) return value;
       remove(key);
       if (value.bytes <= limits.bytes && limits.entries > 0) {

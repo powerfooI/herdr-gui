@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- Avoid an extra full-trajectory copy when checking the History cache budget
+  for large sessions.
 - Pause History polling in the mobile Workspaces view, preserve message view
   mode and focus during refresh, and update cached Grok timestamps when session
   creation metadata changes.

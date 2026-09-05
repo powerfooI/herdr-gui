@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { historyEntriesFromTrajectory } from "./session-history";
+import { historyEntriesFromTrajectory, historyUpdate } from "./session-history";
 import { projectAgentTrajectory } from "./session-trajectory";
 
 const file = { path: "/tmp/history.jsonl", mtimeMs: 1000 };
@@ -216,6 +216,44 @@ test("Codex preserves explicit tool errors and call association", () => {
     tool_name: "shell",
     text: "exit 1",
     is_error: true,
+  });
+});
+
+test("external call IDs with commas are hashed before order comparison", () => {
+  const trajectory = projectAgentTrajectory("pi", file, [
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: ["a,b", "c", "a", "b,c"].map((id) => ({
+          type: "toolCall",
+          id,
+          name: "read",
+          arguments: {},
+        })),
+      },
+    },
+  ]);
+  const entries = historyEntriesFromTrajectory(file, trajectory);
+  for (const entry of entries) expect(entry.id).toMatch(/^[0-9a-f]{24}:\d+$/);
+  expect(entries.map((entry) => entry.source_call_id)).toEqual([
+    "a,b",
+    "c",
+    "a",
+    "b,c",
+  ]);
+  const reversed = entries.toReversed();
+  const update = historyUpdate(
+    { epoch: "test", revision: 2 },
+    reversed,
+    { epoch: "test", revision: 1 },
+    new Map([[1, entries]]),
+  );
+  expect(update).toMatchObject({
+    mode: "delta",
+    upserts: [],
+    removed: [],
+    order: reversed.map((entry) => entry.id),
   });
 });
 

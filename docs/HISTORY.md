@@ -2,10 +2,12 @@
 
 `createAgentSessionHandlers` owns a per-connection projection cache shared by
 History, summary, transcript preview, and ATIF export. It retains at most 16
-sessions and an estimated 32 MiB of serialized UTF-16 payload, including four
-recent History revisions per session. Oversized projections are served but not
-retained. Concurrent requests share in-flight reads and projection; raw preview
-prefix reads and raw downloads remain separate.
+sessions and a conservative 32 MiB retained-value estimate, including four
+recent History revisions per session. Admission counts UTF-16 string lengths and
+structural overhead without serializing the projection; it stops when the budget
+is exceeded. Oversized or deeply nested projections are served but not retained.
+Concurrent requests share in-flight reads and projection; raw preview prefix
+reads and raw downloads remain separate.
 
 Each refresh resolves the session and stats its file. Path, provider, session,
 size, modification time, file identity, change metadata, and provider descriptor
@@ -63,5 +65,6 @@ saved across page reloads. If no entries match, Show all types restores the view
 Changed files still require a **full JSONL read and full provider projection**.
 There is no provider-specific incremental parser, byte-offset cursor, database,
 or new transport. Raw transcript preview and explicit full ATIF export can
-still transmit large payloads. Cache payload estimates bound retained serialized
-content, not transient parsing allocations or exact JavaScript heap usage.
+still transmit large payloads. Cache admission uses estimated retained-value
+sizes, not transient parsing allocations or exact JavaScript heap usage. Shared
+values are conservatively counted again when referenced by multiple revisions.
