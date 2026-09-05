@@ -27,6 +27,7 @@ export type FileLineReviewAnnotation = ReviewAnnotationBase & {
   source: "file";
   anchor: "line";
   line: number;
+  endLine?: number;
 };
 
 export type MarkdownReviewAnnotation = ReviewAnnotationBase & {
@@ -76,7 +77,7 @@ type ParsedDiffRow = {
 const ANNOTATION_STORAGE_PREFIX = "workspaceAnnotations:v1:";
 const MAX_STORED_ANNOTATIONS = 200;
 const MAX_PATH_LENGTH = 4_096;
-const MAX_QUOTE_LENGTH = 20_000;
+export const MAX_QUOTE_LENGTH = 20_000;
 const MAX_COMMENT_LENGTH = 10_000;
 const MAX_HUNK_LENGTH = 1_000;
 const MAX_SECTION_DEPTH = 12;
@@ -175,9 +176,24 @@ export function parseReviewAnnotation(value: unknown): ReviewAnnotation | null {
   if (candidate.source !== "file") return null;
   if (candidate.anchor === "line") {
     const line = finitePositiveLine(candidate.line);
-    return line === null
-      ? null
-      : { ...base, source: "file", anchor: "line", line };
+    const endLine =
+      candidate.endLine === undefined
+        ? undefined
+        : finitePositiveLine(candidate.endLine);
+    if (
+      line === null ||
+      endLine === null ||
+      (endLine !== undefined && endLine < line)
+    ) {
+      return null;
+    }
+    return {
+      ...base,
+      source: "file",
+      anchor: "line",
+      line,
+      ...(endLine === undefined ? {} : { endLine }),
+    };
   }
   if (candidate.anchor !== "quote" || !Array.isArray(candidate.section)) {
     return null;
@@ -637,6 +653,15 @@ function normalizedSearchText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+export function fileReviewLineLabel(
+  annotation: Pick<FileLineReviewAnnotation, "line" | "endLine">,
+) {
+  return annotation.endLine !== undefined &&
+    annotation.endLine !== annotation.line
+    ? `lines ${annotation.line}-${annotation.endLine}`
+    : `line ${annotation.line}`;
+}
+
 export function reanchorFileReviewAnnotations(
   annotations: readonly ReviewAnnotation[],
   path: string,
@@ -655,17 +680,33 @@ export function reanchorFileReviewAnnotations(
       if (anchored === !annotation.stale) return annotation;
       return { ...annotation, stale: !anchored };
     }
-    if (fileLines[annotation.line - 1] === annotation.quote) {
+    const quoteLines = annotation.quote.split(/\r\n?|\n/);
+    const span = (annotation.endLine ?? annotation.line) - annotation.line + 1;
+    if (quoteLines.length !== span) {
+      return annotation.stale ? annotation : { ...annotation, stale: true };
+    }
+    if (
+      quoteLines.every(
+        (quote, index) => fileLines[annotation.line - 1 + index] === quote,
+      )
+    ) {
       return annotation.stale ? { ...annotation, stale: false } : annotation;
     }
-    const candidates = fileLines.flatMap((quote, index) =>
-      quote === annotation.quote ? [{ line: index + 1 }] : [],
+    const candidates = matchingWindowStarts(fileLines, quoteLines).map(
+      (index) => ({ line: index + 1 }),
     );
     const match = chooseNearestLine(candidates, annotation.line);
     if (!match) {
       return annotation.stale ? annotation : { ...annotation, stale: true };
     }
-    return { ...annotation, line: match.line, stale: false };
+    return {
+      ...annotation,
+      line: match.line,
+      ...(annotation.endLine === undefined
+        ? {}
+        : { endLine: match.line + span - 1 }),
+      stale: false,
+    };
   });
 }
 
@@ -691,7 +732,7 @@ export function compileReviewFeedback(
         annotation.source === "diff"
           ? `${quotedPath(annotation.path)} (${diffReviewLineLabel(annotation)}${stale})`
           : annotation.anchor === "line"
-            ? `${quotedPath(annotation.path)} (line ${annotation.line}${stale})`
+            ? `${quotedPath(annotation.path)} (${fileReviewLineLabel(annotation)}${stale})`
             : annotation.section.length
               ? `${quotedPath(annotation.path)} § "${annotation.section.join(" › ")}"${annotation.stale ? " (anchor may be stale)" : ""}`
               : `${quotedPath(annotation.path)} (selected passage${stale})`;

@@ -7,12 +7,15 @@ import {
   findDiffReviewSelection,
   moveReviewAnnotation,
   parseDiffReviewLines,
+  parseReviewAnnotation,
+  fileReviewLineLabel,
   readReviewAnnotations,
   reanchorDiffReviewAnnotations,
   reanchorFileReviewAnnotations,
   reviewAgentPanes,
   writeReviewAnnotations,
   type DiffReviewAnnotation,
+  type FileLineReviewAnnotation,
   type ReviewAnnotation,
 } from "./annotations";
 
@@ -282,6 +285,74 @@ describe("annotation anchors", () => {
       "intro only",
     );
     expect(stale.every((annotation) => annotation.stale)).toBe(true);
+  });
+});
+
+describe("file line ranges", () => {
+  const range: FileLineReviewAnnotation = {
+    id: "range",
+    source: "file",
+    anchor: "line",
+    path: "src/app.ts",
+    line: 2,
+    endLine: 4,
+    quote: "first\n\nlast",
+    comment: "Review this block.",
+    createdAt: 1,
+  };
+
+  test("persists ranges and rejects invalid end lines", () => {
+    const storage = memoryStorage();
+    writeReviewAnnotations(storage, "ranges", [range]);
+    expect(readReviewAnnotations(storage, "ranges")).toEqual([range]);
+    for (const endLine of [0, 1, -1, 2.5, "4", null]) {
+      expect(parseReviewAnnotation({ ...range, endLine })).toBeNull();
+    }
+    expect(
+      parseReviewAnnotation({ ...range, endLine: undefined, quote: "first" }),
+    ).toMatchObject({ line: 2 });
+  });
+
+  test("labels ranges in the panel and compiled feedback", () => {
+    expect(fileReviewLineLabel(range)).toBe("lines 2-4");
+    expect(fileReviewLineLabel({ line: 2 })).toBe("line 2");
+    expect(compileReviewFeedback([range])).toContain(
+      "`src/app.ts` (lines 2-4)",
+    );
+    expect(compileReviewFeedback([range])).toContain("> first\n> \n> last");
+  });
+
+  test("reanchors an entire range after lines move, including CRLF files", () => {
+    const unchanged = reanchorFileReviewAnnotations(
+      [range],
+      range.path,
+      "intro\nfirst\n\nlast",
+    );
+    expect(unchanged[0]).toBe(range);
+    const moved = reanchorFileReviewAnnotations(
+      [range],
+      range.path,
+      "intro\r\npadding\r\nfirst\r\n\r\nlast",
+    );
+    expect(moved[0]).toMatchObject({ line: 3, endLine: 5, stale: false });
+  });
+
+  test("marks edited ranges stale instead of anchoring only their first line", () => {
+    const changed = reanchorFileReviewAnnotations(
+      [range],
+      range.path,
+      "intro\nfirst\nchanged\nlast",
+    );
+    expect(changed[0]).toMatchObject({ line: 2, endLine: 4, stale: true });
+    const restored = reanchorFileReviewAnnotations(
+      changed,
+      range.path,
+      "first\n\nlast",
+    );
+    expect(restored[0]).toMatchObject({ line: 1, endLine: 3, stale: false });
+    expect(reanchorFileReviewAnnotations([range], "other.ts", "")[0]).toBe(
+      range,
+    );
   });
 });
 

@@ -15,6 +15,7 @@ import { summarizeTabAgents } from "./agentSession";
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
 const REQUEST_CLOSE_TAB_EVENT = "herdr-gui:request-close-tab";
+const REQUEST_CLOSE_PANE_EVENT = "herdr-gui:request-close-pane";
 
 interface TabMenuState {
   tab: Tab;
@@ -36,6 +37,13 @@ export function tabName(tab?: Tab) {
 export function requestCloseTab(tabId: string) {
   window.dispatchEvent(
     new CustomEvent(REQUEST_CLOSE_TAB_EVENT, { detail: { tabId } }),
+  );
+}
+
+/** Routes pane shortcuts through confirmation even when terminals are hidden. */
+export function requestClosePane(paneId: string) {
+  window.dispatchEvent(
+    new CustomEvent(REQUEST_CLOSE_PANE_EVENT, { detail: { paneId } }),
   );
 }
 
@@ -66,6 +74,9 @@ export function TabBar({
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(
     null,
   );
+  const [pendingClosePaneId, setPendingClosePaneId] = useState<string | null>(
+    null,
+  );
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const focusedWs = s.workspaces.find((w) => w.focused);
@@ -84,6 +95,16 @@ export function TabBar({
       pendingCloseTabPaneIds,
     ).length,
   );
+  const pendingClosePane = s.panes.find(
+    (pane) => pane.pane_id === pendingClosePaneId,
+  );
+  const pendingClosePaneDraftWarning = terminalComposerCloseWarning(
+    terminalComposerDraftPaneIds(
+      s.activeConnectionId,
+      s.connectionGeneration,
+      pendingClosePane ? [pendingClosePane.pane_id] : [],
+    ).length,
+  );
   const showTabStrip = !!focusedWs && (!mobile || tabs.length > 1);
   const gitStatus = focusedWs?.worktree?.git_status;
   const changedCount = gitStatus
@@ -98,9 +119,17 @@ export function TabBar({
       const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId;
       if (typeof tabId === "string" && tabId) setPendingCloseTabId(tabId);
     };
+    const onRequestClosePane = (event: Event) => {
+      const paneId = (event as CustomEvent<{ paneId?: unknown }>).detail
+        ?.paneId;
+      if (typeof paneId === "string" && paneId) setPendingClosePaneId(paneId);
+    };
     window.addEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
-    return () =>
+    window.addEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
+    return () => {
       window.removeEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
+      window.removeEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
+    };
   }, []);
 
   if (!focusedWs) return null;
@@ -139,6 +168,23 @@ export function TabBar({
             );
             store.closeTab(pendingCloseTabId);
           }
+        }}
+      />
+      <ConfirmDialog
+        open={!!pendingClosePane}
+        title="Close Pane"
+        message={`Close this terminal pane?${pendingClosePaneDraftWarning}`}
+        confirmLabel="Close"
+        danger
+        onClose={() => setPendingClosePaneId(null)}
+        onConfirm={() => {
+          if (!pendingClosePane) return;
+          clearTerminalComposerDrafts(
+            s.activeConnectionId,
+            s.connectionGeneration,
+            [pendingClosePane.pane_id],
+          );
+          store.closePane(pendingClosePane.pane_id);
         }}
       />
       <TextInputDialog

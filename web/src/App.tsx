@@ -57,7 +57,7 @@ import {
 import { type ActiveFilePreviewSelection } from "./components/FilePreviewContent";
 import { GlobalTooltip } from "./components/GlobalTooltip";
 import { MobileTabSheet } from "./components/MobileTabSheet";
-import { requestCloseTab, TabBar } from "./components/TabBar";
+import { requestClosePane, requestCloseTab, TabBar } from "./components/TabBar";
 import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
 import { WorkspaceInspectorHost } from "./components/WorkspaceInspectorHost";
 import { WorkspaceTree } from "./components/WorkspaceTree";
@@ -93,7 +93,11 @@ import {
   type WorktreeRemovedTarget,
 } from "./store";
 import { paneShortcutAction } from "./paneShortcuts";
-import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
+import {
+  adjacentTabId,
+  closeShortcutTarget,
+  tabShortcutAction,
+} from "./tabShortcuts";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import {
   activateTerminalComposerDraftScope,
@@ -2091,7 +2095,13 @@ export default function App() {
           tabs.find((tab) => tab.focused)?.tab_id,
         ].find((tabId): tabId is string => !!tabId && tabIds.has(tabId));
         if (tabAction === "close") {
-          if (activeTabId) requestCloseTab(activeTabId);
+          const target = closeShortcutTarget(
+            activeTabId,
+            current.panes,
+            activePaneIdForSnapshot(current),
+          );
+          if (target?.type === "pane") requestClosePane(target.id);
+          else if (target?.type === "tab") requestCloseTab(target.id);
           return;
         }
 

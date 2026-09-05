@@ -191,10 +191,9 @@ File operations and previews work for both local and SSH-backed workspaces.
 
 ## Review Annotations
 
-- Click or drag across diff line numbers, or click a source-file annotation
-  gutter, to attach a short comment with the file, side, line range, content
-  snapshot, and hunk context. Dragged diff ranges remain strongly highlighted
-  while the comment editor is open.
+- Click or drag across diff line numbers or a source-file annotation gutter
+  to comment on one or more lines. Release to open the comment editor;
+  captured context includes the file, line range, and content snapshot.
 - Select text in rendered Markdown to annotate the exact passage with its
   nearest heading path.
 - Edit, delete, and reorder comments in one checkout-scoped review panel.
@@ -291,7 +290,7 @@ The in-app reference is available on desktop from **Menu → Keyboard shortcuts*
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Open and navigate the recent Pane switcher |
 | `Cmd+B` | Toggle the desktop sidebar |
 | `Cmd+T` | Create a tab in the focused workspace |
-| `Cmd+W` | Close the focused tab |
+| `Cmd+W` | Close the active pane; close the tab if only one pane remains |
 | `Cmd+Option+Left` / `Cmd+Option+Right` | Switch tabs, wrapping at either end |
 | `Cmd+Ctrl+Left` / `Cmd+Ctrl+Right` / `Cmd+Ctrl+Up` / `Cmd+Ctrl+Down` | Focus the neighboring pane |
 | `Cmd+D` | Split the active pane right |

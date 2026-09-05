@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { adjacentTabId, tabShortcutAction } from "./tabShortcuts";
+import {
+  adjacentTabId,
+  closeShortcutTarget,
+  tabShortcutAction,
+} from "./tabShortcuts";
 
 function keyEvent(
   overrides: Partial<Parameters<typeof tabShortcutAction>[0]> = {},
@@ -45,6 +49,57 @@ describe("tab shortcuts", () => {
         keyEvent({ key: "ArrowLeft", metaKey: true, ctrlKey: true }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("close shortcut target", () => {
+  const panes = [
+    { pane_id: "one", tab_id: "split", focused: true },
+    { pane_id: "two", tab_id: "split", focused: false },
+    { pane_id: "other", tab_id: "single", focused: true },
+  ];
+
+  test("closes the selected pane rather than its split tab", () => {
+    expect(closeShortcutTarget("split", panes, "two")).toEqual({
+      type: "pane",
+      id: "two",
+    });
+  });
+
+  test("ignores stale selection from another tab and uses local focus", () => {
+    expect(closeShortcutTarget("split", panes, "other")).toEqual({
+      type: "pane",
+      id: "one",
+    });
+    expect(closeShortcutTarget("split", panes, undefined)).toEqual({
+      type: "pane",
+      id: "one",
+    });
+  });
+
+  test("falls back to a tab-local pane when focus is missing", () => {
+    expect(
+      closeShortcutTarget(
+        "split",
+        panes.map((pane) => ({ ...pane, focused: false })),
+        undefined,
+      ),
+    ).toEqual({ type: "pane", id: "one" });
+  });
+
+  test("closes the tab when it has at most one pane", () => {
+    expect(closeShortcutTarget("single", panes, "other")).toEqual({
+      type: "tab",
+      id: "single",
+    });
+    expect(closeShortcutTarget("empty", panes, undefined)).toEqual({
+      type: "tab",
+      id: "empty",
+    });
+  });
+
+  test("does nothing without an active tab", () => {
+    expect(closeShortcutTarget(undefined, panes, "one")).toBeNull();
   });
 });
 

@@ -9,6 +9,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
+import { fileReviewLineLabel, MAX_QUOTE_LENGTH } from "../annotations";
+import {
+  FileAnnotationDrag,
+  type FileAnnotationRequest,
+} from "./fileAnnotationDrag";
 import type {
   FileLineReviewAnnotation,
   NewReviewAnnotation,
@@ -58,6 +63,7 @@ type PendingFileAnnotation =
       y: number;
       path: string;
       line: number;
+      endLine?: number;
       quote: string;
     }
   | {
@@ -92,6 +98,7 @@ async function importCodeMirrorPreviewDeps() {
     gutter: view.gutter,
     EditorState: state.EditorState,
     EditorView: view.EditorView,
+    ViewPlugin: view.ViewPlugin,
     keymap: view.keymap,
     openSearchPanel: searchModule.openSearchPanel,
     search: searchModule.search,
@@ -247,7 +254,7 @@ export function FilePreviewContent({
           y: pendingAnnotation.y,
           title:
             pendingAnnotation.kind === "line"
-              ? `${pendingAnnotation.path} · line ${pendingAnnotation.line}`
+              ? `${pendingAnnotation.path} · ${fileReviewLineLabel(pendingAnnotation)}`
               : pendingAnnotation.section.length
                 ? `${pendingAnnotation.path} · ${pendingAnnotation.section.join(" › ")}`
                 : `${pendingAnnotation.path} · selected passage`,
@@ -331,6 +338,9 @@ export function FilePreviewContent({
           anchor: "line",
           path: pending.path,
           line: pending.line,
+          ...(pending.endLine === undefined
+            ? {}
+            : { endLine: pending.endLine }),
           quote: pending.quote,
           comment,
         });
@@ -528,11 +538,12 @@ export function FilePreviewContent({
               editorViewRef={editorViewRef}
               onRequestAnnotation={
                 onCreateAnnotation
-                  ? ({ line, quote, x, y }) =>
+                  ? ({ line, endLine, quote, x, y }) =>
                       setPendingAnnotation({
                         kind: "line",
                         path: previewPath,
                         line,
+                        endLine,
                         quote,
                         x,
                         y,
@@ -589,12 +600,7 @@ export function FilePreviewContent({
   );
 }
 
-type CodeMirrorAnnotationRequest = {
-  line: number;
-  quote: string;
-  x: number;
-  y: number;
-};
+type CodeMirrorAnnotationRequest = FileAnnotationRequest;
 
 type CodeMirrorAnnotationRuntime = {
   deps: CodeMirrorPreviewDeps;
@@ -622,6 +628,16 @@ function codeMirrorAnnotationExtensions(
     if (normalizedText[index] === "\n") lineStarts.push(index + 1);
   }
 
+  const annotatedLines = new Set<number>();
+  for (const annotation of annotations) {
+    const end = Math.min(
+      annotation.endLine ?? annotation.line,
+      lineStarts.length,
+    );
+    for (let line = annotation.line; line <= end; line += 1)
+      annotatedLines.add(line);
+  }
+
   class ReviewGutterMarker extends deps.GutterMarker {
     constructor(
       private count: number,
@@ -641,7 +657,22 @@ function codeMirrorAnnotationExtensions(
     }
   }
 
+  const dragPlugin = deps.ViewPlugin.define(
+    (view) =>
+      new FileAnnotationDrag(
+        view,
+        (request) => onRequestAnnotation?.(request),
+        () =>
+          store.notify({
+            kind: "info",
+            message: "Select fewer lines to annotate",
+            detail: `The selected text exceeds the ${MAX_QUOTE_LENGTH.toLocaleString("en-US")}-character annotation limit.`,
+          }),
+      ),
+  );
+
   return [
+    dragPlugin,
     deps.gutter({
       class: "cm-review-annotation-gutter",
       markers: (view) =>
@@ -669,21 +700,17 @@ function codeMirrorAnnotationExtensions(
           ) {
             return false;
           }
-          event.preventDefault();
-          const documentLine = view.state.doc.lineAt(line.from);
-          onRequestAnnotation({
-            line: documentLine.number,
-            quote: documentLine.text,
-            x: event.clientX + 6,
-            y: event.clientY + 8,
-          });
-          return true;
+          return (
+            view
+              .plugin(dragPlugin)
+              ?.start(view.state.doc.lineAt(line.from).number, event) ?? false
+          );
         },
       },
     }),
     deps.EditorView.decorations.of(
       deps.Decoration.set(
-        Array.from(annotationsByLine.keys())
+        Array.from(annotatedLines)
           .sort((left, right) => left - right)
           .flatMap((lineNumber) => {
             const from = lineStarts[lineNumber - 1];

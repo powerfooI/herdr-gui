@@ -8,7 +8,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { diffReviewLineLabel, type ReviewAnnotation } from "../annotations";
+import {
+  diffReviewLineLabel,
+  fileReviewLineLabel,
+  type ReviewAnnotation,
+} from "../annotations";
 import type { Pane } from "../types";
 import { ConfirmDialog } from "./ModalDialogs";
 
@@ -17,7 +21,7 @@ function annotationLocation(annotation: ReviewAnnotation) {
     return `${annotation.path} · ${diffReviewLineLabel(annotation)}`;
   }
   if (annotation.anchor === "line") {
-    return `${annotation.path} · line ${annotation.line}`;
+    return `${annotation.path} · ${fileReviewLineLabel(annotation)}`;
   }
   return annotation.section.length
     ? `${annotation.path} · ${annotation.section.join(" › ")}`
@@ -112,7 +116,7 @@ export function AnnotationPanel({
             <MessageSquareText size={24} />
             <strong>No review comments yet</strong>
             <span>
-              Click or drag across diff line numbers, click a source gutter, or
+              Click or drag across diff line numbers or a source gutter, or
               select rendered Markdown text.
             </span>
           </div>

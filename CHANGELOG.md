@@ -4,33 +4,19 @@
 
 ### Added
 
-- Add a hands-on tutorial to the Pages website, covering everyday
-  workflows, mobile use, and private access with Tailscale, SSH, and Tailcat.
-- Filter History by User, Agent, and Tool with independent toggles and matching
-  message counts and minimap navigation.
-- Add a Text size control (Menu > Appearance) that scales the whole interface
-  between 80% and 150%, making the app easier to read on mobile where browser
-  zoom shortcuts are unavailable.
+- Add a website tutorial, History filters, and adjustable text size.
+- Drag across the Files annotation gutter to comment on multiple lines.
 
 ### Changed
 
-- Refresh History without rereading unchanged transcripts or resending the full
-  list, and show chronological tool arguments, outputs, and errors with collapsed
-  long content.
-- Replace the desktop dropdown application menu with a mobile bottom sheet on
-  narrow screens: slide-up sheet with a grab handle, grid tile actions,
-  and full-width preference rows sized for touch. The desktop-only Keyboard
-  shortcuts item is hidden in the sheet.
+- Improve History refresh performance and tool output readability.
+- Use a touch-friendly bottom sheet for the mobile application menu.
 
 ### Fixed
 
-- Avoid an extra full-trajectory copy when checking the History cache budget
-  for large sessions.
-- Pause History polling in the mobile Workspaces view, preserve message view
-  mode and focus during refresh, and update cached Grok timestamps when session
-  creation metadata changes.
-- Fit the mobile terminal shortcut bar to the screen width: keys shrink with
-  label ellipsis instead of overflowing into horizontal scrolling.
+- Make `Cmd+W` close only the active pane in split tabs.
+- Keep Diff scope labels on one line and mobile terminal shortcuts within view.
+- Preserve History focus and view mode during refresh; correct Grok timestamps.
 
 ## 0.5.1 - 2026-09-03
 
