@@ -1,7 +1,9 @@
 # Installation and Deployment
 
 This guide covers installation, runtime configuration, remote connections,
-user services, and standalone builds.
+user services, and standalone builds. For a guided private-access walkthrough
+with Tailscale Serve, SSH forwarding, or experimental Tailcat port forwarding,
+see the [hands-on tutorial](./TUTORIAL.md#networking).
 
 ## Requirements
 

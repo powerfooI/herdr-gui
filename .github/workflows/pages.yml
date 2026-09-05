@@ -6,8 +6,10 @@ on:
         paths:
             - ".github/workflows/pages.yml"
             - "docs/images/herdr-studio-*.png"
+            - "docs/TUTORIAL.md"
             - "package.json"
             - "scripts/build-pages.ts"
+            - "scripts/pages-content*.ts"
             - "site/**"
     workflow_dispatch:
 
@@ -36,7 +38,9 @@ jobs:
               uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
               with:
                   enablement: true
-            - name: Build landing page
+            - name: Test tutorial rendering and site references
+              run: bun test scripts/pages-content.test.ts
+            - name: Build landing page and tutorial
               run: bun run build:site
             - name: Upload Pages artifact
               uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

@@ -1,6 +1,7 @@
 import { cp, copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { renderTutorial, verifySiteReferences } from "./pages-content";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const sourceDirectory = join(root, "site");
@@ -43,31 +44,6 @@ async function ensureFile(path: string): Promise<void> {
   if (!file.isFile()) throw new Error(`Expected a file at ${path}`);
 }
 
-async function verifyLocalReferences(): Promise<void> {
-  const htmlPath = join(outputDirectory, "index.html");
-  const html = await Bun.file(htmlPath).text();
-  const directReferences = [
-    ...html.matchAll(/(?:href|src)="(\.\/[^"]+)"/g),
-  ].map((match) => match[1].split(/[?#]/, 1)[0]);
-  const sourceSetReferences = [...html.matchAll(/srcset="([^"]+)"/gs)]
-    .map((match) => match[1])
-    .join(",")
-    .split(",")
-    .map((candidate) => candidate.trim().split(/\s+/, 1)[0])
-    .filter(Boolean);
-  const references = [...directReferences, ...sourceSetReferences];
-
-  for (const reference of new Set(references)) {
-    await ensureFile(join(outputDirectory, reference));
-  }
-
-  if (html.includes('href="/') || html.includes('src="/')) {
-    throw new Error(
-      "Root-relative site assets break on the GitHub Pages subpath",
-    );
-  }
-}
-
 await rm(outputDirectory, { force: true, recursive: true });
 await cp(sourceDirectory, outputDirectory, { recursive: true });
 await mkdir(assetDirectory, { recursive: true });
@@ -78,21 +54,40 @@ for (const [source, destination] of assets) {
   await copyFile(sourcePath, join(assetDirectory, destination));
 }
 
+const tutorial = await renderTutorial(
+  await Bun.file(join(root, "docs/TUTORIAL.md")).text(),
+);
+const tutorialPath = join(outputDirectory, "tutorial/index.html");
+const template = await Bun.file(tutorialPath).text();
+for (const slot of ["content", "navigation"]) {
+  if (!template.includes(`<!-- tutorial:${slot} -->`)) {
+    throw new Error(`Missing tutorial template slot: ${slot}`);
+  }
+}
+await writeFile(
+  tutorialPath,
+  template
+    .replace("<!-- tutorial:content -->", () => tutorial.content)
+    .replace("<!-- tutorial:navigation -->", () => tutorial.navigation),
+);
+
 const build = await Bun.build({
   entrypoints: [
     join(sourceDirectory, "main.js"),
     join(sourceDirectory, "styles.css"),
+    join(sourceDirectory, "tutorial.js"),
+    join(sourceDirectory, "tutorial.css"),
   ],
   outdir: outputDirectory,
   minify: true,
   target: "browser",
 });
 if (!build.success) {
-  throw new AggregateError(build.logs, "Failed to optimize the landing page");
+  throw new AggregateError(build.logs, "Failed to optimize the Pages site");
 }
 
 await writeFile(join(outputDirectory, ".nojekyll"), "");
-await verifyLocalReferences();
+await verifySiteReferences(outputDirectory);
 
 const size = await Array.fromAsync(
   new Bun.Glob("**/*").scan({ cwd: outputDirectory, onlyFiles: true }),
