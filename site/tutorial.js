@@ -18,6 +18,7 @@ for (const [index, code] of [
   button.setAttribute("aria-live", "polite");
   row.append(hint, button);
   pre.before(row);
+  let resetTimer = 0;
 
   button.addEventListener("click", async () => {
     try {
@@ -34,7 +35,8 @@ for (const [index, code] of [
       selection?.addRange(range);
       button.textContent = "Selected - copy manually";
     }
-    window.setTimeout(() => {
+    window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
       button.textContent = "Copy command";
     }, 2400);
   });
