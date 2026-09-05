@@ -229,6 +229,8 @@ describe("Pi agent sessions", () => {
       second.readHistory({ pane_id: "p1", agent: "pi" }),
     ]);
 
+    if (!("messages" in firstHistory) || !("messages" in secondHistory))
+      throw new Error("Expected legacy history");
     expect(firstHistory.messages[0]?.text).toBe("first runtime");
     expect(secondHistory.messages[0]?.text).toBe("second runtime");
   });

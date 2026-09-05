@@ -203,6 +203,7 @@ function InspectorSplitResizer({
 
 export function WorkspaceInspectorHost({
   state,
+  visible,
   workspace,
   historyPane,
   fileSelection,
@@ -218,6 +219,7 @@ export function WorkspaceInspectorHost({
   onBack,
 }: {
   state: WorkspaceInspectorState;
+  visible: boolean;
   workspace?: Workspace;
   historyPane?: Pane;
   fileSelection: ActiveFilePreviewSelection;
@@ -909,7 +911,7 @@ export function WorkspaceInspectorHost({
             {historyAvailable && historyPane ? (
               <AgentHistoryDrawer
                 pane={historyPane}
-                open={state.open && state.view === "history"}
+                open={visible && state.open && state.view === "history"}
                 embedded
                 onOpenChange={(open) => {
                   if (!open) onClose();

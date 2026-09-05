@@ -7507,6 +7507,28 @@ textarea:focus {
     ),
     var(--input-bg);
 }
+.agent-history-card.is-tool {
+  border-left-color: var(--yellow);
+}
+.agent-history-card.is-tool .agent-history-card-role {
+  color: var(--yellow);
+}
+.agent-history-card-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-history-tool-id,
+.agent-history-tool-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-history-tool-label {
+  margin-bottom: 5px;
+}
 .agent-history-card:hover {
   border-color: var(--border);
 }
@@ -7685,6 +7707,50 @@ textarea:focus {
   background: var(--panel-2);
   border-radius: 999px;
 }
+.agent-history-filters {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.agent-history-filter {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+.agent-history-filter.is-user {
+  --filter-color: var(--blue);
+}
+.agent-history-filter.is-agent {
+  --filter-color: var(--green);
+}
+.agent-history-filter.is-tool {
+  --filter-color: var(--yellow);
+}
+.agent-history-filter[aria-pressed="true"] {
+  color: var(--filter-color);
+  background: var(--panel-2);
+  border-color: var(--filter-color);
+}
+.agent-history-filter:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.agent-history-filter > span {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
 .agent-history-minimap-wrap {
   position: relative;
   flex: 0 0 auto;
@@ -7757,6 +7823,9 @@ textarea:focus {
 }
 .agent-history-minimap-bar.is-assistant {
   background: var(--green);
+}
+.agent-history-minimap-bar.is-tool {
+  background: var(--yellow);
 }
 .agent-history-minimap-bar.is-in-view {
   transform: scaleY(1.6);

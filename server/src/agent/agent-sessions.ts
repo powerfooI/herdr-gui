@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { HerdrCall, SessionFile } from "./session-types";
 import {
   createAgentSessionResolverContext,
@@ -9,10 +10,12 @@ import {
   localAgentSessionFiles,
   type AgentSessionFileAccess,
 } from "./session-file-access";
-import { conversationMessagesFromTrajectory } from "./session-messages";
-import { projectAgentTrajectory } from "./session-trajectory";
-import { isRecord } from "./session-utils";
-import { summarizeTokenUsage } from "./token-usage";
+import {
+  createSessionProjectionCache,
+  readSessionProjection,
+  type SessionProjectionCache,
+} from "./session-projection-cache";
+import { HISTORY_WINDOW_LIMIT } from "./session-history";
 
 const MAX_MESSAGES_PER_AGENT = 200;
 
@@ -21,20 +24,53 @@ export function createAgentSessionHandlers(args: {
   files: AgentSessionFileAccess;
 }) {
   const resolverContext = createAgentSessionResolverContext();
+  const cache = createSessionProjectionCache(args.files);
   return {
-    readHistory: (params: Record<string, unknown>) =>
-      readAgentMessageHistory(
+    readHistory: async (params: Record<string, unknown>) => {
+      if (params.history_version !== 2) {
+        return readAgentMessageHistory(
+          params,
+          args.herdrCall,
+          args.files,
+          resolverContext,
+          cache,
+        );
+      }
+      const resolved = await resolveAgentSession(
         params,
         args.herdrCall,
         args.files,
         resolverContext,
-      ),
+      );
+      if (!resolved.file) {
+        cache.invalidate(resolved);
+        return {
+          ...resolved,
+          history_version: 2 as const,
+          mode: "snapshot" as const,
+          cursor: { epoch: randomUUID(), revision: 1 },
+          window_limit: HISTORY_WINDOW_LIMIT,
+          entries: [],
+        };
+      }
+      const { projection, update } = await cache.history(
+        resolved,
+        params.cursor,
+      );
+      return {
+        ...resolved,
+        file: projection.file,
+        updated_at: new Date(projection.file.mtimeMs).toISOString(),
+        ...update,
+      };
+    },
     readSummary: (params: Record<string, unknown>) =>
       readAgentSessionSummary(
         params,
         args.herdrCall,
         args.files,
         resolverContext,
+        cache,
       ),
     downloadFile: (params: Record<string, unknown>) =>
       downloadAgentSessionFile(
@@ -49,49 +85,8 @@ export function createAgentSessionHandlers(args: {
         args.herdrCall,
         args.files,
         resolverContext,
+        cache,
       ),
-  };
-}
-
-function projectSession(
-  agent: string,
-  file: SessionFile,
-  records: Record<string, unknown>[],
-) {
-  const trajectory = projectAgentTrajectory(agent, file, records);
-  return {
-    trajectory,
-    messages: conversationMessagesFromTrajectory(file, trajectory),
-  };
-}
-
-function parseJsonl(text: string) {
-  const records: Record<string, unknown>[] = [];
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (isRecord(parsed)) records.push(parsed);
-    } catch {
-      // Session transcripts are append-only; the final line may be incomplete.
-    }
-  }
-  return records;
-}
-
-async function readRecords(file: SessionFile, files: AgentSessionFileAccess) {
-  return parseJsonl(await files.readText(file.path));
-}
-
-function parseSessionStats(
-  messages: ReturnType<typeof conversationMessagesFromTrajectory>,
-  records: Record<string, unknown>[],
-) {
-  return {
-    turns: messages.filter((message) => message.role === "user").length,
-    records: records.length,
-    token_usage: summarizeTokenUsage(records),
   };
 }
 
@@ -100,6 +95,7 @@ export async function readAgentMessageHistory(
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
   resolverContext?: AgentSessionResolverContext,
+  cache?: SessionProjectionCache,
 ) {
   const resolved = await resolveAgentSession(
     rawParams,
@@ -108,18 +104,20 @@ export async function readAgentMessageHistory(
     resolverContext,
   );
   if (!resolved.file) {
+    cache?.invalidate(resolved);
     return {
       ...resolved,
       messages: [],
     };
   }
-  const file = resolved.file;
-  const records = await readRecords(file, files);
-  const messages = projectSession(resolved.agent, file, records).messages.slice(
-    -MAX_MESSAGES_PER_AGENT,
-  );
+  const projected = cache
+    ? await cache.get(resolved)
+    : await readSessionProjection(resolved.agent, resolved.file, files);
+  const messages = projected.messages.slice(-MAX_MESSAGES_PER_AGENT);
   return {
     ...resolved,
+    file: projected.file,
+    updated_at: new Date(projected.file.mtimeMs).toISOString(),
     messages,
   };
 }
@@ -129,6 +127,7 @@ export async function readAgentSessionSummary(
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
   resolverContext?: AgentSessionResolverContext,
+  cache?: SessionProjectionCache,
 ) {
   const resolved = await resolveAgentSession(
     rawParams,
@@ -137,6 +136,7 @@ export async function readAgentSessionSummary(
     resolverContext,
   );
   if (!resolved.file) {
+    cache?.invalidate(resolved);
     return {
       ...resolved,
       stats: { turns: 0, records: 0, token_usage: null },
@@ -145,9 +145,10 @@ export async function readAgentSessionSummary(
       trajectory: null,
     };
   }
-  const records = await readRecords(resolved.file, files);
-  const projected = projectSession(resolved.agent, resolved.file, records);
-  const stats = parseSessionStats(projected.messages, records);
+  const projected = cache
+    ? await cache.get(resolved)
+    : await readSessionProjection(resolved.agent, resolved.file, files);
+  const stats = projected.stats;
   const includeText = rawParams.include_text === true;
   const includeTrajectory = rawParams.include_trajectory === true;
   const previewLimit = Math.max(
@@ -159,13 +160,21 @@ export async function readAgentSessionSummary(
   if (includeText) {
     const bytes = await files.readPrefix(resolved.file.path, previewLimit + 1);
     truncated =
-      bytes.length > previewLimit || (resolved.file.size ?? 0) > previewLimit;
+      bytes.length > previewLimit || (projected.file.size ?? 0) > previewLimit;
     text = new TextDecoder("utf-8", { fatal: false }).decode(
       truncated ? bytes.subarray(0, previewLimit) : bytes,
     );
   }
   const trajectory = includeTrajectory ? projected.trajectory : null;
-  return { ...resolved, stats, text, truncated, trajectory };
+  return {
+    ...resolved,
+    file: projected.file,
+    updated_at: new Date(projected.file.mtimeMs).toISOString(),
+    stats,
+    text,
+    truncated,
+    trajectory,
+  };
 }
 
 function contentDispositionFilename(path: string) {
@@ -216,6 +225,7 @@ export async function downloadAgentSessionAtif(
   herdrCall: HerdrCall,
   files: AgentSessionFileAccess = localAgentSessionFiles,
   resolverContext?: AgentSessionResolverContext,
+  cache?: SessionProjectionCache,
 ) {
   const resolved = await resolveAgentSession(
     rawParams,
@@ -229,12 +239,9 @@ export async function downloadAgentSessionAtif(
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  const records = await readRecords(resolved.file, files);
-  const trajectory = projectAgentTrajectory(
-    resolved.agent,
-    resolved.file,
-    records,
-  );
+  const { trajectory } = cache
+    ? await cache.get(resolved)
+    : await readSessionProjection(resolved.agent, resolved.file, files);
   return new Response(`${JSON.stringify(trajectory, null, 2)}\n`, {
     headers: {
       "content-type": "application/json; charset=utf-8",

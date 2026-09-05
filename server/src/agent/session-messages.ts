@@ -6,7 +6,7 @@ import type {
 } from "./session-types";
 import { stableMessageId } from "./session-utils";
 
-function isConversationStep(step: AtifStep) {
+export function isConversationStep(step: AtifStep) {
   if (step.source === "user") return step.message.trim().length > 0;
   if (step.source !== "agent" || !step.message.trim()) return false;
 

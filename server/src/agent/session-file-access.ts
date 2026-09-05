@@ -22,7 +22,13 @@ async function localSessionFile(path: string): Promise<SessionFile | null> {
   try {
     const info = await stat(path);
     if (!info.isFile()) return null;
-    return { path, mtimeMs: info.mtimeMs, size: info.size };
+    return {
+      path,
+      mtimeMs: info.mtimeMs,
+      size: info.size,
+      identity: `${info.dev}:${info.ino}`,
+      changeToken: String(info.ctimeMs),
+    };
   } catch {
     return null;
   }
@@ -46,14 +52,16 @@ export const localAgentSessionFiles: AgentSessionFileAccess = {
 };
 
 function parseRemoteFileMetadata(stdout: string): SessionFile | null {
-  const [rawSize, rawMtime, rawPath] = stdout.trim().split("\t");
+  const [rawSize, rawMtime, rawPath, identity, changeToken] = stdout
+    .trim()
+    .split("\t");
   if (!rawPath) return null;
   const path = Buffer.from(rawPath, "base64").toString("utf8");
   if (!path) return null;
   const size = Number(rawSize);
   const mtimeSeconds = Number(rawMtime);
   if (!Number.isFinite(size) || !Number.isFinite(mtimeSeconds)) return null;
-  return { path, size, mtimeMs: mtimeSeconds * 1000 };
+  return { path, size, mtimeMs: mtimeSeconds * 1000, identity, changeToken };
 }
 
 export function createAgentSessionFileAccess(args: {
@@ -91,7 +99,9 @@ path=${args.shQuote(path)}
 size="$(stat -c %s "$path" 2>/dev/null || stat -f %z "$path")"
 mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path")"
 path64="$(printf '%s' "$path" | base64 | tr -d '\\n')"
-printf '%s\\t%s\\t%s\\n' "$size" "$mtime" "$path64"
+identity="$(stat -c '%d:%i' "$path" 2>/dev/null || stat -f '%d:%i' "$path")"
+change="$(stat -c '%y:%z' "$path" 2>/dev/null || stat -f '%Fm:%Fc' "$path")"
+printf '%s\\t%s\\t%s\\t%s\\t%s\\n' "$size" "$mtime" "$path64" "$identity" "$change"
 `;
     const result = await args.runBinaryProcessWithTimeout(
       sshCommandArgv(host, `bash -lc ${args.shQuote(command)}`),

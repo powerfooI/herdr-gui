@@ -7,7 +7,12 @@ import { focusDialogElement } from "./dialogFocus";
 import { MarkdownPreview } from "./markdown";
 
 type AgentMessage = {
-  role: "user" | "assistant";
+  id: string;
+  role: "user" | "assistant" | "tool";
+  kind?: "message" | "tool_call" | "tool_result" | "error";
+  tool_name?: string;
+  source_call_id?: string;
+  is_error?: boolean;
   text: string;
   sent_at: string;
 };
@@ -29,19 +34,21 @@ export function AgentMessageDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
-  const [viewModeMessage, setViewModeMessage] = useState(message);
+  const messageId = message?.id ?? null;
+  const [viewMode, setViewMode] = useState<"rendered" | "raw">(
+    message?.role === "assistant" ? "rendered" : "raw",
+  );
+  const [viewModeMessageId, setViewModeMessageId] = useState(messageId);
 
-  if (message !== viewModeMessage) {
-    // Reset the view for each newly opened message during render so the stale
-    // mode never flashes. Assistant messages are usually markdown; user
-    // messages are usually prose.
-    setViewModeMessage(message);
+  if (messageId !== viewModeMessageId) {
+    // A refreshed snapshot replaces objects, not the user's selected message.
+    // Reset only when opening another entry or closing/reopening the dialog.
+    setViewModeMessageId(messageId);
     setViewMode(message?.role === "assistant" ? "rendered" : "raw");
   }
 
   useEffect(() => {
-    if (!message) return;
+    if (messageId === null) return;
     const cancelFocus = focusDialogElement(dialogRef.current);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -54,10 +61,15 @@ export function AgentMessageDialog({
       cancelFocus();
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, [message, onClose]);
+  }, [messageId, onClose]);
 
   if (!message) return null;
-  const roleLabel = message.role === "assistant" ? "Assistant" : "User";
+  const isTool = message.role === "tool";
+  const roleLabel = isTool
+    ? `${message.kind === "tool_call" ? "Tool arguments" : message.is_error ? "Tool error" : "Tool output"}: ${message.tool_name ?? "tool"}`
+    : message.role === "assistant"
+      ? "Assistant"
+      : "User";
 
   // Render at the document root: on mobile the transformed .app box becomes
   // the containing block for fixed elements, and the inspector slot's stacking
@@ -78,25 +90,30 @@ export function AgentMessageDialog({
           <div>
             <h3>{roleLabel} Message</h3>
             <time>{formatMessageTime(message.sent_at)}</time>
+            {message.source_call_id ? (
+              <p>Call ID: {message.source_call_id}</p>
+            ) : null}
           </div>
           <div className="agent-message-modal-actions">
-            <button
-              type="button"
-              className="agent-message-mode-toggle"
-              onClick={() =>
-                setViewMode((mode) =>
-                  mode === "rendered" ? "raw" : "rendered",
-                )
-              }
-              aria-label={
-                viewMode === "rendered"
-                  ? "Show raw markdown"
-                  : "Show rendered markdown"
-              }
-              title={viewMode === "rendered" ? "Show raw" : "Show rendered"}
-            >
-              {viewMode === "rendered" ? "Raw" : "Rendered"}
-            </button>
+            {!isTool ? (
+              <button
+                type="button"
+                className="agent-message-mode-toggle"
+                onClick={() =>
+                  setViewMode((mode) =>
+                    mode === "rendered" ? "raw" : "rendered",
+                  )
+                }
+                aria-label={
+                  viewMode === "rendered"
+                    ? "Show raw markdown"
+                    : "Show rendered markdown"
+                }
+                title={viewMode === "rendered" ? "Show raw" : "Show rendered"}
+              >
+                {viewMode === "rendered" ? "Raw" : "Rendered"}
+              </button>
+            ) : null}
             <button
               type="button"
               className="agent-history-icon"
@@ -109,7 +126,7 @@ export function AgentMessageDialog({
             <CloseButton label="Close message" onClick={onClose} />
           </div>
         </div>
-        {viewMode === "rendered" ? (
+        {!isTool && viewMode === "rendered" ? (
           <div className="agent-message-modal-content is-rendered">
             <MarkdownPreview
               text={message.text}
