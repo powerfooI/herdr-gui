@@ -11,6 +11,9 @@ dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
 ## Documentation
 
 - [Project website](https://powerfooI.github.io/herdr-studio/)
+- [Hands-on tutorial](https://powerfooI.github.io/herdr-studio/tutorial/)
+  ([Markdown](./docs/TUTORIAL.md)): first steps, review workflows, mobile, and
+  private remote access with Tailscale, SSH, or Tailcat.
 - [Feature tour and keyboard shortcuts](./FEATURES.md)
 - [Installation, configuration, services, and builds](./docs/DEPLOYMENT.md)
 - [Architecture and implementation](./docs/ARCHITECTURE.md)

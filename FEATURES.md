@@ -6,7 +6,8 @@ agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.
 
 For installation and deployment, see
-[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md). For a task-based introduction, see
+the [hands-on tutorial](./docs/TUTORIAL.md).
 
 ## Workspace, Tab, and Pane Navigation
 
@@ -272,8 +273,8 @@ browser and do not change Herdr server configuration.
   update when running a standalone binary under a supported supervisor.
 - Use `/health` or `/healthz` for service probes.
 
-Loopback access is unauthenticated by default. Non-loopback binds use a generated
-login token unless a fixed password is configured. The built-in authentication
+Loopback binds bypass built-in authentication even when a password is configured.
+Non-loopback binds use a generated login token unless a fixed password is configured. The built-in authentication
 does not provide TLS, rate limiting, multi-user authorization, or sandboxing;
 see [SECURITY.md](./SECURITY.md) before exposing the service.
 

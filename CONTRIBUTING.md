@@ -31,6 +31,25 @@ Use `bun run build` for changes that affect production assets or server
 bundling. Release changes should also validate the relevant
 `package:<platform>` command.
 
+## Pages Website and Tutorial
+
+The landing page lives in `site/`. The tutorial has one canonical
+source, `docs/TUTORIAL.md`; `scripts/build-pages.ts` renders it into the
+`site/tutorial/index.html` template, rewrites shared screenshots and reference
+links, and validates local links and fragments throughout the built site.
+Do not duplicate the tutorial body in the HTML template.
+
+```bash
+bun test scripts/pages-content.test.ts
+bun run build:site
+```
+
+Serve `.pages-dist/` with a local static HTTP server and open `/tutorial/`.
+Also check deployment beneath the `/herdr-studio/` Pages subpath, narrow-screen
+layouts, keyboard navigation, and reading with JavaScript disabled. Generated
+`.pages-dist/` files must not be committed. The Pages workflow rebuilds when
+the tutorial source, renderer, template, or shared website assets change.
+
 ## Pull Requests
 
 Keep commits focused and use short imperative commit messages. Describe the

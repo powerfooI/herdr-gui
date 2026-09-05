@@ -4,6 +4,8 @@
 
 ### Added
 
+- Add a hands-on tutorial to the Pages website, covering everyday
+  workflows, mobile use, and private access with Tailscale, SSH, and Tailcat.
 - Filter History by User, Agent, and Tool with independent toggles and matching
   message counts and minimap navigation.
 - Add a Text size control (Menu > Appearance) that scales the whole interface

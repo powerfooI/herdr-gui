@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080b12" />
+    <meta
+      name="description"
+      content="A hands-on Herdr Studio tutorial: terminals, agent sessions, file and diff review, Git worktrees, mobile PWA use, and private remote access with Tailscale, SSH, and Tailcat."
+    />
+    <meta property="og:type" content="article" />
+    <meta
+      property="og:title"
+      content="Herdr Studio Tutorial - From your first terminal to a workspace that travels"
+    />
+    <meta
+      property="og:description"
+      content="Learn Studio through one small task, then bring your workspace to your phone with private remote access."
+    />
+    <meta
+      property="og:url"
+      content="https://powerfooI.github.io/herdr-studio/tutorial/"
+    />
+    <meta
+      property="og:image"
+      content="https://powerfooI.github.io/herdr-studio/og.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="canonical"
+      href="https://powerfooI.github.io/herdr-studio/tutorial/"
+    />
+    <link rel="icon" href="../assets/herdr-icon-48.png" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="../tutorial.css" />
+    <title>
+      Herdr Studio Tutorial - From your first terminal to a workspace that
+      travels
+    </title>
+  </head>
+  <body class="tutorial-page">
+    <a class="skip-link" href="#main-content">Skip to tutorial content</a>
+    <header class="tutorial-header">
+      <div class="shell tutorial-header-inner">
+        <a class="brand" href="../index.html" aria-label="Herdr Studio home">
+          <span class="brand-mark"
+            ><img
+              src="../assets/herdr-icon-48.png"
+              width="36"
+              height="36"
+              alt=""
+          /></span>
+          <span>Herdr Studio</span>
+        </a>
+        <nav aria-label="Site navigation">
+          <a href="../index.html">Home</a>
+          <a href="./" aria-current="page">Tutorial</a>
+          <a
+            href="https://github.com/powerfooI/herdr-studio/blob/main/docs/TUTORIAL.md"
+            >Markdown source</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <div class="shell tutorial-layout">
+      <aside class="tutorial-sidebar">
+        <p class="kicker">Learn by doing</p>
+        <h2 id="tutorial-nav-title">One section at a time</h2>
+        <p class="tutorial-sidebar-note">
+          Get started locally in 5 minutes.<br />Save remote access for later.
+        </p>
+        <nav class="tutorial-toc" aria-labelledby="tutorial-nav-title">
+          <!-- tutorial:navigation -->
+        </nav>
+        <div class="tutorial-shortcuts">
+          <span>Jump to a connection option</span>
+          <a href="#tailscale">Tailscale - everyday private access</a>
+          <a href="#ssh">SSH - remote Herdr</a>
+          <a href="#tailcat">Tailcat - a temporary connection</a>
+          <a href="#troubleshooting">Troubleshooting - find the failed hop</a>
+        </div>
+        <a class="tutorial-back" href="#main-content">Back to the top &uarr;</a>
+      </aside>
+
+      <main id="main-content" class="tutorial-main">
+        <div class="tutorial-banner">
+          <span class="tutorial-tag">Hands-on tutorial</span>
+          <span>Local first, remote next. Read at your own pace.</span>
+        </div>
+        <article class="tutorial-prose" aria-labelledby="tutorial-title">
+          <!-- tutorial:content -->
+        </article>
+        <p
+          class="tutorial-check-status"
+          data-check-status
+          aria-live="polite"
+        ></p>
+        <noscript
+          ><p class="tutorial-sidebar-note">
+            Content, navigation, and links work without JavaScript. Select
+            commands manually to copy them; the checklist is also available in
+            the Markdown source.
+          </p></noscript
+        >
+        <footer class="tutorial-footer">
+          <a href="../index.html">&larr; Back to the project</a>
+          <a href="https://github.com/powerfooI/herdr-studio/issues"
+            >Report a documentation issue (redact secrets first)</a
+          >
+        </footer>
+      </main>
+    </div>
+    <script src="../tutorial.js" defer></script>
+  </body>
+</html>
