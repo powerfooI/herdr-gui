@@ -84,6 +84,8 @@ export type SessionFile = {
   path: string;
   mtimeMs: number;
   size?: number;
+  identity?: string;
+  changeToken?: string;
   sessionId?: string;
   createdAtMs?: number;
   modelName?: string;

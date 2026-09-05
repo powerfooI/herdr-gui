@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createAgentSessionFileAccess } from "./session-file-access";
 
 const remotePath = "/srv/herdr-gui-test/sessions/pi-session.jsonl";
-const metadata = `42\t1784872800\t${Buffer.from(remotePath).toString("base64")}\n`;
+const metadata = `42\t1784872800\t${Buffer.from(remotePath).toString("base64")}\t1:42\t1784872800.123:1784872800.456\n`;
 
 function quote(value: string) {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -39,6 +39,8 @@ describe("agent session file access", () => {
       path: remotePath,
       size: 42,
       mtimeMs: 1_784_872_800_000,
+      identity: "1:42",
+      changeToken: "1784872800.123:1784872800.456",
     });
     expect(await files.readText(remotePath)).toContain('"type":"message"');
     expect(

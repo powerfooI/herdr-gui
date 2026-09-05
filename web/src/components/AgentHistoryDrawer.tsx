@@ -1,7 +1,7 @@
 import {
-  memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,6 +16,19 @@ import { formatUiRelativeTime, UI_LOCALE } from "../uiLocale";
 import { shortId } from "../utils";
 import { AgentIcon } from "./AgentIcon";
 import { AgentMessageDialog } from "./AgentMessageDialog";
+import { AgentHistoryCard } from "./AgentHistoryCard";
+import { AgentHistoryFilters } from "./AgentHistoryFilters";
+import {
+  ALL_HISTORY_FILTERS,
+  historyEntryCategory,
+  historyEntryLabel,
+  mergeAgentHistory,
+  selectHistoryEntries,
+  type HistoryFilters,
+  type AgentHistory,
+  type AgentHistoryResponse,
+  type HistoryEntry as AgentHistoryEntry,
+} from "./agentHistory";
 import { AgentSessionPreviewDialog } from "./AgentSessionPreviewDialog";
 import {
   type AgentSessionSummary,
@@ -26,26 +39,6 @@ import {
   formatTokenTotal,
   tokenUsage,
 } from "./agentSession";
-
-type AgentHistoryEntry = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  sent_at: string;
-};
-
-type AgentHistory = {
-  status?: "ok" | "missing_session" | "missing_file";
-  detail?: string;
-  command?: string;
-  agent: string;
-  pane_id: string;
-  workspace_id: string;
-  tab_id: string;
-  updated_at: string;
-  messages: AgentHistoryEntry[];
-  path: string;
-};
 
 function formatHistoryTime(sentAt: string) {
   const time = new Date(sentAt);
@@ -70,83 +63,6 @@ function formatRelativeTime(timestamp: string) {
     return formatUiRelativeTime(Math.round(seconds / 3600), "hour");
   return formatUiRelativeTime(Math.round(seconds / 86400), "day");
 }
-
-function messageSummary(text: string) {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length <= 1) return null;
-  return `${lines.length} lines`;
-}
-
-// Cards are memoized because the timeline can hold hundreds of them and the
-// drawer's minimap viewport tracking re-renders on every scroll boundary.
-const AgentHistoryMessageCard = memo(function AgentHistoryMessageCard({
-  entry,
-  index,
-  highlighted = false,
-  onExpand,
-}: {
-  entry: AgentHistoryEntry;
-  index: number;
-  highlighted?: boolean;
-  onExpand: (entry: AgentHistoryEntry) => void;
-}) {
-  const contentRef = useRef<HTMLPreElement>(null);
-  const [truncated, setTruncated] = useState(false);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-
-    // Wrapping changes as the drawer resizes, so truncation must follow the
-    // rendered height instead of relying on message length.
-    const update = () => {
-      setTruncated(content.scrollHeight > content.clientHeight + 1);
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [entry.text]);
-
-  const summary = messageSummary(entry.text);
-  const roleLabel = entry.role === "assistant" ? "Assistant" : "You";
-  const roleAriaLabel = entry.role === "assistant" ? "assistant" : "user";
-  return (
-    <article
-      className={`agent-history-card is-${entry.role} ${
-        highlighted ? "is-minimap-target" : ""
-      }`}
-      data-sequence={index}
-    >
-      <div className="agent-history-card-meta">
-        <strong className="agent-history-card-role">{roleLabel}</strong>
-        <small>#{index}</small>
-        <time title={formatHistoryTime(entry.sent_at)}>
-          {formatRelativeTime(entry.sent_at)}
-        </time>
-        {summary ? <span>{summary}</span> : <span />}
-        <button
-          type="button"
-          className="agent-history-copy"
-          onClick={() => void navigator.clipboard?.writeText(entry.text)}
-          aria-label={`Copy message ${index}`}
-          title="Copy"
-        >
-          <Copy size={13} />
-        </button>
-      </div>
-      <button
-        type="button"
-        className={`agent-history-card-open ${truncated ? "is-truncated" : ""}`}
-        onClick={() => onExpand(entry)}
-        aria-label={`View ${roleAriaLabel} message ${index}`}
-      >
-        <pre ref={contentRef}>{entry.text}</pre>
-        {truncated ? <span>View full message</span> : null}
-      </button>
-    </article>
-  );
-});
 
 type MessageMinimapVisibleRange = { start: number; end: number };
 
@@ -297,7 +213,7 @@ function AgentHistoryMinimap({
   const currentSequence = visibleRange?.start ?? 1;
   const currentEntry = entries[currentSequence - 1];
   const currentValueText = currentEntry
-    ? `#${currentSequence} ${currentEntry.message.role === "assistant" ? "assistant" : "user"}`
+    ? `#${currentSequence} ${historyEntryLabel(currentEntry.message)}`
     : undefined;
 
   return (
@@ -320,7 +236,7 @@ function AgentHistoryMinimap({
         onPointerCancel={handlePointerEnd}
       >
         {entries.map(({ message, sequence }) => {
-          const roleLabel = message.role === "assistant" ? "assistant" : "user";
+          const roleLabel = historyEntryLabel(message);
           const inView =
             visibleRange !== null &&
             sequence >= visibleRange.start &&
@@ -365,6 +281,7 @@ export function AgentHistoryDrawer({
     workspaces.find((workspace) => workspace.workspace_id === pane.workspace_id)
       ?.label ?? pane.workspace_id;
   const [history, setHistory] = useState<AgentHistory | null>(null);
+  const [filters, setFilters] = useState<HistoryFilters>(ALL_HISTORY_FILTERS);
   const [session, setSession] = useState<AgentSessionSummary | null>(null);
   const [drawerTab, setDrawerTab] = useState<"messages" | "details">(
     "messages",
@@ -390,19 +307,28 @@ export function AgentHistoryDrawer({
   const highlightTimerRef = useRef<number | null>(null);
   const loadSeqRef = useRef(0);
   const previewSeqRef = useRef(0);
+  const historyRef = useRef<AgentHistory | null>(null);
+  const inFlightRef = useRef<number | null>(null);
 
   const loadHistory = useCallback(() => {
-    if (!pane.agent) return;
+    if (
+      !pane.agent ||
+      inFlightRef.current !== null ||
+      !connectionClient.isCurrent()
+    )
+      return;
     const seq = loadSeqRef.current + 1;
     loadSeqRef.current = seq;
-    setLoading(true);
-    setError("");
+    inFlightRef.current = seq;
+    setLoading(!historyRef.current);
+    const requested = historyRef.current?.cursor ?? null;
     const params = {
+      history_version: 2,
+      cursor: requested,
       pane_id: pane.pane_id,
       workspace_id: pane.workspace_id,
       tab_id: pane.tab_id,
       agent: pane.agent,
-      agent_status: pane.agent_status,
     };
     Promise.allSettled([
       connectionClient.call("agent_history.get", params),
@@ -413,16 +339,23 @@ export function AgentHistoryDrawer({
     ])
       .then(([historyResult, sessionResult]) => {
         if (!connectionClient.isCurrent() || loadSeqRef.current !== seq) return;
-        setHistory(
-          historyResult.status === "fulfilled"
-            ? (historyResult.value as AgentHistory)
-            : null,
-        );
-        setSession(
-          sessionResult.status === "fulfilled"
-            ? (sessionResult.value as AgentSessionSummary)
-            : null,
-        );
+        if (historyResult.status === "fulfilled") {
+          const merged = mergeAgentHistory(
+            historyRef.current,
+            historyResult.value as AgentHistoryResponse,
+            requested,
+          );
+          historyRef.current = merged;
+          setHistory(merged);
+          setExpandedMessage((entry) =>
+            entry
+              ? (merged?.messages.find((message) => message.id === entry.id) ??
+                null)
+              : null,
+          );
+        }
+        if (sessionResult.status === "fulfilled")
+          setSession(sessionResult.value as AgentSessionSummary);
         const errors = [historyResult, sessionResult]
           .filter((result) => result.status === "rejected")
           .map((result) =>
@@ -436,6 +369,7 @@ export function AgentHistoryDrawer({
         setError(errors.join("\n"));
       })
       .finally(() => {
+        if (inFlightRef.current === seq) inFlightRef.current = null;
         if (connectionClient.isCurrent() && loadSeqRef.current === seq) {
           setLoading(false);
         }
@@ -443,7 +377,6 @@ export function AgentHistoryDrawer({
   }, [
     connectionClient,
     pane.agent,
-    pane.agent_status,
     pane.pane_id,
     pane.tab_id,
     pane.workspace_id,
@@ -454,6 +387,8 @@ export function AgentHistoryDrawer({
     // Invalidate old continuations before loading a colliding pane ID from a
     // switched connection or replacement runtime.
     loadSeqRef.current += 1;
+    inFlightRef.current = null;
+    historyRef.current = null;
     previewSeqRef.current += 1;
     if (highlightTimerRef.current !== null) {
       window.clearTimeout(highlightTimerRef.current);
@@ -472,10 +407,25 @@ export function AgentHistoryDrawer({
     setPreviewError("");
     setLoading(false);
     setError("");
-  }, [connectionClient, pane.agent, pane.pane_id, pane.workspace_id]);
+  }, [
+    connectionClient,
+    pane.agent,
+    pane.pane_id,
+    pane.workspace_id,
+    pane.tab_id,
+  ]);
 
   useEffect(() => {
-    if (open) loadHistory();
+    if (!open) return;
+    if (document.visibilityState === "visible") loadHistory();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadHistory();
+    }, 4000);
+    return () => {
+      window.clearInterval(timer);
+      loadSeqRef.current += 1;
+      inFlightRef.current = null;
+    };
   }, [loadHistory, open]);
 
   useEffect(() => {
@@ -543,7 +493,24 @@ export function AgentHistoryDrawer({
     [],
   );
 
-  const messagesKey = history?.messages;
+  const { visible: visibleMessages, counts } = useMemo(
+    () => selectHistoryEntries(history?.messages ?? [], filters),
+    [history?.messages, filters],
+  );
+  const changeFilters = (next: HistoryFilters) => {
+    setFilters(next);
+    setExpandedMessage((entry) =>
+      entry && next[historyEntryCategory(entry)] ? entry : null,
+    );
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    setHighlightedSequence(null);
+    visibleRangeKeyRef.current = "";
+    setVisibleRange(null);
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  };
 
   // Track which messages the timeline viewport contains so the minimap can
   // raise their bars as a moving "wave" while scrolling. Geometry-based
@@ -671,7 +638,7 @@ export function AgentHistoryDrawer({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", schedule);
     };
-  }, [drawerTab, messagesKey]);
+  }, [drawerTab, visibleMessages]);
 
   // Stable identity so the message dialog's focus effect only re-runs when the
   // message itself changes, not on every drawer re-render.
@@ -699,7 +666,7 @@ export function AgentHistoryDrawer({
 
   const usage = tokenUsage(session);
   const messages = history?.messages ?? [];
-  const messageEntries = messages.map((message, index) => ({
+  const messageEntries = visibleMessages.map((message, index) => ({
     message,
     sequence: index + 1,
   }));
@@ -810,12 +777,17 @@ export function AgentHistoryDrawer({
                   type="button"
                   role="tab"
                   aria-selected={drawerTab === "messages"}
+                  title="Most recent 200 messages and tool entries"
                   className={drawerTab === "messages" ? "is-active" : ""}
                   onClick={() => setDrawerTab("messages")}
                 >
-                  Messages
-                  {messageEntries.length > 0 ? (
-                    <span>{messageEntries.length}</span>
+                  History
+                  {messages.length > 0 ? (
+                    <span>
+                      {messageEntries.length === messages.length
+                        ? messages.length
+                        : `${messageEntries.length}/${messages.length}`}
+                    </span>
                   ) : null}
                 </button>
                 <button
@@ -833,6 +805,16 @@ export function AgentHistoryDrawer({
             {error ? <div className="agent-history-error">{error}</div> : null}
             {drawerTab === "messages" ? (
               <div className="agent-history-messages" role="tabpanel">
+                <AgentHistoryFilters
+                  filters={filters}
+                  counts={counts}
+                  onToggle={(category) =>
+                    changeFilters({
+                      ...filters,
+                      [category]: !filters[category],
+                    })
+                  }
+                />
                 {messageEntries.length > 1 ? (
                   <AgentHistoryMinimap
                     entries={messageEntries}
@@ -849,12 +831,25 @@ export function AgentHistoryDrawer({
                     </div>
                   ) : messageEntries.length === 0 ? (
                     <div className="agent-history-state">
-                      No conversation messages were found in this session.
+                      {messages.length > 0 ? (
+                        <>
+                          No entries match the selected message types.
+                          <button
+                            type="button"
+                            className="secondary-btn"
+                            onClick={() => changeFilters(ALL_HISTORY_FILTERS)}
+                          >
+                            Show all types
+                          </button>
+                        </>
+                      ) : (
+                        "No history entries were found in this session."
+                      )}
                     </div>
                   ) : (
                     <div className="agent-history-timeline" ref={timelineRef}>
                       {messageEntries.map(({ message, sequence }) => (
-                        <AgentHistoryMessageCard
+                        <AgentHistoryCard
                           entry={message}
                           index={sequence}
                           key={message.id}

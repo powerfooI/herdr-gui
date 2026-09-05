@@ -2844,6 +2844,7 @@ export default function App() {
                 <WorkspaceInspectorHost
                   key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
                   state={inspectorState}
+                  visible={!mobile || mobileView !== "workspaces"}
                   workspace={inspectorWorkspace}
                   historyPane={inspectorHistoryPane}
                   fileSelection={activeFilePreview}

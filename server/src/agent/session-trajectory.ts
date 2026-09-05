@@ -86,7 +86,13 @@ function createTrajectory(
   }
   const sessionId = sessionIdFromRecords(file, records);
   const normalizedSteps = steps
-    .filter((step) => step.message.trim() || step.reasoning_content?.trim())
+    .filter(
+      (step) =>
+        step.message.trim() ||
+        step.reasoning_content?.trim() ||
+        step.tool_calls?.length ||
+        step.observation?.results.length,
+    )
     .map((step, index) => ({ ...step, step_id: index + 1 }));
   return {
     schema_version: "ATIF-v1.7",
@@ -135,6 +141,23 @@ function codexContentText(value: unknown): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function toolOutputText(value: unknown): string {
+  if (typeof value === "string") return value;
+  const text = textFromContent(value);
+  return text || (value == null ? "" : JSON.stringify(value, null, 2));
+}
+
+function toolResultExtra(value: Record<string, unknown>) {
+  return {
+    is_error:
+      value.is_error === true ||
+      value.isError === true ||
+      value.status === "error" ||
+      value.status === "failed" ||
+      undefined,
+  };
 }
 
 function toolArguments(value: unknown): Record<string, unknown> {
@@ -236,9 +259,7 @@ function projectCodexTrajectory(
         extra: { record_type: type },
       });
     } else if (type.includes("output") || type.includes("result")) {
-      const content = cleanMessageText(
-        textFromContent(payload.output ?? payload.content),
-      );
+      const content = toolOutputText(payload.output ?? payload.content);
       steps.push({
         timestamp,
         source: "system",
@@ -249,6 +270,7 @@ function projectCodexTrajectory(
               source_call_id:
                 stringValue(payload.call_id) || stringValue(payload.id),
               content: content || stringValue(payload.status) || type,
+              extra: toolResultExtra(payload),
             },
           ],
         },
@@ -277,9 +299,7 @@ function projectCodexTrajectory(
         ],
       });
     } else if (type.includes("tool")) {
-      const content = cleanMessageText(
-        textFromContent(payload.output ?? payload.content),
-      );
+      const content = toolOutputText(payload.output ?? payload.content);
       steps.push({
         timestamp,
         source: "system",
@@ -290,6 +310,7 @@ function projectCodexTrajectory(
               source_call_id:
                 stringValue(payload.call_id) || stringValue(payload.id),
               content: content || stringValue(payload.status) || type,
+              extra: toolResultExtra(payload),
             },
           ],
         },
@@ -315,6 +336,77 @@ function projectClaudeTrajectory(
       textFromContent(message.content ?? record.content),
     );
     const usage = tokenUsageForRecord(record).usage;
+    const parts = Array.isArray(message.content)
+      ? message.content.filter(isRecord)
+      : [];
+    if (
+      parts.some(
+        (part) => part.type === "tool_use" || part.type === "tool_result",
+      )
+    ) {
+      const start = steps.length;
+      for (const part of parts) {
+        if (part.type === "tool_use") {
+          const name = stringValue(part.name) || "tool";
+          steps.push({
+            timestamp,
+            source: "agent",
+            message: `Tool call: ${name}`,
+            tool_calls: [
+              {
+                tool_call_id:
+                  stringValue(part.id) || `${index}:${steps.length}`,
+                function_name: name,
+                arguments: toolArguments(part.input),
+              },
+            ],
+          });
+        } else if (part.type === "tool_result") {
+          const content = toolOutputText(part.content);
+          steps.push({
+            timestamp,
+            source: "system",
+            message: content || "Tool result",
+            observation: {
+              results: [
+                {
+                  source_call_id: stringValue(part.tool_use_id),
+                  content:
+                    content || (part.is_error ? "Tool failed" : "Tool result"),
+                  extra: { is_error: part.is_error === true || undefined },
+                },
+              ],
+            },
+          });
+        } else if (part.type === "text" && stringValue(part.text).trim()) {
+          steps.push({
+            timestamp,
+            source: role === "user" ? "user" : "agent",
+            message: stringValue(part.text),
+          });
+        } else if (
+          part.type === "thinking" &&
+          stringValue(part.thinking).trim()
+        ) {
+          steps.push({
+            timestamp,
+            source: "agent",
+            message: "Reasoning",
+            reasoning_content: stringValue(part.thinking),
+          });
+        }
+      }
+      if (steps.length > start) {
+        const lastStep = steps[steps.length - 1];
+        lastStep.metrics = tokenUsageToMetrics(usage);
+        lastStep.extra = {
+          ...lastStep.extra,
+          record_type: type,
+          model: modelNameFromRecord(record) || undefined,
+        };
+      }
+      return;
+    }
     if (!text && !usage) return;
     steps.push({
       timestamp,
@@ -417,7 +509,7 @@ function projectKimiTrajectory(
     }
     if (eventType === "tool.result") {
       const result = isRecord(event.result) ? event.result : {};
-      const content = cleanMessageText(textFromContent(result.output));
+      const content = toolOutputText(result.output);
       steps.push({
         timestamp,
         source: "system",
@@ -428,6 +520,7 @@ function projectKimiTrajectory(
               source_call_id: stringValue(event.toolCallId),
               content:
                 content || (result.isError ? "Tool failed" : "Tool result"),
+              extra: { is_error: result.isError === true || undefined },
             },
           ],
         },
@@ -476,7 +569,7 @@ function projectPiTrajectory(
     }
 
     if (role === "toolResult") {
-      const content = cleanMessageText(textFromContent(message.content));
+      const content = toolOutputText(message.content);
       steps.push({
         timestamp,
         source: "system",
@@ -529,6 +622,62 @@ function projectPiTrajectory(
       stringValue(message.stopReason) === "error"
         ? cleanMessageText(stringValue(message.errorMessage)).slice(0, 4096)
         : "";
+
+    // Preserve part boundaries when grouping text before calls would reorder
+    // the transcript. Keep the existing compact ATIF shape otherwise.
+    const firstCall = parts.findIndex((part) => part.type === "toolCall");
+    if (
+      firstCall >= 0 &&
+      parts
+        .slice(firstCall + 1)
+        .some((part) => part.type === "text" && stringValue(part.text).trim())
+    ) {
+      let callIndex = 0;
+      const start = steps.length;
+      for (const part of parts) {
+        if (part.type === "toolCall") {
+          const call = toolCalls[callIndex++];
+          steps.push({
+            timestamp,
+            source: "agent",
+            message: `Tool call: ${call.function_name}`,
+            tool_calls: [call],
+          });
+        } else if (part.type === "text") {
+          const content = cleanMessageText(stringValue(part.text));
+          if (content)
+            steps.push({ timestamp, source: "agent", message: content });
+        } else if (part.type === "thinking") {
+          const content = cleanMessageText(stringValue(part.thinking));
+          if (content)
+            steps.push({
+              timestamp,
+              source: "agent",
+              message: "Reasoning",
+              reasoning_content: content,
+            });
+        }
+      }
+      if (errorMessage)
+        steps.push({
+          timestamp,
+          source: "agent",
+          message: `Error: ${errorMessage}`,
+          extra: { error_message: errorMessage },
+        });
+      if (steps.length > start) {
+        const lastStep = steps[steps.length - 1];
+        lastStep.metrics = piTokenUsageToMetrics(message.usage);
+        lastStep.extra = {
+          ...lastStep.extra,
+          record_type: type,
+          provider: stringValue(message.provider) || undefined,
+          model: stringValue(message.model) || undefined,
+          stop_reason: stringValue(message.stopReason) || undefined,
+        };
+      }
+      return;
+    }
 
     // Empty retry/error records carry zero-valued usage but no conversation
     // content. Omitting them keeps Timeline focused on observable turns.
@@ -642,7 +791,7 @@ function projectGrokTrajectory(
       return;
     }
     if (type === "tool_result") {
-      const content = cleanMessageText(textFromContent(record.content));
+      const content = toolOutputText(record.content);
       steps.push({
         timestamp,
         source: "system",
@@ -652,6 +801,7 @@ function projectGrokTrajectory(
             {
               source_call_id: stringValue(record.tool_call_id),
               content: content || "Tool result",
+              extra: toolResultExtra(record),
             },
           ],
         },
