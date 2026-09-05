@@ -1,4 +1,4 @@
-import type { Tab } from "./types";
+import type { Pane, Tab } from "./types";
 
 export type TabShortcutAction = "create" | "close" | "previous" | "next";
 
@@ -19,6 +19,22 @@ export function tabShortcutAction(
   if (event.altKey && event.key === "ArrowLeft") return "previous";
   if (event.altKey && event.key === "ArrowRight") return "next";
   return null;
+}
+
+/** Closes only the active pane in split tabs, otherwise the tab itself. */
+export function closeShortcutTarget(
+  tabId: string | undefined,
+  panes: Pick<Pane, "pane_id" | "tab_id" | "focused">[],
+  activePaneId: string | undefined,
+): { type: "pane" | "tab"; id: string } | null {
+  if (!tabId) return null;
+  const tabPanes = panes.filter((pane) => pane.tab_id === tabId);
+  if (tabPanes.length <= 1) return { type: "tab", id: tabId };
+  const pane =
+    tabPanes.find((pane) => pane.pane_id === activePaneId) ??
+    tabPanes.find((pane) => pane.focused) ??
+    tabPanes[0];
+  return { type: "pane", id: pane.pane_id };
 }
 
 /** Selects the adjacent tab in stable tab-number order, wrapping at each end. */

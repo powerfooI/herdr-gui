@@ -26,7 +26,11 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
         description: "Open the recent pane switcher",
       },
       { keys: "Cmd+T", description: "Create a tab in the focused workspace" },
-      { keys: "Cmd+W", description: "Close the focused tab" },
+      {
+        keys: "Cmd+W",
+        description:
+          "Close the active pane, or the tab if only one pane remains",
+      },
       {
         keys: "Cmd+Option+Left / Right",
         description: "Switch tabs in the focused workspace",
